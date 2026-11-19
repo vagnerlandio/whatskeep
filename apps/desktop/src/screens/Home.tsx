@@ -1,4 +1,5 @@
 import { formatCount, SOURCE_LABEL, StoreInfo } from "../api";
+import DriveImport from "./DriveImport";
 import ImportPanel from "./ImportPanel";
 
 type Props = { stores: StoreInfo[]; onImported: () => void; onClose?: () => void };
@@ -25,6 +26,7 @@ export default function Home({ stores, onImported, onClose }: Props) {
           </div>
         ))}
       </section>
+      <DriveImport stores={stores} onImported={onImported} />
       <ImportPanel stores={stores} onImported={onImported} />
     </div>
   );

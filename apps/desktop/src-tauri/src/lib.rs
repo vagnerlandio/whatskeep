@@ -1,5 +1,6 @@
 mod commands;
 mod error;
+mod gdrive;
 mod media;
 mod state;
 
@@ -38,6 +39,10 @@ pub fn run() {
             commands::get_messages,
             commands::get_messages_around,
             commands::search_messages,
+            gdrive::gdrive_login,
+            gdrive::gdrive_login_manual,
+            gdrive::gdrive_cancel,
+            gdrive::gdrive_download,
         ])
         .run(tauri::generate_context!())
         .expect("falha ao iniciar o aplicativo");

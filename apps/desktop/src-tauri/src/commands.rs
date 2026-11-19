@@ -23,7 +23,7 @@ use crate::state::{AUTOLOCK_AFTER, AppState};
 
 const EVENT_IMPORT_PROGRESS: &str = "import-progress";
 
-async fn blocking<T, F>(f: F) -> Result<T, CmdError>
+pub(crate) async fn blocking<T, F>(f: F) -> Result<T, CmdError>
 where
     T: Send + 'static,
     F: FnOnce() -> Result<T, CmdError> + Send + 'static,
@@ -82,8 +82,8 @@ pub async fn vault_unlock(app: AppHandle, password: String) -> Result<(), CmdErr
 }
 
 #[tauri::command]
-pub fn vault_lock(state: State<'_, AppState>) {
-    state.lock();
+pub fn vault_lock(app: AppHandle) {
+    crate::state::lock_all(&app);
 }
 
 /// A UI chama isto (com throttle) a cada interação do usuário.
@@ -175,7 +175,7 @@ pub enum KeyInput {
 }
 
 impl KeyInput {
-    fn load(self) -> Result<BackupKey, CmdError> {
+    pub(crate) fn load(self) -> Result<BackupKey, CmdError> {
         Ok(match self {
             KeyInput::Hex { value } => BackupKey::from_hex(&Zeroizing::new(value))?,
             KeyInput::File { path } => {
@@ -224,54 +224,66 @@ pub async fn import_backup(
     blocking(move || {
         let state = app.state::<AppState>();
         let _busy = state.busy();
-        let source_app = SourceApp::parse(&source_app)
-            .ok_or_else(|| CmdError::new("invalid_argument", "app de origem desconhecido"))?;
-        let store = state.vault().as_ref().ok_or_else(CmdError::locked)?.store(source_app)?;
-        // A conexão do visualizador aponta para o arquivo antigo (e no Windows
-        // impediria a troca do arquivo).
-        state.forget_store(source_app);
-        let progress = |phase| {
-            let _ = app.emit(EVENT_IMPORT_PROGRESS, Progress { phase });
-        };
-
-        progress("reading");
+        let source_app = self::source_app(&source_app)?;
+        progress(&app, "reading");
         let key = key.load()?;
         let file = std::fs::read(&backup_path)?;
-
-        progress("decrypting");
-        let decrypted = wa_crypt::decrypt(&file, &key)?;
-        drop((file, key));
-        if decrypted.payload != Payload::Sqlite {
-            return Err(wa_import::Error::NotMsgstore.into());
-        }
-
-        progress("importing");
-        // `open_msgstore` copia os bytes para a memória do SQLite (zerada ao
-        // liberar). A cópia do wa-crypt é zerada logo em seguida.
-        let src = wa_import::open_msgstore(&decrypted.data)?;
-        drop(decrypted);
-        let report = store.import(&src);
-        state.forget_store(source_app);
-        let report = report?;
-        drop(src);
-
-        progress("done");
-        Ok(ImportSummary {
-            source_schema: report.source_schema.map(|s| match s {
-                wa_import::SourceSchema::Modern => "modern",
-                wa_import::SourceSchema::Legacy => "legacy",
-            }),
-            chats: report.chats,
-            messages: report.messages,
-            media: report.media,
-            reactions: report.reactions,
-            vcards: report.vcards,
-            skipped_status: report.skipped_status,
-            skipped_orphans: report.skipped_orphans,
-            unknown_types: report.unknown_types.into_iter().collect(),
-        })
+        import_encrypted(&app, &state, file, key, source_app)
     })
     .await
+}
+
+pub(crate) fn progress(app: &AppHandle, phase: &'static str) {
+    let _ = app.emit(EVENT_IMPORT_PROGRESS, Progress { phase });
+}
+
+/// Descriptografa um backup (já em memória) e importa para o cofre. O texto
+/// puro nunca vai para o disco: fica em buffers zerados e vai direto para o
+/// banco SQLCipher.
+pub(crate) fn import_encrypted(
+    app: &AppHandle,
+    state: &AppState,
+    file: Vec<u8>,
+    key: BackupKey,
+    source_app: SourceApp,
+) -> Result<ImportSummary, CmdError> {
+    let store = state.vault().as_ref().ok_or_else(CmdError::locked)?.store(source_app)?;
+
+    progress(app, "decrypting");
+    let decrypted = wa_crypt::decrypt(&file, &key)?;
+    drop((file, key));
+    if decrypted.payload != Payload::Sqlite {
+        return Err(wa_import::Error::NotMsgstore.into());
+    }
+
+    progress(app, "importing");
+    // `open_msgstore` copia os bytes para a memória do SQLite (zerada ao
+    // liberar). A cópia do wa-crypt é zerada logo em seguida.
+    let src = wa_import::open_msgstore(&decrypted.data)?;
+    drop(decrypted);
+    // A conexão do visualizador aponta para o arquivo antigo (e no Windows
+    // impediria a troca do arquivo).
+    state.forget_store(source_app);
+    let report = store.import(&src);
+    state.forget_store(source_app);
+    let report = report?;
+    drop(src);
+
+    progress(app, "done");
+    Ok(ImportSummary {
+        source_schema: report.source_schema.map(|s| match s {
+            wa_import::SourceSchema::Modern => "modern",
+            wa_import::SourceSchema::Legacy => "legacy",
+        }),
+        chats: report.chats,
+        messages: report.messages,
+        media: report.media,
+        reactions: report.reactions,
+        vcards: report.vcards,
+        skipped_status: report.skipped_status,
+        skipped_orphans: report.skipped_orphans,
+        unknown_types: report.unknown_types.into_iter().collect(),
+    })
 }
 
 // ---------------------------------------------------------------- visualizador

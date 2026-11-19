@@ -1,0 +1,22 @@
+[package]
+name = "wa-gdrive"
+version = "0.1.0"
+description = "Lista e baixa backups do WhatsApp no Google Drive (fluxo não oficial do Google Play Services)"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+base64 = "0.22"
+md-5 = "0.10"
+# Sem TLS padrão: o cliente usa um rustls configurado à mão (veja http.rs).
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "blocking"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-platform-verifier = "0.6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+url = "2"
+zeroize = { version = "1", features = ["std"] }
+
+[dev-dependencies]
+wa-crypt = { path = "../wa-crypt" }

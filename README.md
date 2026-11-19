@@ -9,6 +9,7 @@ apps/desktop/        App Tauri (React em src/, Rust em src-tauri/)
 crates/wa-crypt/     Descriptografia crypt14/crypt15, sem I/O e sem dependência do Tauri
 crates/wa-import/    Importa o msgstore (schemas novo e legado) para o schema do app, com busca FTS5
 crates/wa-vault/     Cofre: SQLCipher por app de origem, chave protegida por Argon2id; consultas do visualizador
+crates/wa-gdrive/    Login do Google Play Services e download do backup do Google Drive (não oficial)
 packages/            (futuro) viewer compartilhado e shell do export HTML cifrado
 ```
 
@@ -51,6 +52,23 @@ stores/business.db    SQLCipher, chave = HKDF(DEK, id do cofre, "store:business"
 - Importar substitui o banco daquele app de forma atômica (banco novo num temporário cifrado, depois `rename`). Uma falha no meio mantém o anterior.
 - O cofre trava após 5 minutos sem interação (e no botão "Travar"); a DEK é zerada da memória.
 - Pastas 0700, arquivos 0600, `.metadata_never_index` para o Spotlight.
+
+## Google Drive (não oficial)
+
+Mesmo caminho do app do WhatsApp no Android, como o [wabdd](https://github.com/giacomoferretti/whatsapp-backup-downloader-decryptor) e o [whapa](https://github.com/B16f00t/whapa):
+
+1. Janela **anônima** do Tauri com `accounts.google.com/EmbeddedSetup`. Sem permissões de IPC; só navega por domínios do Google.
+2. O backend lê o cookie `oauth_token` e destrói a janela.
+3. Cookie → token mestre (`android.clients.google.com/auth`) → tokens `drive.appdata` de 1 h para `com.whatsapp` e `com.whatsapp.w4b`. O token mestre é zerado logo em seguida.
+4. `backup.googleapis.com/v1/clients/wa/backups` → `Databases/msgstore.db.crypt15`, baixado para a memória com conferência de MD5, decifrado e importado.
+
+Os tokens de acesso somem ao fim do download, ao cancelar, ao travar o cofre ou após 50 minutos. O cliente HTTP não oferece ALPN e não segue redirecionamentos (o Google recusa o login com ALPN; ver gpsoauth).
+
+Ainda não validado com uma conta real:
+- se o Google aceita o login pelo WebKit embutido (senão, há o login manual colando o cookie);
+- se o WhatsApp Business usa a mesma assinatura (`client_sig`) e se os backups dele aparecem na mesma listagem.
+
+Só o banco de mensagens é baixado. As mídias de backups E2E vêm como `.mcrypt1` (nome ofuscado, metadados cifrados) e ficam para a fase de mídia.
 
 ## Fixtures de teste
 

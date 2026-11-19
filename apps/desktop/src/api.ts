@@ -35,7 +35,7 @@ export type ImportSummary = {
   unknownTypes: [number, number][];
 };
 
-export type ImportPhase = "reading" | "decrypting" | "importing" | "done";
+export type ImportPhase = "reading" | "downloading" | "decrypting" | "importing" | "done";
 
 export type CmdError = { code: string; message: string };
 
@@ -150,6 +150,33 @@ export const viewerApi = {
 /** Miniatura servida pelo protocolo `wamedia://` (direto do cofre, sem cache em disco). */
 export const thumbUrl = (store: SourceApp, messageId: number) =>
   convertFileSrc(`thumb/${store}/${messageId}`, "wamedia");
+
+// ---------------------------------------------------------------- Google Drive
+
+export type DriveBackup = {
+  /** Índice na sessão do backend (o nome real do backup não sai do Rust). */
+  id: number;
+  phone: string | null;
+  updateTime: string | null;
+  sizeBytes: number | null;
+  uploading: boolean;
+  encrypted: boolean | null;
+  chatDbSize: number | null;
+  mediaSize: number | null;
+  messages: number | null;
+  appVersion: string | null;
+  apps: SourceApp[];
+};
+
+export type DriveLogin = { backups: DriveBackup[]; refused: SourceApp[] };
+
+export const driveApi = {
+  login: (email: string) => invoke<DriveLogin>("gdrive_login", { email }),
+  loginManual: (email: string, oauthToken: string) => invoke<DriveLogin>("gdrive_login_manual", { email, oauthToken }),
+  cancel: () => invoke<void>("gdrive_cancel"),
+  download: (backupId: number, key: KeyInput, sourceApp: SourceApp) =>
+    invoke<ImportSummary>("gdrive_download", { backupId, key, sourceApp }),
+};
 
 export const MIN_PASSWORD_CHARS = 8;
 

@@ -28,6 +28,8 @@ pub struct AppState {
     last_activity: Mutex<Instant>,
     /// Importações em andamento. O autolock espera elas terminarem.
     busy: AtomicUsize,
+    /// Sessão do Google Drive (só tokens de acesso, nunca o token mestre).
+    pub drive: crate::gdrive::DriveState,
 }
 
 impl AppState {
@@ -38,6 +40,7 @@ impl AppState {
             vault: Mutex::new(None),
             last_activity: Mutex::new(Instant::now()),
             busy: AtomicUsize::new(0),
+            drive: Default::default(),
         }
     }
 
@@ -117,9 +120,19 @@ pub fn spawn_autolock(app: AppHandle) {
         .spawn(move || loop {
             std::thread::sleep(AUTOLOCK_CHECK_EVERY);
             let state = app.state::<AppState>();
-            if state.busy.load(Ordering::SeqCst) == 0 && state.idle_for() >= AUTOLOCK_AFTER && state.lock() {
+            if state.busy.load(Ordering::SeqCst) == 0 && state.idle_for() >= AUTOLOCK_AFTER && state.vault().is_some() {
+                lock_all(&app);
                 let _ = app.emit(EVENT_LOCKED, "inactivity");
             }
+            // Tokens de acesso valem 1 hora: a sessão do Drive some antes disso.
+            state.drive.expire();
         })
         .expect("falha ao iniciar a thread de autolock");
+}
+
+/// Trava o cofre e encerra tudo o que depende dele: conexões, sessão do
+/// Google Drive (tokens zerados) e a janela de login, se aberta.
+pub fn lock_all(app: &AppHandle) {
+    crate::gdrive::shutdown(app);
+    app.state::<AppState>().lock();
 }

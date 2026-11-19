@@ -1,0 +1,400 @@
+//! Download do backup direto do Google Drive (fluxo não oficial).
+//!
+//! 1. Uma janela **anônima** (sem cookies persistentes) abre o login
+//!    `EmbeddedSetup` do Google. Ela não tem nenhuma permissão de IPC (as
+//!    capabilities só valem para a janela `main`) e só navega por domínios do
+//!    Google.
+//! 2. O cookie `oauth_token` é lido pelo backend assim que o login termina, e a
+//!    janela é destruída (junto com a sessão do navegador).
+//! 3. O cookie vira token mestre e, na hora, tokens de acesso `drive.appdata`
+//!    (1 h) para o WhatsApp e o Business. O token mestre é zerado em seguida.
+//! 4. Os tokens de acesso ficam só em memória até o download terminar, o
+//!    usuário cancelar, o cofre travar ou passarem 50 minutos.
+//!
+//! O backup baixado continua cifrado (crypt14/15) e vai direto da memória para
+//! a descriptografia e a importação: nada é gravado em disco.
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{Duration, Instant};
+
+use serde::Serialize;
+use tauri::{AppHandle, Emitter, Manager, Url, WebviewUrl, WebviewWindowBuilder};
+use wa_gdrive::{Api, Backup, DriveApp, Endpoints, OauthCookie, Session};
+use wa_import::SourceApp;
+use zeroize::Zeroizing;
+
+use crate::commands::{ImportSummary, KeyInput, import_encrypted, progress, source_app};
+use crate::error::CmdError;
+use crate::state::AppState;
+
+const LOGIN_WINDOW: &str = "google-login";
+const LOGIN_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+const SESSION_TTL: Duration = Duration::from_secs(50 * 60);
+const EVENT_DOWNLOAD: &str = "gdrive-progress";
+
+/// Domínios por onde o login do Google passa. Qualquer outra navegação na
+/// janela de login é bloqueada.
+const ALLOWED_DOMAINS: &[&str] = &["gstatic.com", "googleusercontent.com", "googleapis.com", "youtube.com"];
+
+#[derive(Default)]
+pub struct DriveState {
+    session: Mutex<Option<Logged>>,
+    /// Pedido de cancelamento do login ou do download em andamento.
+    cancel: Arc<AtomicBool>,
+}
+
+struct Logged {
+    session: Session,
+    backups: Vec<Found>,
+    at: Instant,
+}
+
+#[derive(Clone)]
+struct Found {
+    backup: Backup,
+    /// Apps cujo token enxerga este backup.
+    apps: Vec<DriveApp>,
+}
+
+impl DriveState {
+    fn session(&self) -> MutexGuard<'_, Option<Logged>> {
+        self.session.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Descarta a sessão (os tokens são zerados no drop).
+    pub fn clear(&self) {
+        self.session().take();
+    }
+
+    pub fn expire(&self) {
+        let mut s = self.session();
+        if s.as_ref().is_some_and(|l| l.at.elapsed() >= SESSION_TTL) {
+            s.take();
+        }
+    }
+}
+
+/// Cancela o que estiver em andamento, descarta os tokens e fecha a janela de login.
+pub fn shutdown(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    state.drive.cancel.store(true, Ordering::SeqCst);
+    state.drive.clear();
+    if let Some(w) = app.get_webview_window(LOGIN_WINDOW) {
+        let _ = w.destroy();
+    }
+}
+
+fn allowed_navigation(url: &Url) -> bool {
+    if url.scheme() != "https" {
+        return false;
+    }
+    let Some(host) = url.host_str() else { return false };
+    if ALLOWED_DOMAINS.iter().any(|d| host == *d || host.ends_with(&format!(".{d}"))) {
+        return true;
+    }
+    // google.com, google.de, accounts.google.com.br, google.co.uk. Só esses
+    // formatos de sufixo: algo como `google.us.com` é registrável por qualquer um.
+    let labels: Vec<&str> = host.split('.').collect();
+    labels.iter().position(|l| *l == "google").is_some_and(|i| match &labels[i + 1..] {
+        ["com"] => true,
+        [cc] => cc.len() == 2,
+        [sld, cc] => (*sld == "com" || *sld == "co") && cc.len() == 2,
+        _ => false,
+    })
+}
+
+fn check_email(email: &str) -> Result<(), CmdError> {
+    let ok = email.len() <= 320 && email.split_once('@').is_some_and(|(u, d)| !u.is_empty() && d.contains('.'));
+    if ok { Ok(()) } else { Err(CmdError::new("invalid_argument", "e-mail inválido")) }
+}
+
+fn require_unlocked(state: &AppState) -> Result<(), CmdError> {
+    state.vault().as_ref().map(|_| ()).ok_or_else(CmdError::locked)
+}
+
+impl From<wa_gdrive::Error> for CmdError {
+    fn from(e: wa_gdrive::Error) -> Self {
+        use wa_gdrive::Error as E;
+        let code = match &e {
+            E::BadAuthentication | E::NeedsBrowser | E::Google(_) => "google_auth",
+            E::TokenExpired => "google_expired",
+            E::Cancelled => "cancelled",
+            E::Checksum | E::Incomplete => "download_corrupt",
+            E::Network(_) | E::Tls(_) => "network",
+            _ => "google",
+        };
+        CmdError::new(code, e.to_string())
+    }
+}
+
+// ---------------------------------------------------------------- login
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupDto {
+    /// Índice na sessão. O nome real do backup (`clients/wa/backups/<telefone>`)
+    /// não volta do webview: o download usa este índice.
+    id: usize,
+    #[serde(flatten)]
+    backup: BackupView,
+    apps: Vec<DriveApp>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BackupView {
+    phone: Option<String>,
+    update_time: Option<String>,
+    size_bytes: Option<u64>,
+    uploading: bool,
+    encrypted: Option<bool>,
+    chat_db_size: Option<u64>,
+    media_size: Option<u64>,
+    messages: Option<u64>,
+    app_version: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoginResult {
+    backups: Vec<BackupDto>,
+    /// Apps que o Google recusou (ex.: conta sem WhatsApp Business).
+    refused: Vec<DriveApp>,
+}
+
+/// Abre a janela de login do Google e espera o usuário entrar.
+#[tauri::command]
+pub async fn gdrive_login(app: AppHandle, email: String) -> Result<LoginResult, CmdError> {
+    check_email(&email)?;
+    require_unlocked(&app.state::<AppState>())?;
+    if let Some(w) = app.get_webview_window(LOGIN_WINDOW) {
+        let _ = w.set_focus();
+        return Err(CmdError::new("busy", "a janela de login já está aberta"));
+    }
+    let state = app.state::<AppState>();
+    state.drive.clear();
+    state.drive.cancel.store(false, Ordering::SeqCst);
+
+    let login_url: Url = wa_gdrive::LOGIN_URL.parse().expect("URL fixa válida");
+    WebviewWindowBuilder::new(&app, LOGIN_WINDOW, WebviewUrl::External(login_url))
+        .title("Entrar no Google")
+        .inner_size(480.0, 720.0)
+        .incognito(true)
+        .on_navigation(allowed_navigation)
+        .build()
+        .map_err(|e| CmdError::new("internal", format!("não foi possível abrir a janela de login: {e}")))?;
+
+    let app2 = app.clone();
+    let cookie = crate::commands::blocking(move || wait_for_cookie(&app2)).await?;
+    finish_login(app, email, cookie).await
+}
+
+/// Plano B: o usuário fez login no navegador e colou o cookie `oauth_token`.
+#[tauri::command]
+pub async fn gdrive_login_manual(app: AppHandle, email: String, oauth_token: String) -> Result<LoginResult, CmdError> {
+    let cookie = OauthCookie::new(oauth_token.trim().to_owned());
+    drop(Zeroizing::new(oauth_token));
+    check_email(&email)?;
+    require_unlocked(&app.state::<AppState>())?;
+    app.state::<AppState>().drive.clear();
+    if cookie.expose().is_empty() {
+        return Err(CmdError::new("invalid_argument", "cole o valor do cookie oauth_token"));
+    }
+    finish_login(app, email, cookie).await
+}
+
+/// Lê os cookies da janela até aparecer o `oauth_token` (ou a janela fechar).
+fn wait_for_cookie(app: &AppHandle) -> Result<OauthCookie, CmdError> {
+    let accounts: Url = "https://accounts.google.com/".parse().expect("URL fixa válida");
+    let cancel = app.state::<AppState>().drive.cancel.clone();
+    let started = Instant::now();
+    loop {
+        std::thread::sleep(Duration::from_millis(700));
+        let Some(window) = app.get_webview_window(LOGIN_WINDOW) else {
+            return Err(CmdError::new("cancelled", "login cancelado"));
+        };
+        if cancel.load(Ordering::SeqCst) || started.elapsed() > LOGIN_TIMEOUT {
+            let _ = window.destroy();
+            return Err(CmdError::new("cancelled", "login cancelado"));
+        }
+        let Ok(cookies) = window.cookies_for_url(accounts.clone()) else { continue };
+        if let Some(c) = cookies.iter().find(|c| c.name() == wa_gdrive::LOGIN_COOKIE && !c.value().is_empty()) {
+            let cookie = OauthCookie::new(c.value().to_owned());
+            drop(cookies);
+            // Fecha a janela: a sessão anônima do navegador some junto.
+            let _ = window.destroy();
+            return Ok(cookie);
+        }
+    }
+}
+
+async fn finish_login(app: AppHandle, email: String, cookie: OauthCookie) -> Result<LoginResult, CmdError> {
+    crate::commands::blocking(move || {
+        let ep = Endpoints::default();
+        let session = wa_gdrive::login(&ep, &email, cookie)?;
+
+        let mut found: Vec<Found> = Vec::new();
+        let mut errors = Vec::new();
+        for (drive_app, token) in &session.tokens {
+            match Api::new(&ep, token).and_then(|api| api.backups()) {
+                Ok(list) => {
+                    for b in list {
+                        match found.iter_mut().find(|f| f.backup.name == b.name) {
+                            Some(f) => f.apps.push(*drive_app),
+                            None => found.push(Found { backup: b, apps: vec![*drive_app] }),
+                        }
+                    }
+                }
+                Err(e) => errors.push(e),
+            }
+        }
+        if found.is_empty()
+            && let Some(e) = errors.into_iter().next() {
+                return Err(e.into());
+            }
+
+        let refused = session.refused.iter().map(|(a, _)| *a).collect();
+        let dto = found
+            .iter()
+            .enumerate()
+            .map(|(id, f)| BackupDto {
+                id,
+                apps: f.apps.clone(),
+                backup: BackupView {
+                    phone: f.backup.phone.clone(),
+                    update_time: f.backup.update_time.clone(),
+                    size_bytes: f.backup.size_bytes,
+                    uploading: f.backup.uploading,
+                    encrypted: f.backup.encrypted,
+                    chat_db_size: f.backup.chat_db_size,
+                    media_size: f.backup.media_size,
+                    messages: f.backup.messages,
+                    app_version: f.backup.app_version.clone(),
+                },
+            })
+            .collect();
+
+        let state = app.state::<AppState>();
+        // O cofre pode ter travado durante o login: aí os tokens nem ficam.
+        require_unlocked(&state)?;
+        *state.drive.session() = Some(Logged { session, backups: found, at: Instant::now() });
+        Ok(LoginResult { backups: dto, refused })
+    })
+    .await
+}
+
+/// Descarta os tokens do Google e fecha a janela de login.
+#[tauri::command]
+pub fn gdrive_cancel(app: AppHandle) {
+    shutdown(&app);
+}
+
+// ---------------------------------------------------------------- download
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DownloadProgress {
+    downloaded: u64,
+    total: u64,
+}
+
+/// Baixa o msgstore do backup escolhido, descriptografa e importa. Ao
+/// terminar (com sucesso ou não), os tokens do Google são descartados.
+#[tauri::command]
+pub async fn gdrive_download(
+    app: AppHandle,
+    backup_id: usize,
+    key: KeyInput,
+    source_app: String,
+) -> Result<ImportSummary, CmdError> {
+    crate::commands::blocking(move || {
+        let state = app.state::<AppState>();
+        let _busy = state.busy();
+        let target: SourceApp = self::source_app(&source_app)?;
+        // Chave errada ou malformada falha antes de baixar qualquer coisa.
+        let key = key.load()?;
+        require_unlocked(&state)?;
+
+        // A sessão sai do estado: os tokens morrem no fim deste comando.
+        let logged = state
+            .drive
+            .session()
+            .take()
+            .ok_or_else(|| CmdError::new("google_expired", "a sessão do Google expirou; entre de novo"))?;
+        state.drive.cancel.store(false, Ordering::SeqCst);
+        let found = logged
+            .backups
+            .get(backup_id)
+            .cloned()
+            .ok_or_else(|| CmdError::new("invalid_argument", "backup desconhecido"))?;
+        let token = logged
+            .session
+            .tokens
+            .iter()
+            .find(|(a, _)| found.apps.contains(a))
+            .map(|(_, t)| t)
+            .ok_or_else(|| CmdError::new("google_expired", "a sessão do Google expirou; entre de novo"))?;
+
+        progress(&app, "downloading");
+        let cancel = state.drive.cancel.clone();
+        let downloaded = (|| -> Result<Vec<u8>, CmdError> {
+            let ep = Endpoints::default();
+            let api = Api::new(&ep, token)?;
+            let files = api.files(&found.backup.name)?;
+            let db = wa_gdrive::find_msgstore(&files).ok_or_else(|| {
+                CmdError::new("not_msgstore", "este backup não tem o banco de mensagens (msgstore) no Google Drive")
+            })?;
+            Ok(api.download(db, &cancel, |downloaded, total| {
+                let _ = app.emit(EVENT_DOWNLOAD, DownloadProgress { downloaded, total });
+            })?)
+        })();
+        let bytes = match downloaded {
+            Ok(b) => b,
+            // Falha de rede ou arquivo corrompido: a sessão volta para tentar
+            // de novo sem novo login (ela ainda expira em SESSION_TTL).
+            Err(e) if matches!(e.code, "network" | "download_corrupt") && state.vault().is_some() => {
+                *state.drive.session() = Some(logged);
+                return Err(e);
+            }
+            Err(e) => return Err(e),
+        };
+        drop(logged); // tokens zerados aqui
+
+        if cancel.load(Ordering::SeqCst) {
+            return Err(CmdError::new("cancelled", "cancelado"));
+        }
+        import_encrypted(&app, &state, bytes, key, target)
+    })
+    .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn navegacao_permitida_na_janela_de_login() {
+        let ok = |u: &str| allowed_navigation(&u.parse().unwrap());
+        assert!(ok("https://accounts.google.com/EmbeddedSetup"));
+        assert!(ok("https://accounts.google.com.br/accounts/SetSID"));
+        assert!(ok("https://www.google.co.uk/"));
+        assert!(ok("https://ssl.gstatic.com/x.js"));
+        assert!(ok("https://accounts.youtube.com/accounts/SetSID"));
+        assert!(!ok("http://accounts.google.com/"));
+        assert!(!ok("https://google.com.evil.example/"));
+        assert!(!ok("https://notgoogle.com/"));
+        assert!(!ok("https://google.evil-site.com/"));
+        assert!(!ok("https://evil.com/?google.com"));
+        assert!(!ok("https://google.us.com/"));
+        assert!(!ok("https://x.google.evil.com/"));
+        assert!(!ok("javascript:alert(1)"));
+    }
+
+    #[test]
+    fn email() {
+        assert!(check_email("a@b.com").is_ok());
+        assert!(check_email("ab.com").is_err());
+        assert!(check_email("@b.com").is_err());
+    }
+}
