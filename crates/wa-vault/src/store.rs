@@ -59,6 +59,20 @@ impl StoreHandle {
         open_keyed(&self.path, &self.key, OpenFlags::SQLITE_OPEN_READ_WRITE).map(Some)
     }
 
+    /// Abre só para leitura (o visualizador). `None` se ainda não houve importação.
+    pub fn open_read_only(&self) -> Result<Option<Connection>, Error> {
+        if !self.exists() {
+            return Ok(None);
+        }
+        let conn = open_keyed(&self.path, &self.key, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        // Vocabulário do FTS (tabela virtual em `temp`, na memória) para a
+        // busca por prefixo. Precisa ser criado antes do `query_only`.
+        conn.execute_batch(crate::query::VOCAB_DDL)?;
+        // 64 MiB de cache de páginas decifradas (zeradas ao liberar).
+        conn.execute_batch("PRAGMA query_only = ON; PRAGMA cache_size = -65536;")?;
+        Ok(Some(conn))
+    }
+
     /// Importa um msgstore para um banco novo e só então substitui o atual.
     ///
     /// Se algo falhar no meio, o banco anterior continua intacto e o arquivo

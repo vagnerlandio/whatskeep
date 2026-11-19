@@ -1,6 +1,6 @@
 // Wrappers tipados dos comandos Rust. O webview nunca vê chaves nem o banco:
 // só envia senha/chave uma vez e recebe resumos.
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 
 export type VaultState = "none" | "locked" | "unlocked";
 export type VaultStatus = { state: VaultState; autolockSecs: number };
@@ -58,6 +58,98 @@ export const api = {
   importBackup: (backupPath: string, key: KeyInput, sourceApp: SourceApp) =>
     invoke<ImportSummary>("import_backup", { backupPath, key, sourceApp }),
 };
+
+// ---------------------------------------------------------------- visualizador
+
+export type Person = { jid: string; phone: string | null; name: string | null };
+
+export type Chat = {
+  id: number;
+  kind: "direct" | "group" | "broadcast" | "channel";
+  title: string | null;
+  jid: string;
+  phone: string | null;
+  name: string | null;
+  archived: boolean;
+  messageCount: number;
+  lastMessageAt: number | null;
+  last: { kind: MessageKind; text: string | null; fromMe: boolean; sender: Person | null } | null;
+};
+
+export type MessageKind =
+  | "text"
+  | "image"
+  | "audio"
+  | "voice"
+  | "video"
+  | "gif"
+  | "sticker"
+  | "document"
+  | "contact"
+  | "location"
+  | "live_location"
+  | "system"
+  | "deleted"
+  | "unknown";
+
+export type Message = {
+  id: number;
+  chatId: number;
+  sentAt: number;
+  fromMe: boolean;
+  kind: MessageKind;
+  text: string | null;
+  sender: Person | null;
+  starred: boolean;
+  edited: boolean;
+  systemAction: number | null;
+  quoted: { messageId: number | null; text: string | null; fromMe: boolean; sender: Person | null } | null;
+  media: {
+    mime: string | null;
+    size: number | null;
+    width: number | null;
+    height: number | null;
+    durationS: number | null;
+    fileName: string | null;
+    transcription: string | null;
+    hasThumbnail: boolean;
+  } | null;
+  location: { latitude: number; longitude: number; name: string | null; address: string | null } | null;
+  contacts: { name: string | null; phones: string[] }[];
+  reactions: { emoji: string; count: number; mine: boolean }[];
+};
+
+export type Cursor = { sentAt: number; id: number };
+export type Anchor = { type: "message"; id: number } | { type: "time"; at: number };
+
+export type SearchHit = {
+  messageId: number;
+  chatId: number;
+  sentAt: number;
+  fromMe: boolean;
+  sender: Person | null;
+  /** Trecho com os termos entre \u0001 e \u0002. */
+  snippet: string;
+};
+
+export const viewerApi = {
+  chats: (store: SourceApp) => invoke<Chat[]>("list_chats", { store }),
+  messages: (store: SourceApp, chatId: number, direction: "before" | "after", cursor: Cursor | null, limit: number) =>
+    invoke<Message[]>("get_messages", { store, chatId, direction, cursor, limit }),
+  around: (store: SourceApp, chatId: number, anchor: Anchor, limit: number) =>
+    invoke<{ messages: Message[]; anchorIndex: number | null }>("get_messages_around", {
+      store,
+      chatId,
+      anchor,
+      limit,
+    }),
+  search: (store: SourceApp, query: string, chatId: number | null, before: Cursor | null, limit: number) =>
+    invoke<SearchHit[]>("search_messages", { store, query, chatId, before, limit }),
+};
+
+/** Miniatura servida pelo protocolo `wamedia://` (direto do cofre, sem cache em disco). */
+export const thumbUrl = (store: SourceApp, messageId: number) =>
+  convertFileSrc(`thumb/${store}/${messageId}`, "wamedia");
 
 export const MIN_PASSWORD_CHARS = 8;
 

@@ -15,6 +15,7 @@
 
 mod fsutil;
 mod header;
+pub mod query;
 mod store;
 
 use std::fs;

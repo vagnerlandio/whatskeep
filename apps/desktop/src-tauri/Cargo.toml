@@ -22,3 +22,4 @@ wa-import = { path = "../../../crates/wa-import" }
 wa-vault = { path = "../../../crates/wa-vault" }
 tauri-plugin-dialog = "2"
 zeroize = { version = "1", features = ["std"] }
+rusqlite = { workspace = true }

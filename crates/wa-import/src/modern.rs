@@ -95,7 +95,7 @@ pub(crate) fn import(src: &Connection, info: &SourceInfo, dst: &Connection, repo
                 {action} AS action
          FROM message m
          {j_media} {j_thumb} {j_hash_thumb} {j_loc} {j_quote} {j_system} {j_future}
-         ORDER BY m._id",
+         ORDER BY m.timestamp, m._id", // ordem cronológica: veja `message` em store.rs
         sender = info.col("message", "m", "sender_jid_row_id"),
         msg_type = int(info.col("message", "m", "message_type")),
         text = info.col("message", "m", "text_data"),

@@ -72,7 +72,7 @@ pub(crate) fn import(src: &Connection, info: &SourceInfo, dst: &Connection, repo
          FROM messages m
          {j_quote} {j_system} {j_media} {j_thumbs}
          WHERE m.key_remote_jid IS NOT NULL AND m.key_remote_jid <> '-1'
-         ORDER BY m._id",
+         ORDER BY m.timestamp, m._id", // ordem cronológica: veja `message` em store.rs
         // `media_wa_type` é TEXT no schema legado.
         status = int(c("status")),
         data = c("data"),

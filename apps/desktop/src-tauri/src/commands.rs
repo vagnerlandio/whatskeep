@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 use wa_crypt::{BackupKey, Payload};
 use wa_import::SourceApp;
+use wa_vault::query::{self, Anchor, Around, Chat, Cursor, Direction, Message, SearchHit};
 use wa_vault::{KdfParams, Vault};
 use zeroize::Zeroizing;
 
@@ -226,6 +227,9 @@ pub async fn import_backup(
         let source_app = SourceApp::parse(&source_app)
             .ok_or_else(|| CmdError::new("invalid_argument", "app de origem desconhecido"))?;
         let store = state.vault().as_ref().ok_or_else(CmdError::locked)?.store(source_app)?;
+        // A conexão do visualizador aponta para o arquivo antigo (e no Windows
+        // impediria a troca do arquivo).
+        state.forget_store(source_app);
         let progress = |phase| {
             let _ = app.emit(EVENT_IMPORT_PROGRESS, Progress { phase });
         };
@@ -246,7 +250,9 @@ pub async fn import_backup(
         // liberar). A cópia do wa-crypt é zerada logo em seguida.
         let src = wa_import::open_msgstore(&decrypted.data)?;
         drop(decrypted);
-        let report = store.import(&src)?;
+        let report = store.import(&src);
+        state.forget_store(source_app);
+        let report = report?;
         drop(src);
 
         progress("done");
@@ -264,6 +270,71 @@ pub async fn import_backup(
             skipped_orphans: report.skipped_orphans,
             unknown_types: report.unknown_types.into_iter().collect(),
         })
+    })
+    .await
+}
+
+// ---------------------------------------------------------------- visualizador
+
+pub(crate) fn source_app(s: &str) -> Result<SourceApp, CmdError> {
+    SourceApp::parse(s).ok_or_else(|| CmdError::new("invalid_argument", "app de origem desconhecido"))
+}
+
+#[tauri::command]
+pub async fn list_chats(app: AppHandle, store: String) -> Result<Vec<Chat>, CmdError> {
+    blocking(move || {
+        let store = source_app(&store)?;
+        app.state::<AppState>().with_store(store, |c| Ok(query::chats(c)?))
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn get_messages(
+    app: AppHandle,
+    store: String,
+    chat_id: i64,
+    direction: Direction,
+    cursor: Option<Cursor>,
+    limit: u32,
+) -> Result<Vec<Message>, CmdError> {
+    blocking(move || {
+        let store = source_app(&store)?;
+        app.state::<AppState>()
+            .with_store(store, |c| Ok(query::messages(c, chat_id, direction, cursor, limit)?))
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn get_messages_around(
+    app: AppHandle,
+    store: String,
+    chat_id: i64,
+    anchor: Anchor,
+    limit: u32,
+) -> Result<Around, CmdError> {
+    blocking(move || {
+        let store = source_app(&store)?;
+        app.state::<AppState>()
+            .with_store(store, |c| Ok(query::messages_around(c, chat_id, anchor, limit)?))
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn search_messages(
+    app: AppHandle,
+    store: String,
+    query: String,
+    chat_id: Option<i64>,
+    before: Option<Cursor>,
+    limit: u32,
+) -> Result<Vec<SearchHit>, CmdError> {
+    blocking(move || {
+        let store = source_app(&store)?;
+        app.state::<AppState>()
+            .with_store(store, |c| Ok(query::search(c, &query, chat_id, before, limit)?))
     })
     .await
 }

@@ -8,7 +8,7 @@ App desktop (Tauri v2 + React) que baixa o backup do WhatsApp/WhatsApp Business 
 apps/desktop/        App Tauri (React em src/, Rust em src-tauri/)
 crates/wa-crypt/     Descriptografia crypt14/crypt15, sem I/O e sem dependência do Tauri
 crates/wa-import/    Importa o msgstore (schemas novo e legado) para o schema do app, com busca FTS5
-crates/wa-vault/     Cofre: SQLCipher por app de origem, chave protegida por Argon2id
+crates/wa-vault/     Cofre: SQLCipher por app de origem, chave protegida por Argon2id; consultas do visualizador
 packages/            (futuro) viewer compartilhado e shell do export HTML cifrado
 ```
 

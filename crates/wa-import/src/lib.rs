@@ -37,7 +37,7 @@ pub enum Error {
 }
 
 /// Qual app gerou o backup.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SourceApp {
     WhatsApp,
     Business,

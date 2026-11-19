@@ -1,26 +1,17 @@
-import { useCallback, useEffect, useState } from "react";
-import { api, errorOf, formatCount, SOURCE_LABEL, StoreInfo } from "../api";
+import { formatCount, SOURCE_LABEL, StoreInfo } from "../api";
 import ImportPanel from "./ImportPanel";
 
-export default function Home() {
-  const [stores, setStores] = useState<StoreInfo[]>([]);
-  const [error, setError] = useState<string | null>(null);
+type Props = { stores: StoreInfo[]; onImported: () => void; onClose?: () => void };
 
-  const refresh = useCallback(async () => {
-    try {
-      setStores(await api.listStores());
-      setError(null);
-    } catch (e) {
-      setError(errorOf(e).message);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
+/** Importação e lista dos históricos no cofre. Tela inicial quando o cofre está vazio. */
+export default function Home({ stores, onImported, onClose }: Props) {
   return (
     <div className="home">
+      {onClose && (
+        <button className="back" onClick={onClose}>
+          ← Voltar ao histórico
+        </button>
+      )}
       <section className="card">
         <h2>Históricos no cofre</h2>
         {stores.length === 0 && <p className="muted">Nenhum backup importado ainda.</p>}
@@ -33,9 +24,8 @@ export default function Home() {
             <span className="muted small">Importado em {new Date(s.importedAtMs).toLocaleString("pt-BR")}</span>
           </div>
         ))}
-        {error && <div className="result error">{error}</div>}
       </section>
-      <ImportPanel stores={stores} onImported={refresh} />
+      <ImportPanel stores={stores} onImported={onImported} />
     </div>
   );
 }

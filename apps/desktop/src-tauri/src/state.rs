@@ -1,12 +1,17 @@
 //! Estado do cofre no processo e bloqueio automático por inatividade.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
+use rusqlite::Connection;
 use tauri::{AppHandle, Emitter, Manager};
+use wa_import::SourceApp;
 use wa_vault::Vault;
+
+use crate::error::CmdError;
 
 /// Tempo sem interação até travar o cofre.
 pub const AUTOLOCK_AFTER: Duration = Duration::from_secs(5 * 60);
@@ -14,8 +19,11 @@ const AUTOLOCK_CHECK_EVERY: Duration = Duration::from_secs(5);
 
 pub const EVENT_LOCKED: &str = "vault-locked";
 
+/// Ordem de lock, para não haver deadlock: `conns` antes de `vault`.
 pub struct AppState {
     pub vault_dir: PathBuf,
+    /// Conexões só-leitura do visualizador, abertas sob demanda e fechadas ao travar.
+    conns: Mutex<HashMap<SourceApp, Connection>>,
     vault: Mutex<Option<Vault>>,
     last_activity: Mutex<Instant>,
     /// Importações em andamento. O autolock espera elas terminarem.
@@ -26,6 +34,7 @@ impl AppState {
     pub fn new(vault_dir: PathBuf) -> Self {
         Self {
             vault_dir,
+            conns: Mutex::new(HashMap::new()),
             vault: Mutex::new(None),
             last_activity: Mutex::new(Instant::now()),
             busy: AtomicUsize::new(0),
@@ -40,9 +49,45 @@ impl AppState {
         *self.last_activity.lock().unwrap_or_else(|e| e.into_inner()) = Instant::now();
     }
 
-    /// Trava: a DEK é zerada no drop do `Vault`.
+    /// Trava: fecha as conexões (o SQLCipher zera o cache de páginas) e a
+    /// DEK é zerada no drop do `Vault`.
     pub fn lock(&self) -> bool {
+        let mut conns = self.conns();
+        conns.clear();
         self.vault().take().is_some()
+    }
+
+    fn conns(&self) -> MutexGuard<'_, HashMap<SourceApp, Connection>> {
+        self.conns.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Roda `f` na conexão só-leitura do banco de `app`, abrindo-a se preciso.
+    pub fn with_store<T>(
+        &self,
+        app: SourceApp,
+        f: impl FnOnce(&Connection) -> Result<T, CmdError>,
+    ) -> Result<T, CmdError> {
+        let mut conns = self.conns();
+        {
+            let vault = self.vault();
+            let Some(vault) = vault.as_ref() else {
+                conns.clear();
+                return Err(CmdError::locked());
+            };
+            if let std::collections::hash_map::Entry::Vacant(slot) = conns.entry(app) {
+                let conn = vault
+                    .store(app)?
+                    .open_read_only()?
+                    .ok_or_else(|| CmdError::new("no_store", "nenhum histórico importado deste app"))?;
+                slot.insert(conn);
+            }
+        }
+        f(&conns[&app])
+    }
+
+    /// Fecha a conexão de um banco (antes e depois de reimportá-lo).
+    pub fn forget_store(&self, app: SourceApp) {
+        self.conns().remove(&app);
     }
 
     /// Marca uma operação longa. O autolock não dispara enquanto o guard existir.

@@ -86,3 +86,9 @@ impl From<std::io::Error> for CmdError {
         Self::from(&e)
     }
 }
+
+impl From<rusqlite::Error> for CmdError {
+    fn from(e: rusqlite::Error) -> Self {
+        Self::from(wa_vault::Error::from(e))
+    }
+}

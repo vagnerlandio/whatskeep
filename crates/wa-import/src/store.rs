@@ -38,6 +38,9 @@ CREATE TABLE IF NOT EXISTS chat (
     last_message_at INTEGER
 );
 
+-- As mensagens são inseridas em ordem cronológica (sent_at, id da origem), então
+-- `id` cresce com `sent_at`. A busca depende disso para varrer o FTS por rowid
+-- decrescente e parar no limite, sem ordenar todos os resultados.
 CREATE TABLE IF NOT EXISTS message (
     id                INTEGER PRIMARY KEY,
     chat_id           INTEGER NOT NULL REFERENCES chat(id),
