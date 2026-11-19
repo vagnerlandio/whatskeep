@@ -71,7 +71,7 @@ Both the modern and the legacy WhatsApp database layouts are supported. Message 
 
 ## Where your data is
 
-- **Vault (macOS):** `~/Library/Application Support/com.local.wahistorico/vault/` — one encrypted database per app (WhatsApp, WhatsApp Business) and one encrypted file per photo/video. The password unwraps the vault key (Argon2id + AES-256-GCM); there is no recovery.
+- **Vault (macOS):** `~/Library/Application Support/com.whatskeep.desktop/vault/` — one encrypted database per app (WhatsApp, WhatsApp Business) and one encrypted file per photo/video. The password unwraps the vault key (Argon2id + AES-256-GCM); there is no recovery. Data from earlier versions (`com.local.wahistorico`) is moved there automatically on first launch.
 - **Settings:** `settings.json` next to the vault (only the interface language).
 - **Never on disk in plain form:** messages, media, keys, Google tokens. The vault is excluded from Time Machine and Spotlight.
 - **Google Drive access** is unofficial (it uses the same path as WhatsApp on Android), lives only in memory for up to 50 minutes, and may stop working if Google changes it; importing from a file always works.
@@ -170,7 +170,7 @@ O WhatsKeep trava sozinho após 5 minutos sem uso. O idioma (Português / Englis
 - **O Google diz "Esse navegador ou app pode não ser seguro".** Use o link abaixo do botão de entrar, *Entrar pelo navegador (login manual)*, e siga os passos.
 - **"A chave não abre este backup".** Confira se a chave é desta conta e deste app (WhatsApp e WhatsApp Business têm chaves diferentes) e se o backup foi feito depois de ativar a chave de 64 dígitos.
 - **Meu backup não tem criptografia de ponta a ponta.** A chave dele fica dentro do celular e só pode ser copiada com root. Ative a chave de 64 dígitos e faça um backup novo.
-- **Esqueci a senha do cofre.** Não há como recuperar. Apague a pasta do cofre (`~/Library/Application Support/com.local.wahistorico/vault/`) e importe de novo.
+- **Esqueci a senha do cofre.** Não há como recuperar. Apague a pasta do cofre (`~/Library/Application Support/com.whatskeep.desktop/vault/`) e importe de novo.
 - **Meus dados vão para algum lugar?** Não. A única conexão é com o Google, quando você escolhe baixar um backup do Google Drive. Veja o [SECURITY.md](SECURITY.md).
 
 Informações para usuários avançados e desenvolvedores estão nas seções em inglês acima.

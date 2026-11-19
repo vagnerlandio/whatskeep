@@ -6,6 +6,7 @@ mod gdrive;
 mod links;
 mod media;
 mod media_import;
+mod migrate;
 mod settings;
 mod state;
 
@@ -75,7 +76,8 @@ pub fn run() {
             });
         })
         .setup(|app| {
-            let data_dir = app.path().app_data_dir()?;
+            // Data from the old bundle identifier moves here before anything reads it.
+            let data_dir = migrate::run(&app.path().app_data_dir()?);
             app.manage(settings::Settings::load(&data_dir));
             let vault_dir = data_dir.join("vault");
             tracing::info!(vault_exists = wa_vault::Vault::exists(&vault_dir), "app started");
