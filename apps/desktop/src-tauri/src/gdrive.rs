@@ -20,12 +20,13 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, Url, WebviewUrl, WebviewWindowBuilder};
-use wa_gdrive::{Api, Backup, DriveApp, Endpoints, OauthCookie, Session};
+use wa_gdrive::{Api, Backup, BackupFile, DriveApp, Endpoints, OauthCookie, Session};
 use wa_import::SourceApp;
 use zeroize::Zeroizing;
 
 use crate::commands::{ImportSummary, KeyInput, import_encrypted, progress, source_app};
 use crate::error::CmdError;
+use crate::media_import::{MediaSummary, Plan, already_stored, store_one};
 use crate::state::AppState;
 
 const LOGIN_WINDOW: &str = "google-login";
@@ -299,15 +300,24 @@ struct DownloadProgress {
     total: u64,
 }
 
-/// Baixa o msgstore do backup escolhido, descriptografa e importa. Ao
-/// terminar (com sucesso ou não), os tokens do Google são descartados.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DriveResult {
+    summary: ImportSummary,
+    media: Option<MediaSummary>,
+}
+
+/// Baixa o msgstore do backup escolhido, descriptografa e importa; depois,
+/// se pedido, as mídias. Ao terminar (com sucesso ou não), os tokens do Google
+/// são descartados.
 #[tauri::command]
 pub async fn gdrive_download(
     app: AppHandle,
     backup_id: usize,
     key: KeyInput,
     source_app: String,
-) -> Result<ImportSummary, CmdError> {
+    include_media: bool,
+) -> Result<DriveResult, CmdError> {
     crate::commands::blocking(move || {
         let state = app.state::<AppState>();
         let _busy = state.busy();
@@ -323,6 +333,7 @@ pub async fn gdrive_download(
             .take()
             .ok_or_else(|| CmdError::new("google_expired", "a sessão do Google expirou; entre de novo"))?;
         state.drive.cancel.store(false, Ordering::SeqCst);
+        state.media_cancel.store(false, Ordering::SeqCst);
         let found = logged
             .backups
             .get(backup_id)
@@ -338,19 +349,20 @@ pub async fn gdrive_download(
 
         progress(&app, "downloading");
         let cancel = state.drive.cancel.clone();
-        let downloaded = (|| -> Result<Vec<u8>, CmdError> {
-            let ep = Endpoints::default();
+        let ep = Endpoints::default();
+        let downloaded = (|| -> Result<(Vec<u8>, Vec<BackupFile>), CmdError> {
             let api = Api::new(&ep, token)?;
             let files = api.files(&found.backup.name)?;
             let db = wa_gdrive::find_msgstore(&files).ok_or_else(|| {
                 CmdError::new("not_msgstore", "este backup não tem o banco de mensagens (msgstore) no Google Drive")
             })?;
-            Ok(api.download(db, &cancel, |downloaded, total| {
+            let bytes = api.download(db, &cancel, |downloaded, total| {
                 let _ = app.emit(EVENT_DOWNLOAD, DownloadProgress { downloaded, total });
-            })?)
+            })?;
+            Ok((bytes, files))
         })();
-        let bytes = match downloaded {
-            Ok(b) => b,
+        let (bytes, files) = match downloaded {
+            Ok(v) => v,
             // Falha de rede ou arquivo corrompido: a sessão volta para tentar
             // de novo sem novo login (ela ainda expira em SESSION_TTL).
             Err(e) if matches!(e.code, "network" | "download_corrupt") && state.vault().is_some() => {
@@ -359,14 +371,118 @@ pub async fn gdrive_download(
             }
             Err(e) => return Err(e),
         };
-        drop(logged); // tokens zerados aqui
-
         if cancel.load(Ordering::SeqCst) {
             return Err(CmdError::new("cancelled", "cancelado"));
         }
-        import_encrypted(&app, &state, bytes, key, target)
+        let summary = import_encrypted(&app, &state, bytes, &key, target)?;
+
+        let media = if include_media {
+            Some(download_media(&app, &state, &ep, token, &files, &key, target)?)
+        } else {
+            None
+        };
+        drop(logged); // tokens zerados aqui
+        Ok(DriveResult { summary, media })
     })
     .await
+}
+
+/// Baixa as mídias que o histórico usa e ainda não estão no cofre.
+///
+/// * Backup sem E2E: arquivos `Media/...` em claro no Drive (MD5 conferido).
+/// * Backup E2E: `<hash>.mcrypt1`, com o nome real nos metadados cifrados.
+///   Se a tag GCM não conferir, o conteúdo só entra se o SHA-256 bater com o
+///   `file_hash` que o msgstore guarda daquela mídia.
+fn download_media(
+    app: &AppHandle,
+    state: &AppState,
+    ep: &Endpoints,
+    token: &wa_gdrive::AccessToken,
+    files: &[BackupFile],
+    key: &wa_crypt::BackupKey,
+    target: SourceApp,
+) -> Result<MediaSummary, CmdError> {
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as B64;
+
+    let plan = Plan::load(state, target)?;
+    let handle = state.vault().as_ref().ok_or_else(CmdError::locked)?.media(target)?;
+    let writer = handle.writer()?;
+    writer.cleanup();
+    let mut summary = MediaSummary { expected: plan.len() as u64, ..Default::default() };
+
+    // Decide o que baixar (e o nome real de cada .mcrypt1).
+    let mut todo = Vec::new();
+    for f in files {
+        let (name, hex) = match f.path.strip_suffix(".mcrypt1") {
+            Some(stem) => {
+                let hex = stem.rsplit('/').next().unwrap_or(stem).to_owned();
+                let name = f
+                    .metadata
+                    .as_deref()
+                    .and_then(|m| B64.decode(m).ok())
+                    .and_then(|raw| wa_crypt::mcrypt1::decrypt_metadata(key, &raw).ok())
+                    .and_then(|json| serde_json::from_slice::<serde_json::Value>(&json).ok())
+                    .and_then(|v| v.get("name")?.as_str().map(str::to_owned));
+                match name {
+                    Some(n) => (n, Some(hex)),
+                    None => {
+                        summary.unmatched += 1;
+                        continue;
+                    }
+                }
+            }
+            None => (f.path.clone(), None),
+        };
+        match plan.get(&name) {
+            Some(want) => todo.push((f, want, hex)),
+            None if name.contains("Media/") => summary.unmatched += 1,
+            None => {}
+        }
+    }
+    summary.matched = todo.len() as u64;
+    let total_bytes = todo.iter().map(|(f, _, _)| f.size_bytes).sum();
+    let mut progress = crate::media_import::Progress::new(app, todo.len() as u64, total_bytes);
+    let api = Api::new(ep, token)?;
+    let cancel = state.drive.cancel.clone();
+
+    for (file, want, hex) in todo {
+        if cancel.load(Ordering::SeqCst) || state.media_cancel.load(Ordering::SeqCst) {
+            summary.stopped = Some("cancelado".into());
+            break;
+        }
+        if already_stored(&writer, want) {
+            summary.already += 1;
+        } else {
+            match api.download(file, &cancel, |_, _| {}) {
+                Ok(bytes) => match hex {
+                    None => store_one(&writer, &mut summary, want, &bytes[..], None),
+                    Some(hex) => match wa_crypt::mcrypt1::decrypt_media(key, &hex, bytes) {
+                        Ok(m) if m.verified => store_one(&writer, &mut summary, want, &m.data[..], None),
+                        // Sem autenticação: só com o hash do WhatsApp para conferir.
+                        Ok(m) => match want.file_hash.as_deref() {
+                            Some(h) => store_one(&writer, &mut summary, want, &m.data[..], Some(h)),
+                            None => summary.failed += 1,
+                        },
+                        Err(_) => summary.failed += 1,
+                    },
+                },
+                Err(wa_gdrive::Error::TokenExpired) => {
+                    summary.stopped = Some("a sessão do Google expirou; entre de novo para continuar".into());
+                    break;
+                }
+                Err(wa_gdrive::Error::Cancelled) => {
+                    summary.stopped = Some("cancelado".into());
+                    break;
+                }
+                Err(_) => summary.failed += 1,
+            }
+        }
+        summary.bytes += file.size_bytes;
+        progress.report(&summary, false);
+    }
+    progress.report(&summary, true);
+    Ok(summary)
 }
 
 #[cfg(test)]

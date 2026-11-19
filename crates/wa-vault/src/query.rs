@@ -165,6 +165,14 @@ pub struct Media {
     pub file_name: Option<String>,
     pub transcription: Option<String>,
     pub has_thumbnail: bool,
+    /// O arquivo está no cofre (preenchido por quem consulta o índice de mídias).
+    pub available: bool,
+    /// SHA-256 do arquivo (base64), como o WhatsApp grava. Não vai para a UI.
+    #[serde(skip)]
+    pub file_hash: Option<String>,
+    /// Caminho no celular. Não vai para a UI.
+    #[serde(skip)]
+    pub file_path: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -198,7 +206,7 @@ const MESSAGE_SELECT: &str = "
            m.quoted_key_id, m.quoted_message_id, m.quoted_text, m.quoted_from_me, qs.jid, qs.phone, qs.name,
            md.message_id, md.mime, md.size, md.width, md.height, md.duration_s, md.file_name, md.transcription,
            EXISTS(SELECT 1 FROM thumbnail t WHERE t.message_id = m.id),
-           l.latitude, l.longitude, l.name, l.address
+           l.latitude, l.longitude, l.name, l.address, md.file_hash, md.file_path
     FROM message m
     LEFT JOIN contact s  ON s.id = m.sender_id
     LEFT JOIN contact qs ON qs.id = m.quoted_sender_id
@@ -234,6 +242,9 @@ fn message_row(r: &Row) -> rusqlite::Result<Message> {
             file_name: r.get(25)?,
             transcription: r.get(26)?,
             has_thumbnail: r.get(27)?,
+            available: false,
+            file_hash: r.get(32)?,
+            file_path: r.get(33)?,
         }),
         // Figurinhas e afins sem linha em `media` ainda podem ter miniatura.
         None if r.get::<_, bool>(27)? => Some(Media {
@@ -245,6 +256,9 @@ fn message_row(r: &Row) -> rusqlite::Result<Message> {
             file_name: None,
             transcription: None,
             has_thumbnail: true,
+            available: false,
+            file_hash: None,
+            file_path: None,
         }),
         None => None,
     };
@@ -599,6 +613,50 @@ pub fn snippet(text: &str, terms: &[String]) -> String {
 }
 
 // ---------------------------------------------------------------- mídia
+
+/// Referência de uma mídia no msgstore, para achar o arquivo no cofre.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MediaRef {
+    pub message_id: i64,
+    pub kind: String,
+    pub file_hash: Option<String>,
+    pub file_path: Option<String>,
+    pub mime: Option<String>,
+    pub file_name: Option<String>,
+}
+
+const MEDIA_REF_SELECT: &str = "
+    SELECT m.id, m.kind, md.file_hash, md.file_path, md.mime, md.file_name
+    FROM media md JOIN message m ON m.id = md.message_id";
+
+fn media_ref_row(r: &Row) -> rusqlite::Result<MediaRef> {
+    Ok(MediaRef {
+        message_id: r.get(0)?,
+        kind: r.get(1)?,
+        file_hash: r.get(2)?,
+        file_path: r.get(3)?,
+        mime: r.get(4)?,
+        file_name: r.get(5)?,
+    })
+}
+
+pub fn media_ref(conn: &Connection, message_id: i64) -> Result<Option<MediaRef>, Error> {
+    Ok(conn
+        .prepare_cached(&format!("{MEDIA_REF_SELECT} WHERE md.message_id = ?1"))?
+        .query_row([message_id], media_ref_row)
+        .optional()?)
+}
+
+/// Todas as mídias com hash ou caminho (para escolher o que importar).
+/// Mensagens apagadas ficam de fora.
+pub fn media_refs(conn: &Connection) -> Result<Vec<MediaRef>, Error> {
+    Ok(conn
+        .prepare(&format!(
+            "{MEDIA_REF_SELECT} WHERE m.kind <> 'deleted' AND (md.file_hash IS NOT NULL OR md.file_path IS NOT NULL)"
+        ))?
+        .query_map([], media_ref_row)?
+        .collect::<Result<_, _>>()?)
+}
 
 /// Miniatura (normalmente JPEG de poucos KB) de uma mensagem.
 pub fn thumbnail(conn: &Connection, message_id: i64) -> Result<Option<Vec<u8>>, Error> {

@@ -228,7 +228,7 @@ pub async fn import_backup(
         progress(&app, "reading");
         let key = key.load()?;
         let file = std::fs::read(&backup_path)?;
-        import_encrypted(&app, &state, file, key, source_app)
+        import_encrypted(&app, &state, file, &key, source_app)
     })
     .await
 }
@@ -244,14 +244,14 @@ pub(crate) fn import_encrypted(
     app: &AppHandle,
     state: &AppState,
     file: Vec<u8>,
-    key: BackupKey,
+    key: &BackupKey,
     source_app: SourceApp,
 ) -> Result<ImportSummary, CmdError> {
     let store = state.vault().as_ref().ok_or_else(CmdError::locked)?.store(source_app)?;
 
     progress(app, "decrypting");
-    let decrypted = wa_crypt::decrypt(&file, &key)?;
-    drop((file, key));
+    let decrypted = wa_crypt::decrypt(&file, key)?;
+    drop(file);
     if decrypted.payload != Payload::Sqlite {
         return Err(wa_import::Error::NotMsgstore.into());
     }
@@ -312,10 +312,26 @@ pub async fn get_messages(
 ) -> Result<Vec<Message>, CmdError> {
     blocking(move || {
         let store = source_app(&store)?;
-        app.state::<AppState>()
-            .with_store(store, |c| Ok(query::messages(c, chat_id, direction, cursor, limit)?))
+        let state = app.state::<AppState>();
+        let mut page = state.with_store(store, |c| Ok(query::messages(c, chat_id, direction, cursor, limit)?))?;
+        mark_available(&state, store, &mut page)?;
+        Ok(page)
     })
     .await
+}
+
+/// Marca quais mídias da página têm o arquivo no cofre.
+fn mark_available(state: &AppState, store: SourceApp, page: &mut [Message]) -> Result<(), CmdError> {
+    state.with_media(store, |reader| {
+        let Some(reader) = reader else { return Ok(()) };
+        for m in page.iter_mut() {
+            if let Some(media) = m.media.as_mut() {
+                media.available = m.kind != "deleted"
+                    && reader.find(media.file_hash.as_deref(), media.file_path.as_deref())?.is_some();
+            }
+        }
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -328,8 +344,10 @@ pub async fn get_messages_around(
 ) -> Result<Around, CmdError> {
     blocking(move || {
         let store = source_app(&store)?;
-        app.state::<AppState>()
-            .with_store(store, |c| Ok(query::messages_around(c, chat_id, anchor, limit)?))
+        let state = app.state::<AppState>();
+        let mut around = state.with_store(store, |c| Ok(query::messages_around(c, chat_id, anchor, limit)?))?;
+        mark_available(&state, store, &mut around.messages)?;
+        Ok(around)
     })
     .await
 }

@@ -8,6 +8,9 @@ license.workspace = true
 [dependencies]
 aes = "0.8"
 aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
+cbc = { version = "0.1", features = ["alloc"] }
+ctr = "0.9"
+ghash = "0.5"
 flate2 = "1"
 hmac = "0.12"
 md-5 = "0.10"

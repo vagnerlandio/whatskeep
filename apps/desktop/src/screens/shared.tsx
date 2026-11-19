@@ -1,6 +1,6 @@
 // Peças compartilhadas pela importação local e pelo download do Google Drive.
 import { open } from "@tauri-apps/plugin-dialog";
-import { formatCount, ImportPhase, ImportSummary, KeyInput, SOURCE_LABEL, SourceApp } from "../api";
+import { formatCount, formatSize, ImportPhase, ImportSummary, KeyInput, MediaProgress, MediaSummary, SOURCE_LABEL, SourceApp } from "../api";
 
 export type BackupVersion = "crypt14" | "crypt15";
 export type KeyState = { mode: "hex" | "file"; hex: string; file: string | null };
@@ -128,11 +128,13 @@ export function friendlyError(code: string, message: string): string {
 export function SummaryView({
   source,
   summary: s,
+  media,
   footer,
   onAgain,
 }: {
   source: SourceApp;
   summary: ImportSummary;
+  media?: MediaSummary | null;
   footer?: string;
   onAgain: () => void;
 }) {
@@ -156,8 +158,43 @@ export function SummaryView({
           </p>
         )}
       </div>
+      {media && <MediaSummaryLine s={media} />}
       {footer && <p className="muted small">{footer}</p>}
       <button onClick={onAgain}>Importar outro backup</button>
     </section>
+  );
+}
+
+export function MediaSummaryLine({ s }: { s: MediaSummary }) {
+  return (
+    <div className={`result ${s.failed > 0 || s.stopped ? "partial" : ""}`}>
+      <strong>Mídias</strong>
+      <span>
+        {formatCount(s.added)} novas · {formatCount(s.already)} já estavam no cofre
+        {s.failed > 0 && ` · ${formatCount(s.failed)} com erro`} · {formatSize(s.bytes)}
+      </span>
+      <span className="muted small">
+        {formatCount(s.matched)} de {formatCount(s.expected)} mídias do histórico encontradas na origem
+        {s.unmatched > 0 && ` · ${formatCount(s.unmatched)} arquivos sem mensagem correspondente ignorados`}
+      </span>
+      {s.stopped && <p>Parou antes do fim: {s.stopped}. O que já entrou continua no cofre; rode de novo para continuar.</p>}
+    </div>
+  );
+}
+
+export function MediaProgressView({ p, onCancel }: { p: MediaProgress | null; onCancel: () => void }) {
+  const pct = p && p.totalBytes > 0 ? Math.min(100, (p.bytes / p.totalBytes) * 100) : 0;
+  return (
+    <>
+      <div className="bar">
+        <div style={{ width: `${pct}%` }} />
+      </div>
+      <span className="muted small">
+        {p
+          ? `${formatCount(p.done)} de ${formatCount(p.total)} arquivos · ${formatSize(p.bytes)} de ${formatSize(p.totalBytes)} · ${formatCount(p.added)} novos`
+          : "Procurando os arquivos…"}
+      </span>
+      <button onClick={onCancel}>Parar</button>
+    </>
   );
 }

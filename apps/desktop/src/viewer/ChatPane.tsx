@@ -4,6 +4,8 @@ import { Anchor, Chat, errorOf, formatCount, Message, SourceApp, viewerApi } fro
 import { chatTitle, formatPhone } from "./format";
 import Avatar from "./Avatar";
 import MessageRow from "./MessageRow";
+import { Lightbox } from "./MediaView";
+import { ViewerContext } from "./context";
 
 const PAGE = 80;
 /** Índice virtual alto o bastante para ir prependendo páginas antigas. */
@@ -33,6 +35,9 @@ export default function ChatPane({ store, chat, anchor: externalAnchor, onSearch
   const [error, setError] = useState<string | null>(null);
   const [highlightId, setHighlightId] = useState<number | null>(null);
   const [atBottom, setAtBottom] = useState(true);
+  const [scrolling, setScrolling] = useState(false);
+  const [lightbox, setLightbox] = useState<Message | null>(null);
+  const viewerCtx = useMemo(() => ({ scrolling, openMedia: setLightbox }), [scrolling]);
   const loading = useRef(false);
   const virtuoso = useRef<VirtuosoHandle>(null);
 
@@ -196,6 +201,7 @@ export default function ChatPane({ store, chat, anchor: externalAnchor, onSearch
         </button>
       </header>
 
+      <ViewerContext.Provider value={viewerCtx}>
       <div className="messages-wrap">
         {error && <div className="result error pane-error">{error}</div>}
         {data && data.messages.length === 0 && <div className="list-edge">Nenhuma mensagem.</div>}
@@ -211,6 +217,7 @@ export default function ChatPane({ store, chat, anchor: externalAnchor, onSearch
             startReached={loadOlder}
             endReached={loadNewer}
             atBottomStateChange={setAtBottom}
+            isScrolling={setScrolling}
             increaseViewportBy={{ top: 800, bottom: 800 }}
             computeItemKey={(_, m) => m.id}
             components={components}
@@ -232,6 +239,8 @@ export default function ChatPane({ store, chat, anchor: externalAnchor, onSearch
           </button>
         )}
       </div>
+      </ViewerContext.Provider>
+      {lightbox && <Lightbox store={store} m={lightbox} onClose={() => setLightbox(null)} />}
     </section>
   );
 }

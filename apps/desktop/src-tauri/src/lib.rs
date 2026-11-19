@@ -2,6 +2,7 @@ mod commands;
 mod error;
 mod gdrive;
 mod media;
+mod media_import;
 mod state;
 
 use tauri::Manager;
@@ -16,7 +17,7 @@ pub fn run() {
             let app = ctx.app_handle().clone();
             let from_main_window = ctx.webview_label() == "main";
             tauri::async_runtime::spawn_blocking(move || {
-                responder.respond(media::handle(&app, from_main_window, request.uri()));
+                responder.respond(media::handle(&app, from_main_window, &request));
             });
         })
         .setup(|app| {
@@ -43,6 +44,9 @@ pub fn run() {
             gdrive::gdrive_login_manual,
             gdrive::gdrive_cancel,
             gdrive::gdrive_download,
+            media_import::import_media_folder,
+            media_import::media_cancel,
+            media_import::save_media,
         ])
         .run(tauri::generate_context!())
         .expect("falha ao iniciar o aplicativo");

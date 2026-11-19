@@ -17,10 +17,12 @@ pub enum KeyKind {
 
 /// Chave AES-256 pronta para uso, zerada da memória no drop.
 ///
-/// Só guarda a chave AES já derivada, nunca a root key de 64 dígitos.
+/// No crypt15 guarda também a root key: as mídias `.mcrypt1` do Google Drive
+/// têm uma chave por arquivo derivada dela. Nada disso sai do crate.
 pub struct BackupKey {
     kind: KeyKind,
     aes: Zeroizing<[u8; 32]>,
+    root: Option<Zeroizing<[u8; 32]>>,
 }
 
 impl std::fmt::Debug for BackupKey {
@@ -84,6 +86,7 @@ impl BackupKey {
         Self {
             kind: KeyKind::Crypt15,
             aes: derive_crypt15(root),
+            root: Some(Zeroizing::new(*root)),
         }
     }
 
@@ -109,6 +112,10 @@ impl BackupKey {
 
     pub(crate) fn aes_key(&self) -> &[u8; 32] {
         &self.aes
+    }
+
+    pub(crate) fn root(&self) -> Option<&[u8; 32]> {
+        self.root.as_deref()
     }
 }
 
@@ -147,6 +154,7 @@ fn parse_crypt14(p: &[u8]) -> Result<BackupKey, Error> {
     Ok(BackupKey {
         kind: KeyKind::Crypt14,
         aes,
+        root: None,
     })
 }
 

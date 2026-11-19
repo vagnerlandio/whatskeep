@@ -2,14 +2,14 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use rusqlite::Connection;
 use tauri::{AppHandle, Emitter, Manager};
 use wa_import::SourceApp;
-use wa_vault::Vault;
+use wa_vault::{MediaReader, Vault};
 
 use crate::error::CmdError;
 
@@ -19,11 +19,15 @@ const AUTOLOCK_CHECK_EVERY: Duration = Duration::from_secs(5);
 
 pub const EVENT_LOCKED: &str = "vault-locked";
 
-/// Ordem de lock, para não haver deadlock: `conns` antes de `vault`.
+/// Ordem de lock, para não haver deadlock: `conns`, `media`, `vault`.
 pub struct AppState {
     pub vault_dir: PathBuf,
     /// Conexões só-leitura do visualizador, abertas sob demanda e fechadas ao travar.
     conns: Mutex<HashMap<SourceApp, Connection>>,
+    /// Índices de mídia só-leitura (idem).
+    media: Mutex<HashMap<SourceApp, MediaReader>>,
+    /// Pedido de cancelamento da importação de mídias em andamento.
+    pub media_cancel: AtomicBool,
     vault: Mutex<Option<Vault>>,
     last_activity: Mutex<Instant>,
     /// Importações em andamento. O autolock espera elas terminarem.
@@ -37,6 +41,8 @@ impl AppState {
         Self {
             vault_dir,
             conns: Mutex::new(HashMap::new()),
+            media: Mutex::new(HashMap::new()),
+            media_cancel: AtomicBool::new(false),
             vault: Mutex::new(None),
             last_activity: Mutex::new(Instant::now()),
             busy: AtomicUsize::new(0),
@@ -55,9 +61,38 @@ impl AppState {
     /// Trava: fecha as conexões (o SQLCipher zera o cache de páginas) e a
     /// DEK é zerada no drop do `Vault`.
     pub fn lock(&self) -> bool {
+        self.media_cancel.store(true, Ordering::SeqCst);
         let mut conns = self.conns();
         conns.clear();
+        self.media_readers().clear();
         self.vault().take().is_some()
+    }
+
+    fn media_readers(&self) -> MutexGuard<'_, HashMap<SourceApp, MediaReader>> {
+        self.media.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Roda `f` com o índice de mídias de `app` (`None` se ainda não há mídias).
+    pub fn with_media<T>(
+        &self,
+        app: SourceApp,
+        f: impl FnOnce(Option<&MediaReader>) -> Result<T, CmdError>,
+    ) -> Result<T, CmdError> {
+        let mut readers = self.media_readers();
+        {
+            let vault = self.vault();
+            let Some(vault) = vault.as_ref() else {
+                readers.clear();
+                return Err(CmdError::locked());
+            };
+            if let std::collections::hash_map::Entry::Vacant(slot) = readers.entry(app) {
+                // Só guarda quando existe: o índice pode ser criado depois.
+                if let Some(r) = vault.media(app)?.reader()? {
+                    slot.insert(r);
+                }
+            }
+        }
+        f(readers.get(&app))
     }
 
     fn conns(&self) -> MutexGuard<'_, HashMap<SourceApp, Connection>> {

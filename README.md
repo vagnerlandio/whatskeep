@@ -45,7 +45,11 @@ Fica em `~/Library/Application Support/com.local.wahistorico/vault/` (macOS; nos
 vault.json            Argon2id (256 MiB, t=3, p=4) + chave de dados (DEK) embrulhada com AES-256-GCM
 stores/whatsapp.db    SQLCipher, chave = HKDF(DEK, id do cofre, "store:whatsapp")
 stores/business.db    SQLCipher, chave = HKDF(DEK, id do cofre, "store:business")
+stores/<app>-media.db índice das mídias (SQLCipher): sha256 → arquivo, caminho no celular → sha256
+stores/<app>-media/   um arquivo cifrado por mídia (nome aleatório)
 ```
+
+Mídias: AES-256-GCM em segmentos de 1 MiB (esquema STREAM: nonce = prefixo ‖ contador ‖ último; AAD = id do arquivo), o que permite ler trechos (seek de vídeo) sem decifrar tudo. O índice fica fora do banco de mensagens, então reimportar o msgstore não perde as mídias. A ligação com as mensagens é pelo `file_hash` do WhatsApp ou pelo caminho (`Media/...`).
 
 - A senha só desembrulha a DEK. Trocar a senha não recifra os bancos. **Não há recuperação**: sem a senha, é preciso importar de novo.
 - Os parâmetros do Argon2id entram no AAD: editar o `vault.json` para baratear o KDF faz a abertura falhar.
@@ -68,7 +72,7 @@ Ainda não validado com uma conta real:
 - se o Google aceita o login pelo WebKit embutido (senão, há o login manual colando o cookie);
 - se o WhatsApp Business usa a mesma assinatura (`client_sig`) e se os backups dele aparecem na mesma listagem.
 
-Só o banco de mensagens é baixado. As mídias de backups E2E vêm como `.mcrypt1` (nome ofuscado, metadados cifrados) e ficam para a fase de mídia.
+Mídias (opcional): em backups sem E2E vêm em claro (`Media/...`, MD5 conferido). Em backups E2E vêm como `<hash>.mcrypt1`, com o nome real em metadados cifrados (HMAC + AES-CBC) e o conteúdo em AES-GCM com chave por arquivo (`wa_crypt::mcrypt1`). Não está documentado se o arquivo traz a tag GCM: o app tenta com a tag e, se não conferir, só aceita o conteúdo se o SHA-256 bater com o `file_hash` do msgstore. Formato ainda não validado com um backup real.
 
 ## Fixtures de teste
 

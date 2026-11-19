@@ -53,6 +53,9 @@ pub struct BackupFile {
     /// MD5 do conteúdo, quando informado.
     #[serde(skip)]
     pub md5: Option<[u8; 16]>,
+    /// Metadados cifrados (base64) de arquivos `.mcrypt1`, com o nome real.
+    #[serde(skip)]
+    pub metadata: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -74,6 +77,7 @@ struct RawFile {
     size_bytes: Option<String>,
     #[serde(rename = "md5Hash")]
     md5_hash: Option<String>,
+    metadata: Option<String>,
 }
 
 pub struct Api<'a> {
@@ -153,6 +157,7 @@ impl<'a> Api<'a> {
                     size_bytes: f.size_bytes.and_then(|s| s.parse().ok()).unwrap_or(0),
                     name: f.name,
                     path,
+                    metadata: f.metadata,
                 })
             })
             .collect())
@@ -274,7 +279,7 @@ mod tests {
 
     #[test]
     fn escolhe_o_msgstore() {
-        let f = |p: &str| BackupFile { name: format!("x/files/{p}"), path: p.into(), size_bytes: 1, md5: None };
+        let f = |p: &str| BackupFile { name: format!("x/files/{p}"), path: p.into(), size_bytes: 1, md5: None, metadata: None };
         let files = [f("Databases/msgstore-2026-01-01.1.db.crypt15"), f("Databases/msgstore.db.crypt14"), f("Databases/msgstore.db.crypt15"), f("Media/ab.mcrypt1")];
         assert_eq!(find_msgstore(&files).unwrap().path, "Databases/msgstore.db.crypt15");
         assert_eq!(find_msgstore(&files[3..]), None);

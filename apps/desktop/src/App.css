@@ -402,3 +402,21 @@ code {
 .card > button:not(.primary) {
   align-self: flex-start;
 }
+
+.result.partial {
+  border-left-color: #e9a100;
+  background: color-mix(in srgb, #e9a100 10%, transparent);
+}
+
+.media-import {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 6px;
+  width: 100%;
+}
+
+.media-import .bar {
+  width: 100%;
+}

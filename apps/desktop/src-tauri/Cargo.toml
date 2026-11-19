@@ -23,4 +23,5 @@ wa-vault = { path = "../../../crates/wa-vault" }
 wa-gdrive = { path = "../../../crates/wa-gdrive" }
 tauri-plugin-dialog = "2"
 zeroize = { version = "1", features = ["std"] }
+base64 = "0.22"
 rusqlite = { workspace = true }

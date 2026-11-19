@@ -22,6 +22,7 @@
 mod decrypt;
 mod error;
 mod key;
+pub mod mcrypt1;
 mod prefix;
 
 pub use decrypt::{decrypt, Decrypted, Payload};

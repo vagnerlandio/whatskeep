@@ -15,6 +15,7 @@
 
 mod fsutil;
 mod header;
+pub mod media;
 pub mod query;
 mod store;
 
@@ -27,6 +28,7 @@ use wa_import::SourceApp;
 use zeroize::Zeroizing;
 
 pub use header::KdfParams;
+pub use media::{BlobRef, MediaHandle, MediaReader, MediaWriter, Put};
 pub use store::{StoreHandle, StoreInfo};
 
 use header::Header;
@@ -147,6 +149,18 @@ impl Vault {
             .expand(format!("wa-vault store v1:{}", app.as_str()).as_bytes(), key.as_mut())
             .expect("32 bytes cabem no HKDF-SHA256");
         Ok(StoreHandle::new(app, &self.dir.join(STORES_DIR), key))
+    }
+
+    /// Mídias de um app: blobs cifrados + índice, com chaves próprias.
+    pub fn media(&self, app: SourceApp) -> Result<MediaHandle, Error> {
+        let derive = |label: &str| -> Result<Key, Error> {
+            let mut key = Key::default();
+            Hkdf::<Sha256>::new(Some(&self.header.vault_id()?), self.dek.as_ref())
+                .expand(format!("wa-vault {label} v1:{}", app.as_str()).as_bytes(), key.as_mut())
+                .expect("32 bytes cabem no HKDF-SHA256");
+            Ok(key)
+        };
+        Ok(MediaHandle::new(&self.dir.join(STORES_DIR), app.as_str(), derive("media")?, derive("media-index")?))
     }
 
     /// Bancos já importados, com contagens.

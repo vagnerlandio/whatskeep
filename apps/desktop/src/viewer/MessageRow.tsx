@@ -1,10 +1,10 @@
 import { memo, useState } from "react";
-import { formatSize, Message, SourceApp, thumbUrl } from "../api";
-import { formatDay, formatDuration, formatTime, personLabel, senderColor, WaText } from "./format";
+import { formatSize, Message, SourceApp } from "../api";
+import { formatDay, formatTime, personLabel, senderColor, WaText } from "./format";
+import { AudioView, SaveButton, Visual } from "./MediaView";
 
 /** Textos maiores que isso começam recolhidos ("Ler mais"), como no WhatsApp. */
 const COLLAPSE_AT = 1500;
-const MEDIA_MAX = 330;
 
 type Props = {
   store: SourceApp;
@@ -114,13 +114,8 @@ function Body({ store, m }: { store: SourceApp; m: Message }) {
     case "audio":
       return (
         <>
-          <div className="audio">
-            <span className="audio-icon">{m.kind === "voice" ? "🎤" : "🎵"}</span>
-            <span className="audio-bar" />
-            <span className="small">{formatDuration(m.media?.durationS ?? null)}</span>
-          </div>
+          <AudioView store={store} m={m} />
           {m.media?.transcription && <p className="transcription">“{m.media.transcription}”</p>}
-          <NotImported />
         </>
       );
     case "document":
@@ -138,7 +133,7 @@ function Body({ store, m }: { store: SourceApp; m: Message }) {
             </span>
           </div>
           {m.text && <Text text={m.text} />}
-          <NotImported />
+          {m.media?.available ? <SaveButton store={store} m={m} /> : <NotImported />}
         </>
       );
     case "contact":
@@ -201,31 +196,3 @@ function Text({ text }: { text: string }) {
 }
 
 const NotImported = () => <span className="not-imported">Arquivo não incluído no histórico</span>;
-
-/** Foto/vídeo/figurinha com o espaço reservado pelas dimensões gravadas, para
- * a lista não "pular" quando a miniatura carrega. */
-function Visual({ store, m }: { store: SourceApp; m: Message }) {
-  const sticker = m.kind === "sticker";
-  let w = sticker ? 140 : 240;
-  let h = sticker ? 140 : 180;
-  const mw = m.media?.width;
-  const mh = m.media?.height;
-  if (!sticker && mw && mh) {
-    const scale = Math.min(MEDIA_MAX / mw, MEDIA_MAX / mh);
-    w = Math.max(120, Math.round(mw * scale));
-    h = Math.max(80, Math.round(mh * scale));
-  }
-  const label = m.kind === "video" ? "🎥 " + formatDuration(m.media?.durationS ?? null) : m.kind === "gif" ? "GIF" : null;
-
-  return (
-    <div className="visual" style={{ width: w, height: h }}>
-      {m.media?.hasThumbnail ? (
-        <img src={thumbUrl(store, m.id)} alt="" loading="lazy" decoding="async" draggable={false} />
-      ) : (
-        <span className="visual-placeholder">{sticker ? "💟" : m.kind === "image" ? "📷" : "🎥"}</span>
-      )}
-      {label && <span className="visual-label">{label}</span>}
-      {!sticker && <span className="visual-note">Prévia · arquivo não incluído</span>}
-    </div>
-  );
-}

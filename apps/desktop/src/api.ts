@@ -113,6 +113,8 @@ export type Message = {
     fileName: string | null;
     transcription: string | null;
     hasThumbnail: boolean;
+    /** O arquivo está no cofre. */
+    available: boolean;
   } | null;
   location: { latitude: number; longitude: number; name: string | null; address: string | null } | null;
   contacts: { name: string | null; phones: string[] }[];
@@ -151,6 +153,31 @@ export const viewerApi = {
 export const thumbUrl = (store: SourceApp, messageId: number) =>
   convertFileSrc(`thumb/${store}/${messageId}`, "wamedia");
 
+/** Arquivo completo (com suporte a Range para vídeo/áudio). */
+export const mediaUrl = (store: SourceApp, messageId: number) =>
+  convertFileSrc(`media/${store}/${messageId}`, "wamedia");
+
+export type MediaSummary = {
+  matched: number;
+  added: number;
+  already: number;
+  unmatched: number;
+  failed: number;
+  bytes: number;
+  expected: number;
+  stopped: string | null;
+};
+
+export type MediaProgress = { done: number; total: number; bytes: number; totalBytes: number; added: number };
+
+export const mediaApi = {
+  /** Abre o seletor de pasta no backend. `null` se o usuário cancelar. */
+  importFolder: (sourceApp: SourceApp) => invoke<MediaSummary | null>("import_media_folder", { sourceApp }),
+  cancel: () => invoke<void>("media_cancel"),
+  /** Abre "Salvar como" no backend. `false` se o usuário cancelar. */
+  save: (store: SourceApp, messageId: number) => invoke<boolean>("save_media", { store, messageId }),
+};
+
 // ---------------------------------------------------------------- Google Drive
 
 export type DriveBackup = {
@@ -174,8 +201,13 @@ export const driveApi = {
   login: (email: string) => invoke<DriveLogin>("gdrive_login", { email }),
   loginManual: (email: string, oauthToken: string) => invoke<DriveLogin>("gdrive_login_manual", { email, oauthToken }),
   cancel: () => invoke<void>("gdrive_cancel"),
-  download: (backupId: number, key: KeyInput, sourceApp: SourceApp) =>
-    invoke<ImportSummary>("gdrive_download", { backupId, key, sourceApp }),
+  download: (backupId: number, key: KeyInput, sourceApp: SourceApp, includeMedia: boolean) =>
+    invoke<{ summary: ImportSummary; media: MediaSummary | null }>("gdrive_download", {
+      backupId,
+      key,
+      sourceApp,
+      includeMedia,
+    }),
 };
 
 export const MIN_PASSWORD_CHARS = 8;

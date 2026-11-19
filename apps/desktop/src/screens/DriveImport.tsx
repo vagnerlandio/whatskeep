@@ -9,6 +9,9 @@ import {
   formatSize,
   ImportPhase,
   ImportSummary,
+  mediaApi,
+  MediaProgress,
+  MediaSummary,
   SOURCE_LABEL,
   SourceApp,
   StoreInfo,
@@ -21,6 +24,7 @@ import {
   KeyField,
   KeyState,
   keyReady,
+  MediaProgressView,
   PHASE_LABEL,
   SourcePicker,
   SummaryView,
@@ -32,8 +36,8 @@ type Step =
   | { kind: "waiting" }
   | { kind: "manual"; error?: string }
   | { kind: "list"; login: DriveLogin; error?: string }
-  | { kind: "running"; phase: ImportPhase; downloaded: number; total: number }
-  | { kind: "done"; source: SourceApp; summary: ImportSummary };
+  | { kind: "running"; phase: ImportPhase; downloaded: number; total: number; media: MediaProgress | null }
+  | { kind: "done"; source: SourceApp; summary: ImportSummary; media: MediaSummary | null };
 
 type Props = { stores: StoreInfo[]; onImported: () => void };
 
@@ -45,6 +49,7 @@ export default function DriveImport({ stores, onImported }: Props) {
   const [selected, setSelected] = useState<DriveBackup | null>(null);
   const [source, setSource] = useState<SourceApp>("whatsapp");
   const [key, setKey] = useState<KeyState>(initialKey("crypt15"));
+  const [includeMedia, setIncludeMedia] = useState(false);
   const sessionOpen = useRef(false);
 
   // Ao sair da tela, os tokens do Google são descartados no backend.
@@ -100,7 +105,7 @@ export default function DriveImport({ stores, onImported }: Props) {
     const login = step.login;
     const input = toKeyInput(key);
     setKey((k) => ({ ...k, hex: "" }));
-    setStep({ kind: "running", phase: "downloading", downloaded: 0, total: selected.chatDbSize ?? 0 });
+    setStep({ kind: "running", phase: "downloading", downloaded: 0, total: selected.chatDbSize ?? 0, media: null });
     const unlisteners = await Promise.all([
       listen<{ phase: ImportPhase }>("import-progress", (e) =>
         setStep((s) => (s.kind === "running" ? { ...s, phase: e.payload.phase } : s)),
@@ -108,11 +113,14 @@ export default function DriveImport({ stores, onImported }: Props) {
       listen<{ downloaded: number; total: number }>("gdrive-progress", (e) =>
         setStep((s) => (s.kind === "running" ? { ...s, ...e.payload } : s)),
       ),
+      listen<MediaProgress>("media-progress", (e) =>
+        setStep((s) => (s.kind === "running" ? { ...s, media: e.payload } : s)),
+      ),
     ]);
     try {
-      const summary = await driveApi.download(selected.id, input, source);
+      const { summary, media } = await driveApi.download(selected.id, input, source, includeMedia);
       sessionOpen.current = false;
-      setStep({ kind: "done", source, summary });
+      setStep({ kind: "done", source, summary, media });
       onImported();
     } catch (e) {
       const { code, message } = errorOf(e);
@@ -133,6 +141,7 @@ export default function DriveImport({ stores, onImported }: Props) {
       <SummaryView
         source={step.source}
         summary={step.summary}
+        media={step.media}
         footer="A sessão do Google foi encerrada e os tokens de acesso foram apagados da memória."
         onAgain={() => setStep({ kind: "intro" })}
       />
@@ -141,12 +150,13 @@ export default function DriveImport({ stores, onImported }: Props) {
 
   if (step.kind === "running") {
     const pct = step.total > 0 ? Math.min(100, (step.downloaded / step.total) * 100) : 0;
+    const mediaPhase = step.phase === "done" && includeMedia;
     return (
       <section className="card">
         <h2>Google Drive</h2>
         <div className="progress">
           <div className="spinner" />
-          <span>{PHASE_LABEL[step.phase]}</span>
+          <span>{mediaPhase ? "Baixando fotos, vídeos e áudios…" : PHASE_LABEL[step.phase]}</span>
         </div>
         {step.phase === "downloading" && (
           <>
@@ -159,6 +169,15 @@ export default function DriveImport({ stores, onImported }: Props) {
             </span>
             <button onClick={cancel}>Cancelar</button>
           </>
+        )}
+        {mediaPhase && (
+          <MediaProgressView
+            p={step.media}
+            onCancel={() => {
+              void mediaApi.cancel();
+              void driveApi.cancel();
+            }}
+          />
         )}
         <p className="muted small">O backup vem cifrado do Google e é aberto só na memória, direto para o cofre.</p>
       </section>
@@ -278,9 +297,17 @@ export default function DriveImport({ stores, onImported }: Props) {
             <SourcePicker value={source} onChange={setSource} />
             <KeyField version={selected.encrypted === false ? "crypt14" : "crypt15"} value={key} onChange={setKey} />
             {existing && <ReplaceWarning source={source} at={existing.importedAtMs} />}
-            <p className="muted small">
-              Só o banco de mensagens é baixado. Fotos e vídeos ficam para uma próxima versão.
-            </p>
+            <label className="radio">
+              <input type="checkbox" checked={includeMedia} onChange={(e) => setIncludeMedia(e.target.checked)} />
+              Baixar também fotos, vídeos, áudios e documentos
+              {selected.mediaSize != null && ` (até ${formatSize(selected.mediaSize)})`}
+            </label>
+            {includeMedia && (
+              <p className="muted small">
+                Pode demorar bastante. Cada arquivo entra cifrado no cofre; se parar no meio, rode de novo que ele
+                continua de onde estava. O acesso ao Google vale 1 hora.
+              </p>
+            )}
           </>
         )}
         {step.error && <div className="result error">{step.error}</div>}

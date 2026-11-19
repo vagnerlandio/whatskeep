@@ -1,5 +1,6 @@
 import { formatCount, SOURCE_LABEL, StoreInfo } from "../api";
 import DriveImport from "./DriveImport";
+import MediaFolderImport from "./MediaFolderImport";
 import ImportPanel from "./ImportPanel";
 
 type Props = { stores: StoreInfo[]; onImported: () => void; onClose?: () => void };
@@ -23,6 +24,7 @@ export default function Home({ stores, onImported, onClose }: Props) {
               {formatCount(s.chats)} conversas · {formatCount(s.messages)} mensagens
             </span>
             <span className="muted small">Importado em {new Date(s.importedAtMs).toLocaleString("pt-BR")}</span>
+            <MediaFolderImport source={s.sourceApp} />
           </div>
         ))}
       </section>
