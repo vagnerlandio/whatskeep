@@ -298,6 +298,25 @@ export default function DriveImport({ stores, onImported }: Props) {
         {selected && (
           <>
             <SourcePicker value={source} onChange={setSource} />
+            {selected.encrypted === false && (
+              <div className="warning">
+                <strong>Este backup não tem criptografia de ponta a ponta.</strong> A chave dele fica num arquivo interno
+                do celular (<code>key</code>), que só dá para copiar com root. Sem root, o caminho é:
+                <ol>
+                  <li>
+                    No WhatsApp: <em>Configurações → Conversas → Backup de conversas → Backup criptografado de ponta a
+                    ponta → Ativar</em>.
+                  </li>
+                  <li>
+                    Escolha <em>Usar chave de criptografia de 64 dígitos</em> (não a senha) e anote a chave num lugar
+                    seguro.
+                  </li>
+                  <li>Faça um novo backup e espere terminar de enviar.</li>
+                  <li>Volte aqui, entre de novo e use a chave de 64 dígitos.</li>
+                </ol>
+                No WhatsApp Business o caminho é o mesmo, com uma chave própria.
+              </div>
+            )}
             <KeyField version={selected.encrypted === false ? "crypt14" : "crypt15"} value={key} onChange={setKey} />
             {existing && <ReplaceWarning source={source} at={existing.importedAtMs} />}
             <label className="radio">
@@ -345,15 +364,17 @@ export default function DriveImport({ stores, onImported }: Props) {
           onChange={(e) => setEmail(e.target.value)}
         />
       </label>
+      <span className="muted small">A janela do Google já abre com este e-mail preenchido.</span>
       {step.error && <div className="result error">{step.error}</div>}
-      <div className="row-buttons">
+      <button className="primary" disabled={!email.includes("@")} onClick={login}>
+        Entrar no Google
+      </button>
+      <p className="muted small">
+        O Google recusou a janela de login?{" "}
         <button className="link" disabled={!email.includes("@")} onClick={() => setStep({ kind: "manual" })}>
-          Login manual
+          Entrar pelo navegador (login manual)
         </button>
-        <button className="primary" disabled={!email.includes("@")} onClick={login}>
-          Entrar no Google
-        </button>
-      </div>
+      </p>
     </section>
   );
 }

@@ -76,9 +76,12 @@ Mesmo caminho do app do WhatsApp no Android, como o [wabdd](https://github.com/g
 
 Os tokens de acesso somem ao fim do download, ao cancelar, ao travar o cofre ou após 50 minutos. O cliente HTTP não oferece ALPN e não segue redirecionamentos (o Google recusa o login com ALPN; ver gpsoauth).
 
-Ainda não validado com uma conta real:
-- se o Google aceita o login pelo WebKit embutido (senão, há o login manual colando o cookie);
-- se o WhatsApp Business usa a mesma assinatura (`client_sig`) e se os backups dele aparecem na mesma listagem.
+Validado com uma conta real (2026-11):
+- o login pelo WebKit embutido funciona (com o `freezePrototype` do Tauri desligado e user agent do Safari na janela de login);
+- o WhatsApp Business aceita a mesma assinatura (`client_sig`), e os tokens dos dois apps enxergam a mesma listagem de backups;
+- os metadados atuais trazem a criptografia em `encryptedBackupMetadata` (o campo antigo `encryptedBackupEnabled` não vem mais).
+
+Backups **sem** E2E usam a chave do arquivo `key` do celular (só com root). Sem root, ative o backup E2E com a chave de 64 dígitos e faça um backup novo.
 
 Mídias (opcional): em backups sem E2E vêm em claro (`Media/...`, MD5 conferido). Em backups E2E vêm como `<hash>.mcrypt1`, com o nome real em metadados cifrados (HMAC + AES-CBC) e o conteúdo em AES-GCM com chave por arquivo (`wa_crypt::mcrypt1`). Não está documentado se o arquivo traz a tag GCM: o app tenta com a tag e, se não conferir, só aceita o conteúdo se o SHA-256 bater com o `file_hash` do msgstore. Formato ainda não validado com um backup real.
 

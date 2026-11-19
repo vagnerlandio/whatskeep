@@ -1,3 +1,5 @@
+// Primeiro import: congela os protótipos antes de qualquer outro código do app.
+import "./freeze";
 import React, { Component, ErrorInfo, ReactNode } from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";

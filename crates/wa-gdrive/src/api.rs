@@ -284,7 +284,16 @@ fn parse_backup(raw: RawBackup) -> Backup {
         update_time: raw.update_time,
         size_bytes: raw.size_bytes.and_then(|s| s.parse().ok()),
         uploading: raw.active_transaction_id.is_some(),
-        encrypted: meta.get("encryptedBackupEnabled").and_then(|v| v.as_bool()),
+        // Formato antigo: `encryptedBackupEnabled`. Atual (visto em 2026-11):
+        // `encryptedBackupMetadata.isPasswordOrEncryptionKeyEncrypted`.
+        encrypted: meta.get("encryptedBackupEnabled").and_then(|v| v.as_bool()).or_else(|| {
+            let m = meta.get("encryptedBackupMetadata")?;
+            m.get("isPasswordOrEncryptionKeyEncrypted").and_then(|v| v.as_bool()).or_else(|| {
+                let key = m.get("isEncryptionKeyEncrypted")?.as_bool()?;
+                let pw = m.get("isPasswordEncrypted")?.as_bool()?;
+                Some(key || pw)
+            })
+        }),
         chat_db_size: num("chatdbSize"),
         media_size: num("mediaSize"),
         messages: num("numOfMessages"),
@@ -338,3 +347,31 @@ mod tests {
     }
 }
 
+#[cfg(test)]
+mod tests_metadados {
+    use super::*;
+
+    fn raw(metadata: &str) -> RawBackup {
+        RawBackup {
+            name: "clients/wa/backups/5511900000001".into(),
+            update_time: None,
+            size_bytes: None,
+            active_transaction_id: None,
+            metadata: Some(metadata.into()),
+        }
+    }
+
+    #[test]
+    fn e2e_nos_dois_formatos_de_metadados() {
+        // Formato atual (backup real de 2026-11, sem E2E).
+        let atual = r#"{"backupSize":3591962311,"chatdbSize":673041098,"encryptedBackupMetadata":{"isEncryptionKeyEncrypted":false,"isPasswordEncrypted":false,"isPasswordOrEncryptionKeyEncrypted":false},"numOfMessages":841593,"mediaSize":2860451951,"versionOfAppWhenBackup":"2.26.44.90-play-release"}"#;
+        let b = parse_backup(raw(atual));
+        assert_eq!(b.encrypted, Some(false));
+        assert_eq!((b.chat_db_size, b.messages), (Some(673041098), Some(841593)));
+        let com_chave = r#"{"encryptedBackupMetadata":{"isEncryptionKeyEncrypted":true,"isPasswordEncrypted":false}}"#;
+        assert_eq!(parse_backup(raw(com_chave)).encrypted, Some(true));
+        // Formato antigo.
+        assert_eq!(parse_backup(raw(r#"{"encryptedBackupEnabled":true}"#)).encrypted, Some(true));
+        assert_eq!(parse_backup(raw("{}")).encrypted, None);
+    }
+}

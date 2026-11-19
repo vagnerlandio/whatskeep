@@ -22,5 +22,13 @@ check 'href=\{' "href dinâmico (links de mensagem passam pela confirmação)"
 check 'srcdoc|<iframe' "iframes"
 check 'localStorage|sessionStorage|indexedDB' "persistir dados no navegador"
 
+# O congelamento de protótipos da janela principal precisa ser o primeiro
+# import (o freezePrototype do Tauri fica desligado: ele quebra o login do Google).
+first_import=$(grep -m1 '^import' apps/desktop/src/main.tsx)
+if [ "$first_import" != 'import "./freeze";' ]; then
+  echo "PROIBIDO: apps/desktop/src/main.tsx precisa começar com import \"./freeze\"; (achado: $first_import)"
+  fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then echo "check-security: ok"; fi
 exit "$fail"

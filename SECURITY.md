@@ -12,7 +12,7 @@ contra o que ele protege, como, o que fica de fora e como verificar.
 | Mensagem maliciosa (HTML, script, link enganoso) | Texto de mensagem é sempre renderizado como texto. Links só abrem depois de confirmação, só http/https, sem `usuário@host`. CSP sem rede. |
 | Página remota ganhando acesso ao app | A janela principal só navega dentro do app; os comandos do app são liberados um a um, só para ela (ACL testada em execução). A janela de login do Google não tem nenhuma permissão. |
 | Vazamento por arquivos auxiliares | `temp_store = MEMORY` em todas as conexões (inclusive no msgstore decifrado), sem core dumps, cofre fora do Time Machine e do Spotlight, mídias salvas só por ação explícita. |
-| Roubo da conta Google | O token mestre do Google existe por instantes e é zerado; só tokens de 1 h com escopo `drive.appdata` ficam em memória, até o fim do download. Nada é gravado. Login numa janela anônima. |
+| Roubo da conta Google | O token mestre do Google existe por instantes e é zerado; só tokens de 1 h ficam em memória, até o fim do download. O app pede só `drive.appdata`, mas o Google emite o token com os escopos já concedidos ao WhatsApp (`drive.appdata`, `drive.file`, `userinfo.email`, `userinfo.profile`, `openid`; visto num teste real em 2026-11): continua sem acesso ao Drive inteiro, só aos arquivos criados pelo WhatsApp. Nada é gravado. Login numa janela anônima. |
 | Export HTML parar em mãos erradas | Mensagens sempre cifradas (Argon2id + AES-GCM, chave por conversa). Uma senha não abre nem lista as conversas de outra. Nomes de arquivo aleatórios, sem telefone ou texto em claro. A página não acessa a rede. |
 
 ## Detalhes
@@ -28,6 +28,7 @@ contra o que ele protege, como, o que fica de fora e como verificar.
 - CSP de produção: `default-src 'self'`, `connect-src ipc:`, imagens/mídia só do app e de `wamedia:`, sem `data:`/`blob:`.
 - Capabilities: só `event:listen/unlisten`, `dialog:open` e os comandos do app (manifesto em `build.rs`). Sem `core:webview:default` (que inclui abrir o devtools) e sem `core:window:default`.
 - Devtools não entram no build de release (feature `devtools` desligada).
+- Protótipos congelados (`Object.freeze(Object.prototype)`) na janela principal, como primeiro import de `main.tsx`. O `freezePrototype` do Tauri fica desligado porque vale para todas as janelas e quebra o JavaScript da página de login do Google; `pnpm lint:security` confere o import.
 - Caminhos de arquivo para gravar (export, salvar mídia) são escolhidos no seletor nativo pelo backend; o webview nunca informa onde gravar.
 - `panic = "abort"`, binário sem símbolos.
 

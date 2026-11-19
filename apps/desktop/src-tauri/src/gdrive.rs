@@ -30,6 +30,8 @@ use crate::media_import::{MediaSummary, Plan, already_stored, store_one};
 use crate::state::AppState;
 
 const LOGIN_WINDOW: &str = "google-login";
+const LOGIN_USER_AGENT: &str =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15";
 const LOGIN_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const SESSION_TTL: Duration = Duration::from_secs(50 * 60);
 const EVENT_DOWNLOAD: &str = "gdrive-progress";
@@ -87,6 +89,10 @@ pub fn shutdown(app: &AppHandle) {
 }
 
 fn allowed_navigation(url: &Url) -> bool {
+    // Quadros vazios que a página do Google cria por script. Não acessam a rede.
+    if url.scheme() == "about" {
+        return matches!(url.path(), "blank" | "srcdoc");
+    }
     if url.scheme() != "https" {
         return false;
     }
@@ -177,11 +183,16 @@ pub async fn gdrive_login(app: AppHandle, email: String) -> Result<LoginResult, 
     state.drive.clear();
     state.drive.cancel.store(false, Ordering::SeqCst);
 
-    let login_url: Url = wa_gdrive::LOGIN_URL.parse().expect("URL fixa válida");
+    let mut login_url: Url = wa_gdrive::LOGIN_URL.parse().expect("URL fixa válida");
+    // A página do Google preenche o e-mail com isto: o usuário não digita duas vezes.
+    login_url.query_pairs_mut().append_pair("Email", email.trim());
     WebviewWindowBuilder::new(&app, LOGIN_WINDOW, WebviewUrl::External(login_url))
         .title("Entrar no Google")
         .inner_size(480.0, 720.0)
         .incognito(true)
+        // O WKWebView se identifica sem o marcador do Safari, e o Google recusa
+        // navegadores embutidos ("este navegador pode não ser seguro").
+        .user_agent(LOGIN_USER_AGENT)
         .on_navigation(|url| {
             let ok = allowed_navigation(url);
             // Só host e caminho (sem query): nada de e-mail ou códigos.
@@ -197,7 +208,15 @@ pub async fn gdrive_login(app: AppHandle, email: String) -> Result<LoginResult, 
         .map_err(|e| CmdError::new("internal", format!("não foi possível abrir a janela de login: {e}")))?;
 
     let app2 = app.clone();
-    let cookie = crate::commands::blocking("gdrive_login_aguardando_cookie", move || wait_for_cookie(&app2)).await?;
+    let cookie = crate::commands::blocking("gdrive_login_aguardando_cookie", move || {
+        // O usuário interage com a janela do Google, não com a principal: sem
+        // isto, o autolock trava o cofre (e cancela o login) no meio do caminho.
+        // O próprio login tem limite de tempo (LOGIN_TIMEOUT).
+        let state = app2.state::<AppState>();
+        let _busy = state.busy();
+        wait_for_cookie(&app2)
+    })
+    .await?;
     finish_login(app, email, cookie).await
 }
 
@@ -646,6 +665,11 @@ mod tests {
         assert!(!ok("https://google.us.com/"));
         assert!(!ok("https://x.google.evil.com/"));
         assert!(!ok("javascript:alert(1)"));
+        assert!(ok("about:blank"));
+        assert!(ok("about:srcdoc"));
+        assert!(!ok("about:config"));
+        assert!(!ok("data:text/html,<script>"));
+        assert!(!ok("file:///etc/passwd"));
     }
 
     #[test]
