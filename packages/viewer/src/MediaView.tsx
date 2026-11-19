@@ -3,6 +3,7 @@ import { useViewer } from "./context";
 import { formatDuration } from "./format";
 import { useSource, useUrl } from "./source";
 import { errorOf, Message } from "./types";
+import { Icon } from "./icons";
 
 const MEDIA_MAX = 330;
 /** Espera depois que a rolagem para antes de decodificar a imagem completa. */
@@ -38,7 +39,15 @@ export function Visual({ m }: { m: Message }) {
     w = Math.max(120, Math.round(mw * scale));
     h = Math.max(80, Math.round(mh * scale));
   }
-  const label = m.kind === "video" ? "▶ " + formatDuration(m.media?.durationS ?? null) : animated ? "GIF" : null;
+  const label =
+    m.kind === "video" ? (
+      <>
+        <Icon name="video" size={14} />
+        {formatDuration(m.media?.durationS ?? null)}
+      </>
+    ) : animated ? (
+      "GIF"
+    ) : null;
 
   return (
     <div
@@ -49,7 +58,11 @@ export function Visual({ m }: { m: Message }) {
       {thumb ? (
         <img src={thumb} alt="" loading="lazy" decoding="async" draggable={false} />
       ) : (
-        !fullLoaded && <span className="visual-placeholder">{sticker ? "💟" : m.kind === "image" ? "📷" : "🎥"}</span>
+        !fullLoaded && (
+          <span className="visual-placeholder">
+            <Icon name={sticker ? "sticker" : m.kind === "image" ? "camera" : m.kind === "gif" ? "gif" : "video"} size={40} strokeWidth={1.25} />
+          </span>
+        )
       )}
       {fullUrl &&
         (animated ? (
@@ -72,6 +85,11 @@ export function Visual({ m }: { m: Message }) {
             onLoad={() => setFullLoaded(true)}
           />
         ))}
+      {m.kind === "video" && available && (
+        <span className="play-overlay">
+          <Icon name="play" size={28} fill />
+        </span>
+      )}
       {label && <span className="visual-label">{label}</span>}
       {!sticker && !available && <span className="visual-note">Prévia · arquivo não incluído</span>}
     </div>
@@ -83,7 +101,7 @@ export function AudioView({ m }: { m: Message }) {
   const [play, setPlay] = useState(false);
   // Nada é carregado (nem decifrado) até o usuário pedir.
   const url = useUrl(() => (play ? source.mediaUrl(m) : null), [source, m.id, play]);
-  const icon = m.kind === "voice" ? "🎤" : "🎵";
+  const icon = <Icon name={m.kind === "voice" ? "mic" : "headphones"} size={22} />;
   if (!m.media?.available) {
     return (
       <>
@@ -104,7 +122,7 @@ export function AudioView({ m }: { m: Message }) {
       ) : (
         <>
           <button className="icon-btn small" title="Tocar" onClick={() => setPlay(true)}>
-            ▶
+            <Icon name="play" size={20} fill />
           </button>
           <span className="audio-bar" />
           <span className="small">{play ? (source.mediaHint?.() ?? "Carregando…") : formatDuration(m.media?.durationS ?? null)}</span>
@@ -128,7 +146,20 @@ export function SaveButton({ m, compact }: { m: Message; compact?: boolean }) {
       setState(errorOf(err).message);
     }
   };
-  const label = state === "saving" ? "Salvando…" : state === "saved" ? "Salvo ✓" : compact ? "⤓" : "Salvar…";
+  const label =
+    state === "saving" ? (
+      "Salvando…"
+    ) : state === "saved" ? (
+      <>
+        <Icon name="check" size={16} /> Salvo
+      </>
+    ) : compact ? (
+      <Icon name="download" size={18} />
+    ) : (
+      <>
+        <Icon name="download" size={16} /> Salvar…
+      </>
+    );
   return (
     <>
       <button className={compact ? "icon-btn small" : "save-btn"} title="Salvar uma cópia" onClick={save}>
@@ -159,7 +190,7 @@ export function Lightbox({ m, onClose }: { m: Message; onClose: () => void }) {
       <div className="lightbox-bar" onClick={(e) => e.stopPropagation()}>
         <SaveButton m={m} />
         <button className="icon-btn" title="Fechar" onClick={onClose}>
-          ✕
+          <Icon name="close" size={24} />
         </button>
       </div>
       <div className="lightbox-body" onClick={(e) => e.stopPropagation()}>

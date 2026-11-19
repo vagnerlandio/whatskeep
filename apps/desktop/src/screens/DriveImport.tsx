@@ -1,3 +1,4 @@
+import { Icon } from "@wa/viewer";
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -268,7 +269,9 @@ export default function DriveImport({ stores, onImported }: Props) {
                       {SOURCE_LABEL[a]}
                     </span>
                   ))}
-                  {b.encrypted && <span className="badge">🔒 ponta a ponta</span>}
+                  {b.encrypted && <span className="badge">
+                      <Icon name="lock" size={12} /> ponta a ponta
+                    </span>}
                 </strong>
                 <span className="muted small">
                   {b.uploading

@@ -1,7 +1,8 @@
-import { memo, useState } from "react";
+import { CSSProperties, memo, useState } from "react";
 import { formatSize, Message } from "./types";
 import { formatDay, formatTime, personLabel, senderColor, WaText } from "./format";
 import { AudioView, SaveButton, Visual } from "./MediaView";
+import { Icon } from "./icons";
 
 /** Textos maiores que isso começam recolhidos ("Ler mais"), como no WhatsApp. */
 const COLLAPSE_AT = 1500;
@@ -32,7 +33,13 @@ function MessageRow({ message: m, prev, isGroup, highlighted, onJump }: Props) {
           <span>{m.text ?? "Mensagem do sistema"}</span>
         </div>
       ) : (
-        <Bubble m={m} showSender={isGroup && !m.fromMe && !sameAuthor} highlighted={highlighted} onJump={onJump} />
+        <Bubble
+          m={m}
+          first={!sameAuthor}
+          showSender={isGroup && !m.fromMe && !sameAuthor}
+          highlighted={highlighted}
+          onJump={onJump}
+        />
       )}
     </div>
   );
@@ -42,17 +49,22 @@ export default memo(MessageRow);
 
 function Bubble({
   m,
+  first,
   showSender,
   highlighted,
   onJump,
 }: {
   m: Message;
+  /** Primeira de uma sequência do mesmo autor: leva o "rabinho". */
+  first: boolean;
   showSender: boolean;
   highlighted: boolean;
   onJump: (id: number) => void;
 }) {
   const sticker = m.kind === "sticker";
-  const cls = ["bubble", m.fromMe ? "out" : "in", sticker ? "sticker" : "", highlighted ? "flash" : ""].join(" ");
+  const cls = ["bubble", m.fromMe ? "out" : "in", first && !sticker ? "tail" : "", sticker ? "sticker" : "", highlighted ? "flash" : ""]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <div className={`bubble-line ${m.fromMe ? "out" : "in"}`}>
@@ -65,6 +77,7 @@ function Bubble({
         {m.quoted && (
           <button
             className="quote"
+            style={{ "--quote-color": m.quoted.fromMe ? "#06cf9c" : senderColor(m.quoted.sender?.jid ?? "") } as CSSProperties}
             disabled={m.quoted.messageId === null}
             onClick={() => m.quoted?.messageId != null && onJump(m.quoted.messageId)}
           >
@@ -74,7 +87,7 @@ function Bubble({
         )}
         <Body m={m} />
         <span className="meta">
-          {m.starred && <span title="Favoritada">★</span>}
+          {m.starred && <Icon name="star" size={11} fill title="Favoritada" />}
           {m.edited && <span>Editada</span>}
           <span>{formatTime(m.sentAt)}</span>
         </span>
@@ -96,7 +109,12 @@ function Bubble({
 function Body({ m }: { m: Message }) {
   switch (m.kind) {
     case "deleted":
-      return <p className="text muted-italic">🚫 {m.fromMe ? "Você apagou esta mensagem" : "Esta mensagem foi apagada"}</p>;
+      return (
+        <p className="text muted-italic with-icon">
+          <Icon name="cancel" size={16} />
+          {m.fromMe ? "Você apagou esta mensagem" : "Esta mensagem foi apagada"}
+        </p>
+      );
     case "image":
     case "video":
     case "gif":
@@ -119,7 +137,9 @@ function Body({ m }: { m: Message }) {
       return (
         <>
           <div className="doc">
-            <span className="doc-icon">📄</span>
+            <span className="doc-icon">
+              <Icon name="document" size={28} strokeWidth={1.5} />
+            </span>
             <span className="doc-name">
               {m.media?.fileName ?? "Documento"}
               <small>
@@ -138,7 +158,9 @@ function Body({ m }: { m: Message }) {
         <div className="contact-cards">
           {(m.contacts.length ? m.contacts : [{ name: m.text, phones: [] }]).map((c, i) => (
             <div className="contact-card" key={i}>
-              <span className="avatar small">👤</span>
+              <span className="avatar small">
+                <Icon name="account" size={20} />
+              </span>
               <span>
                 {c.name ?? "Contato"}
                 {c.phones.map((p) => (
@@ -153,7 +175,9 @@ function Body({ m }: { m: Message }) {
     case "live_location":
       return (
         <div className="place">
-          <span className="place-icon">📍</span>
+          <span className="place-icon">
+            <Icon name="location" size={24} />
+          </span>
           <span>
             {m.location?.name ?? (m.kind === "live_location" ? "Localização em tempo real" : "Localização")}
             {m.location?.address && <small>{m.location.address}</small>}
@@ -168,7 +192,10 @@ function Body({ m }: { m: Message }) {
     case "unknown":
       return (
         <>
-          <p className="text muted-italic">⚠️ Este tipo de mensagem ainda não é suportado.</p>
+          <p className="text muted-italic with-icon">
+            <Icon name="alert" size={16} />
+            Este tipo de mensagem ainda não é suportado.
+          </p>
           {m.text && <Text text={m.text} />}
         </>
       );

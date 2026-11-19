@@ -1,3 +1,4 @@
+import { Icon } from "@wa/viewer";
 import { formatCount, SOURCE_LABEL, StoreInfo } from "../api";
 import DriveImport from "./DriveImport";
 import ExportPanel from "./ExportPanel";
@@ -12,7 +13,7 @@ export default function Home({ stores, onImported, onClose }: Props) {
     <div className="home">
       {onClose && (
         <button className="back" onClick={onClose}>
-          ← Voltar ao histórico
+          <Icon name="back" size={16} /> Voltar ao histórico
         </button>
       )}
       <section className="card">

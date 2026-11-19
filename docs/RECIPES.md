@@ -64,6 +64,7 @@ It shows up in `unknownTypes` in the import report.
 - Components in `packages/viewer/src` serve both the app **and** the export: never import `@tauri-apps/*` there. App-specific behaviour goes through `DataSource` (optional methods like `saveMedia`, `openLink`, `mediaHint`).
 - New data need → method on `DataSource` (`source.ts`), implemented in `tauriSource` (`apps/desktop/src/api.ts`) and `BundleSource` (`packages/export-shell/src/bundle.ts`).
 - Styles: `viewer.css` (viewer), `base.css` (reset/theme), `apps/desktop/src/App.css` (app screens only), `packages/export-shell/src/shell.css`.
+- Icons: add the Lucide component to the `icons` map in `packages/viewer/src/icons.tsx` and use `<Icon name="..." />`. No emojis as icons, no other icon library.
 - Lists are always virtualized (react-virtuoso); bubbles use `contain: content`; media height is reserved from stored dimensions.
 - Run `pnpm lint:security`.
 

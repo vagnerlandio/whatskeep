@@ -1,20 +1,28 @@
+import type { CSSProperties } from "react";
 import type { Chat } from "./types";
-import { chatTitle, senderColor } from "./format";
+import { avatarHue, chatTitle } from "./format";
+import { Icon } from "./icons";
 
-/** Sem fotos de perfil (o backup não traz): iniciais ou ícone, cor estável por JID. */
-export default function Avatar({ chat }: { chat: Chat }) {
-  const icon = chat.kind === "group" ? "👥" : chat.kind === "broadcast" ? "📢" : chat.kind === "channel" ? "📣" : null;
+/** Sem fotos de perfil (o backup não traz): inicial ou ícone sobre um tom
+ * claro, estável por JID, como os avatares padrão do WhatsApp. */
+export default function Avatar({ chat, size = 49 }: { chat: Chat; size?: number }) {
   const title = chatTitle(chat);
-  const initials = /^\+?\d/.test(title)
-    ? null
-    : title
-        .split(/\s+/)
-        .slice(0, 2)
-        .map((w) => [...w][0]?.toUpperCase() ?? "")
-        .join("");
+  const letter = /^[+~\d]/.test(title) ? null : ([...title.trim()][0]?.toUpperCase() ?? null);
+  const iconSize = Math.round(size * 0.55);
+  const content =
+    chat.kind === "group" ? (
+      <Icon name="group" size={iconSize} fill strokeWidth={1.5} />
+    ) : chat.kind === "broadcast" || chat.kind === "channel" ? (
+      <Icon name="broadcast" size={iconSize} strokeWidth={1.75} />
+    ) : letter ? (
+      letter
+    ) : (
+      <Icon name="account" size={iconSize} fill strokeWidth={1.5} />
+    );
+  const style = { "--h": avatarHue(chat.jid), width: size, height: size, fontSize: Math.round(size * 0.4) } as CSSProperties;
   return (
-    <span className="avatar" style={{ background: senderColor(chat.jid) }}>
-      {icon ?? initials ?? "👤"}
+    <span className="avatar" style={style}>
+      {content}
     </span>
   );
 }

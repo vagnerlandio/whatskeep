@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
-import { errorOf, Viewer } from "@wa/viewer";
+import { errorOf, Icon, RailButton, Viewer } from "@wa/viewer";
 import { BundleSource } from "./bundle";
 import { loadManifest } from "./loader";
 
@@ -74,22 +74,17 @@ export default function App() {
   }
 
   const needsFolder = source.mediaMode === "encrypted" && !source.hasMediaFolder;
-  const header = (
+  const railBottom = (
     <>
-      <strong className="sidebar-title">Histórico</strong>
-      <div className="sidebar-actions">
-        <button className="icon-btn" title="Liberar mais conversas com outra senha" onClick={() => setAskMore(true)}>
-          🔑
-        </button>
-        {source.mediaMode === "encrypted" && (
-          <button className="icon-btn" title="Selecionar a pasta do histórico (fotos e vídeos)" onClick={() => folderInput.current?.click()}>
-            📁
-          </button>
-        )}
-        <button className="icon-btn" title="Travar (esquece tudo o que foi aberto)" onClick={lock}>
-          🔒
-        </button>
-      </div>
+      <RailButton icon="key" title="Liberar mais conversas com outra senha" onClick={() => setAskMore(true)} />
+      {source.mediaMode === "encrypted" && (
+        <RailButton
+          icon="folder"
+          title="Selecionar a pasta do histórico (fotos e vídeos)"
+          onClick={() => folderInput.current?.click()}
+        />
+      )}
+      <RailButton icon="lock" title="Travar (esquece tudo o que foi aberto)" onClick={lock} />
       <input
         ref={folderInput}
         type="file"
@@ -111,10 +106,11 @@ export default function App() {
     <Viewer
       key={version}
       source={source}
-      header={header}
+      title="Histórico"
+      railBottom={railBottom}
       banner={banner}
       emptyTitle="Histórico do WhatsApp"
-      emptyNote={`${source.unlockedCount} conversas liberadas. 🔒 Nada sai deste computador: a página não acessa a internet.`}
+      emptyNote={`${source.unlockedCount} conversas liberadas. Nada sai deste computador: a página não acessa a internet.`}
     />
   );
 }
@@ -166,8 +162,8 @@ function Unlock({
 
   return (
     <form className="card narrow" onSubmit={submit}>
-      <div className="lock-icon" aria-hidden>
-        🔒
+      <div className="lock-icon">
+        <Icon name="lockKeyhole" size={40} strokeWidth={1.5} />
       </div>
       <h1>{more ? "Outra senha" : "Histórico do WhatsApp"}</h1>
       <p className="muted">

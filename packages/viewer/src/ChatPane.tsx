@@ -8,6 +8,7 @@ import MessageRow from "./MessageRow";
 import { Lightbox } from "./MediaView";
 import LinkConfirm from "./LinkConfirm";
 import { ViewerContext } from "./context";
+import { Icon } from "./icons";
 
 const PAGE = 80;
 /** Índice virtual alto o bastante para ir prependendo páginas antigas. */
@@ -177,7 +178,10 @@ export default function ChatPane({ chat, anchor: externalAnchor, onSearchInChat 
           <div className="list-edge">Carregando mensagens antigas…</div>
         ) : (
           <div className="list-edge">
-            <span className="e2e-note">🔒 Histórico importado de um backup. Fica só neste computador, cifrado.</span>
+            <span className="e2e-note">
+              <Icon name="lock" size={12} />
+              Histórico importado de um backup. Fica só neste computador, cifrado.
+            </span>
           </div>
         ),
       Footer: () => (data?.hasNewer ? <div className="list-edge">Carregando…</div> : <div style={{ height: 12 }} />),
@@ -188,7 +192,7 @@ export default function ChatPane({ chat, anchor: externalAnchor, onSearchInChat 
   return (
     <section className="chat-pane">
       <header className="chat-header">
-        <Avatar chat={chat} />
+        <Avatar chat={chat} size={40} />
         <div className="chat-header-text">
           <strong>{chatTitle(chat)}</strong>
           <span>
@@ -196,11 +200,11 @@ export default function ChatPane({ chat, anchor: externalAnchor, onSearchInChat 
           </span>
         </div>
         <label className="icon-btn" title="Ir para uma data">
-          📅
+          <Icon name="calendar" size={22} />
           <input type="date" className="date-input" onChange={(e) => onPickDate(e.target.value)} />
         </label>
         <button className="icon-btn" title="Buscar nesta conversa" onClick={onSearchInChat}>
-          🔍
+          <Icon name="search" size={22} />
         </button>
       </header>
 
@@ -237,11 +241,17 @@ export default function ChatPane({ chat, anchor: externalAnchor, onSearchInChat 
         )}
         {data && (!atBottom || data.hasNewer) && (
           <button className="to-bottom" onClick={goToEnd} title="Ir para a mensagem mais recente">
-            ⌄
+            <Icon name="chevronDown" size={24} />
           </button>
         )}
       </div>
       </ViewerContext.Provider>
+      <footer className="chat-footer">
+        <div className="readonly-bar">
+          <Icon name="lock" size={16} />
+          Somente leitura: este histórico veio de um backup.
+        </div>
+      </footer>
       {lightbox && <Lightbox m={lightbox} onClose={() => setLightbox(null)} />}
       {link && <LinkConfirm url={link} onClose={() => setLink(null)} />}
     </section>

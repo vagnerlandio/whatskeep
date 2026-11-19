@@ -1,3 +1,4 @@
+import { Icon } from "@wa/viewer";
 import { FormEvent, useState } from "react";
 import { api, errorOf } from "../api";
 
@@ -25,8 +26,8 @@ export default function Unlock({ reason, onUnlocked }: { reason: string | null; 
 
   return (
     <form className="card narrow" onSubmit={submit}>
-      <div className="lock-icon" aria-hidden>
-        🔒
+      <div className="lock-icon">
+        <Icon name="lockKeyhole" size={40} strokeWidth={1.5} />
       </div>
       <h1>Cofre travado</h1>
       {reason && <p className="muted">{reason}</p>}

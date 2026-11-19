@@ -71,6 +71,7 @@ export default function SearchPanel({ query, scope, chatsById, onOpen, onClearSc
       )}
       {error && <div className="result error">{error}</div>}
       {!busy && !error && hits.length === 0 && <p className="muted search-empty">Nenhuma mensagem encontrada.</p>}
+      {hits.length > 0 && <div className="search-section">Mensagens</div>}
       <div className="search-results">
         {hits.map((h) => {
           const chat = chatsById.get(h.chatId);

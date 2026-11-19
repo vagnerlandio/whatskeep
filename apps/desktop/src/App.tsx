@@ -1,5 +1,6 @@
 import { ReactNode, useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { Icon } from "@wa/viewer";
 import { api, errorOf, StoreInfo, VaultStatus } from "./api";
 import CreateVault from "./screens/CreateVault";
 import Home from "./screens/Home";
@@ -70,12 +71,14 @@ function Frame({ children, onLock }: { children: ReactNode; onLock?: () => void 
         <span>Histórico WhatsApp</span>
         {onLock && (
           <button className="ghost" onClick={onLock} title="Travar o cofre">
-            🔒 Travar
+            <Icon name="lock" size={16} /> Travar
           </button>
         )}
       </header>
       <main className="content">{children}</main>
-      <p className="footnote">🔒 Tudo é processado localmente neste computador. Nada é enviado para servidores.</p>
+      <p className="footnote">
+        <Icon name="lock" size={14} /> Tudo é processado localmente neste computador. Nada é enviado para servidores.
+      </p>
     </div>
   );
 }

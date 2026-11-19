@@ -5,6 +5,7 @@
 // montado a partir de conteúdo de mensagem.
 import { Fragment, ReactNode } from "react";
 import { useViewer } from "./context";
+import { Icon, IconName } from "./icons";
 import type { Chat, MessageKind, Person } from "./types";
 
 // ---------------------------------------------------------------- pessoas
@@ -33,11 +34,18 @@ export function chatTitle(c: Chat): string {
 
 const SENDER_COLORS = ["#e542a3", "#1f7aec", "#06cf9c", "#fc9775", "#a62c71", "#02a698", "#d3396d", "#7f66ff", "#bf6e00", "#35a3d6"];
 
-export function senderColor(jid: string): string {
+function hash(s: string): number {
   let h = 0;
-  for (let i = 0; i < jid.length; i++) h = (h * 31 + jid.charCodeAt(i)) | 0;
-  return SENDER_COLORS[Math.abs(h) % SENDER_COLORS.length];
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
 }
+
+export function senderColor(jid: string): string {
+  return SENDER_COLORS[hash(jid) % SENDER_COLORS.length];
+}
+
+/** Matiz estável por JID para o avatar (fundo claro, ícone/letra no mesmo tom). */
+export const avatarHue = (jid: string) => [190, 25, 340, 210, 150, 280, 45, 0, 170, 260][hash(jid) % 10];
 
 // ---------------------------------------------------------------- datas
 
@@ -93,27 +101,52 @@ export function formatDuration(s: number | null): string {
 // ---------------------------------------------------------------- prévias
 
 export const KIND_PREVIEW: Partial<Record<MessageKind, string>> = {
-  image: "📷 Foto",
-  video: "🎥 Vídeo",
-  gif: "🎞️ GIF",
-  audio: "🎵 Áudio",
-  voice: "🎤 Mensagem de voz",
-  sticker: "💟 Figurinha",
-  document: "📄 Documento",
-  contact: "👤 Contato",
-  location: "📍 Localização",
-  live_location: "📍 Localização em tempo real",
-  deleted: "🚫 Mensagem apagada",
+  image: "Foto",
+  video: "Vídeo",
+  gif: "GIF",
+  audio: "Áudio",
+  voice: "Mensagem de voz",
+  sticker: "Figurinha",
+  document: "Documento",
+  contact: "Contato",
+  location: "Localização",
+  live_location: "Localização em tempo real",
+  deleted: "Mensagem apagada",
   system: "Mensagem do sistema",
   unknown: "Mensagem não suportada",
+};
+
+/** Ícone de cada tipo na prévia da lista de conversas, como no WhatsApp. */
+export const KIND_ICON: Partial<Record<MessageKind, IconName>> = {
+  image: "camera",
+  video: "video",
+  gif: "gif",
+  audio: "headphones",
+  voice: "mic",
+  sticker: "sticker",
+  document: "document",
+  contact: "account",
+  location: "location",
+  live_location: "location",
+  deleted: "cancel",
 };
 
 export function previewText(kind: MessageKind, text: string | null): string {
   const label = KIND_PREVIEW[kind];
   if (kind === "text") return oneLine(text ?? "");
   if (kind === "deleted" || kind === "system") return label ?? "";
-  if (kind === "contact" && text) return `👤 ${oneLine(text)}`;
-  return text ? `${label ? label.split(" ")[0] + " " : ""}${oneLine(text)}` : (label ?? "");
+  return text ? oneLine(text) : (label ?? "");
+}
+
+/** Prévia com o ícone do tipo (foto, áudio...) antes do texto. */
+export function Preview({ kind, text }: { kind: MessageKind; text: string | null }) {
+  const icon = KIND_ICON[kind];
+  return (
+    <>
+      {icon && <Icon name={icon} size={16} className="preview-icon" />}
+      <span className={kind === "deleted" ? "preview-text muted-italic" : "preview-text"}>{previewText(kind, text)}</span>
+    </>
+  );
 }
 
 const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();

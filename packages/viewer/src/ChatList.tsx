@@ -2,7 +2,8 @@ import { memo } from "react";
 import { Virtuoso } from "react-virtuoso";
 import type { Chat } from "./types";
 import Avatar from "./Avatar";
-import { chatTitle, formatListTime, personLabel, previewText } from "./format";
+import { chatTitle, formatListTime, personLabel, Preview } from "./format";
+import { Icon } from "./icons";
 
 type Props = {
   chats: Chat[];
@@ -16,13 +17,16 @@ type Props = {
 export default function ChatList({ chats, selectedId, onSelect, archivedCount, showingArchived, onToggleArchived }: Props) {
   return (
     <div className="chat-list">
-      {(archivedCount > 0 || showingArchived) && (
+      {archivedCount > 0 && !showingArchived && (
         <button className="archived-row" onClick={onToggleArchived}>
-          <span className="archived-icon">{showingArchived ? "←" : "🗄️"}</span>
-          <span>{showingArchived ? "Voltar às conversas" : "Arquivadas"}</span>
-          {!showingArchived && <span className="count">{archivedCount}</span>}
+          <span className="archived-icon">
+            <Icon name="archive" size={20} />
+          </span>
+          <span className="archived-label">Arquivadas</span>
+          <span className="count">{archivedCount}</span>
         </button>
       )}
+      {chats.length === 0 && <p className="muted list-empty">Nenhuma conversa aqui.</p>}
       <Virtuoso
         className="chat-list-scroll"
         data={chats}
@@ -47,7 +51,7 @@ const ChatItem = memo(function ChatItem({
     ? ""
     : last.fromMe && last.kind !== "system"
       ? "Você: "
-      : chat.kind === "group" && last.sender
+      : chat.kind === "group" && last.sender && last.kind !== "system"
         ? `${personLabel(last.sender)}: `
         : "";
   return (
@@ -58,7 +62,14 @@ const ChatItem = memo(function ChatItem({
           <span className="chat-item-title">{chatTitle(chat)}</span>
           {chat.lastMessageAt != null && <span className="chat-item-time">{formatListTime(chat.lastMessageAt)}</span>}
         </span>
-        <span className="chat-item-preview">{last ? prefix + previewText(last.kind, last.text) : ""}</span>
+        <span className="chat-item-preview">
+          {last && (
+            <>
+              {prefix && <span className="preview-prefix">{prefix}</span>}
+              <Preview kind={last.kind} text={last.text} />
+            </>
+          )}
+        </span>
       </span>
     </button>
   );
