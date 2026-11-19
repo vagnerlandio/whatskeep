@@ -19,3 +19,5 @@ vault/
 # Exceção: vetores de teste sintéticos (chaves aleatórias, conteúdo fictício)
 !crates/wa-crypt/tests/fixtures/
 !crates/wa-crypt/tests/fixtures/**
+!crates/wa-import/tests/fixtures/
+!crates/wa-import/tests/fixtures/**

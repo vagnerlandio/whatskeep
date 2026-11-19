@@ -1,6 +1,11 @@
 [workspace]
 resolver = "3"
-members = ["crates/wa-crypt", "apps/desktop/src-tauri"]
+members = ["crates/wa-crypt", "crates/wa-import", "apps/desktop/src-tauri"]
+
+[workspace.dependencies]
+# SQLCipher em todo o workspace: o rusqlite não aceita SQLite "comum" e
+# SQLCipher no mesmo build, e o cofre precisa do SQLCipher.
+rusqlite = { version = "0.43", features = ["bundled-sqlcipher-vendored-openssl", "serialize"] }
 
 [workspace.package]
 edition = "2024"

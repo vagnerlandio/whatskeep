@@ -1,0 +1,13 @@
+[package]
+name = "wa-import"
+version = "0.1.0"
+description = "Lê o msgstore.db do WhatsApp (schemas legado e novo) e grava no schema normalizado do app"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+rusqlite = { workspace = true }
+thiserror = "2"
+
+[dev-dependencies]
+wa-crypt = { path = "../wa-crypt" }
