@@ -219,11 +219,10 @@ pub(crate) fn import(src: &Connection, info: &SourceInfo, dst: &Connection, repo
             if let Some(t) = thumb {
                 w.thumbnail(id, &t)?;
             }
-            if matches!(kind, MessageKind::Location | MessageKind::LiveLocation) {
-                if let (Some(lat), Some(lon)) = (r.get::<_, Option<f64>>("lat")?, r.get::<_, Option<f64>>("lon")?) {
+            if matches!(kind, MessageKind::Location | MessageKind::LiveLocation)
+                && let (Some(lat), Some(lon)) = (r.get::<_, Option<f64>>("lat")?, r.get::<_, Option<f64>>("lon")?) {
                     w.location(id, lat, lon, None, None)?;
                 }
-            }
         }
     }
 

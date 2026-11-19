@@ -1,79 +1,71 @@
-import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { useCallback, useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { api, VaultStatus } from "./api";
+import CreateVault from "./screens/CreateVault";
+import Home from "./screens/Home";
+import Unlock from "./screens/Unlock";
 import "./App.css";
 
-type BackupInfo = { version: "crypt14" | "crypt15"; sizeBytes: number };
-
-type State =
-  | { kind: "idle" }
-  | { kind: "ok"; name: string; info: BackupInfo }
-  | { kind: "error"; name: string; message: string };
-
-function formatSize(bytes: number): string {
-  const units = ["B", "KB", "MB", "GB"];
-  let v = bytes;
-  let i = 0;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i++;
-  }
-  return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
-}
-
-const KEY_HINT: Record<BackupInfo["version"], string> = {
-  crypt15:
-    "Backup com criptografia de ponta a ponta. Você vai precisar da chave de 64 dígitos (ou do arquivo encrypted_backup.key). Backups protegidos só por senha não podem ser abertos fora do WhatsApp.",
-  crypt14: "Backup sem criptografia de ponta a ponta. Você vai precisar do arquivo key do celular, que só pode ser extraído com root.",
-};
+/** Intervalo mínimo entre avisos de atividade ao backend (autolock). */
+const TOUCH_EVERY_MS = 15_000;
 
 export default function App() {
-  const [state, setState] = useState<State>({ kind: "idle" });
+  const [status, setStatus] = useState<VaultStatus | null>(null);
+  const [lockReason, setLockReason] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => setStatus(await api.status()), []);
 
   useEffect(() => {
-    const unlisten = getCurrentWebview().onDragDropEvent(async (event) => {
-      if (event.payload.type !== "drop") return;
-      const path = event.payload.paths[0];
-      if (!path) return;
-      const name = path.split(/[\\/]/).pop() ?? path;
-      try {
-        const info = await invoke<BackupInfo>("inspect_backup", { path });
-        setState({ kind: "ok", name, info });
-      } catch (e) {
-        setState({ kind: "error", name, message: String(e) });
-      }
+    void refresh();
+    const unlisten = listen("vault-locked", () => {
+      setLockReason("O cofre foi travado por inatividade.");
+      void refresh();
     });
-    return () => {
-      unlisten.then((fn) => fn());
+    return () => void unlisten.then((fn) => fn());
+  }, [refresh]);
+
+  // Mantém o cofre aberto enquanto o usuário interage com a janela.
+  const unlocked = status?.state === "unlocked";
+  useEffect(() => {
+    if (!unlocked) return;
+    let last = 0;
+    const onActivity = () => {
+      const now = Date.now();
+      if (now - last < TOUCH_EVERY_MS) return;
+      last = now;
+      void api.touch();
     };
-  }, []);
+    const events = ["pointerdown", "keydown", "wheel", "pointermove"] as const;
+    events.forEach((e) => window.addEventListener(e, onActivity, { passive: true }));
+    return () => events.forEach((e) => window.removeEventListener(e, onActivity));
+  }, [unlocked]);
+
+  async function lock() {
+    await api.lock();
+    setLockReason(null);
+    await refresh();
+  }
 
   return (
     <div className="app">
-      <header className="topbar">Histórico WhatsApp</header>
-      <main className="welcome">
-        <div className="dropzone">
-          <p className="title">Arraste um arquivo de backup para cá</p>
-          <p className="subtitle">msgstore.db.crypt15 ou msgstore.db.crypt14</p>
-
-          {state.kind === "ok" && (
-            <div className="result">
-              <strong>{state.name}</strong>
-              <span>
-                {state.info.version} · {formatSize(state.info.sizeBytes)}
-              </span>
-              <p>{KEY_HINT[state.info.version]}</p>
-            </div>
-          )}
-          {state.kind === "error" && (
-            <div className="result error">
-              <strong>{state.name}</strong>
-              <p>{state.message}</p>
-            </div>
-          )}
-        </div>
-        <p className="footnote">🔒 Tudo é processado localmente neste computador. Nada é enviado para servidores.</p>
+      <header className="topbar">
+        <span>Histórico WhatsApp</span>
+        {unlocked && (
+          <button className="ghost" onClick={lock} title="Travar o cofre">
+            🔒 Travar
+          </button>
+        )}
+      </header>
+      <main className="content">
+        {status === null ? null : status.state === "none" ? (
+          <CreateVault autolockMinutes={Math.round(status.autolockSecs / 60)} onCreated={refresh} />
+        ) : status.state === "locked" ? (
+          <Unlock reason={lockReason} onUnlocked={refresh} />
+        ) : (
+          <Home />
+        )}
       </main>
+      <p className="footnote">🔒 Tudo é processado localmente neste computador. Nada é enviado para servidores.</p>
     </div>
   );
 }

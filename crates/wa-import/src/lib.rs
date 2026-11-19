@@ -44,11 +44,17 @@ pub enum SourceApp {
 }
 
 impl SourceApp {
-    fn as_str(self) -> &'static str {
+    pub const ALL: [SourceApp; 2] = [SourceApp::WhatsApp, SourceApp::Business];
+
+    pub fn as_str(self) -> &'static str {
         match self {
             SourceApp::WhatsApp => "whatsapp",
             SourceApp::Business => "business",
         }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|a| a.as_str() == s)
     }
 }
 
