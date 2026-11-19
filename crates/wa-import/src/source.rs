@@ -29,7 +29,9 @@ impl SourceSchema {
 /// liberada. A configuração vale para o processo inteiro.
 pub fn open_msgstore(bytes: &[u8]) -> Result<Connection, Error> {
     let mut conn = Connection::open_in_memory()?;
-    conn.execute_batch("PRAGMA cipher_memory_security = ON;")?;
+    // temp_store = MEMORY: ordenações grandes (a importação ordena por data)
+    // não podem virar arquivos temporários com o texto em claro no TMPDIR.
+    conn.execute_batch("PRAGMA cipher_memory_security = ON; PRAGMA temp_store = MEMORY;")?;
     conn.deserialize_read_exact(MAIN_DB, bytes, bytes.len(), true)?;
     // Falha cedo se os bytes não forem um SQLite válido.
     conn.query_row("SELECT count(*) FROM sqlite_master", [], |_| Ok(()))

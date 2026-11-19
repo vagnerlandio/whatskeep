@@ -22,6 +22,8 @@ export interface DataSource {
   saveMedia?(m: Message): Promise<boolean>;
   /** Por que `mediaUrl` não está disponível (ex.: falta escolher a pasta). */
   mediaHint?(): string | null;
+  /** Abre um link http(s) fora do visualizador (já confirmado pelo usuário). */
+  openLink?(url: string): Promise<void>;
 }
 
 export const SourceContext = createContext<DataSource | null>(null);

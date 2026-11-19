@@ -4,7 +4,9 @@
   "scripts": {
     "dev": "pnpm --filter desktop tauri dev",
     "build": "pnpm --filter desktop tauri build",
-    "test:rust": "cargo test --workspace"
+    "test:rust": "cargo test --workspace",
+    "lint:security": "sh scripts/check-security.sh",
+    "test:e2e": "pnpm --filter export-shell test:e2e"
   },
   "packageManager": "pnpm@10.33.0"
 }

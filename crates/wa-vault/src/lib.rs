@@ -101,6 +101,9 @@ impl Vault {
         fsutil::create_private_dir(dir)?;
         fsutil::create_private_dir(&stores)?;
         fsutil::mark_no_index(dir)?;
+        // Os dados já são cifrados; fora do Time Machine, nem a versão cifrada
+        // fica espalhada em discos de backup.
+        let _ = fsutil::exclude_from_backup(dir);
 
         // Direto no buffer zerável, sem cópia intermediária na pilha.
         let mut dek = Key::default();
@@ -120,6 +123,8 @@ impl Vault {
         let dek = header.unwrap_key(password)?;
         let vault = Self { dir: dir.to_owned(), header, dek };
         vault.cleanup_partial_imports();
+        // Idempotente: cobre cofres criados antes desta proteção.
+        let _ = fsutil::exclude_from_backup(dir);
         Ok(vault)
     }
 

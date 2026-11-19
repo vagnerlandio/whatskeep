@@ -13,5 +13,37 @@ fn main() {
             std::fs::write(&out, b"").unwrap();
         }
     }
-    tauri_build::build()
+    // Comandos declarados explicitamente: só as janelas com a capability
+    // correspondente (a principal) podem chamá-los. A janela de login do
+    // Google não tem nenhuma.
+    let commands: &[&str] = &[
+        "vault_status",
+        "vault_create",
+        "vault_unlock",
+        "vault_lock",
+        "vault_touch",
+        "vault_change_password",
+        "list_stores",
+        "inspect_backup",
+        "import_backup",
+        "list_chats",
+        "get_messages",
+        "get_messages_around",
+        "search_messages",
+        "gdrive_login",
+        "gdrive_login_manual",
+        "gdrive_cancel",
+        "gdrive_download",
+        "import_media_folder",
+        "media_cancel",
+        "save_media",
+        "export_pick_destination",
+        "export_html",
+        "export_cancel",
+        "open_link",
+    ];
+    tauri_build::try_build(
+        tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(commands)),
+    )
+    .expect("falha no build do Tauri");
 }

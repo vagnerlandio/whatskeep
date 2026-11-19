@@ -401,3 +401,13 @@ fn desempenho_300k_mensagens() {
     );
     assert_eq!(report.messages, 300_012);
 }
+
+#[test]
+fn msgstore_aberto_nao_usa_temporarios_em_disco() {
+    let plain = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/msgstore-modern.db.crypt15")).unwrap();
+    let key = wa_crypt::BackupKey::from_hex(include_str!("../../wa-crypt/tests/fixtures/key15.hex")).unwrap();
+    let db = wa_crypt::decrypt(&plain, &key).unwrap();
+    let conn = wa_import::open_msgstore(&db.data).unwrap();
+    let v: i64 = conn.query_row("PRAGMA temp_store", [], |r| r.get(0)).unwrap();
+    assert_eq!(v, 2, "temp_store deve ser MEMORY");
+}

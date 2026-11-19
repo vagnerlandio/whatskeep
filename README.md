@@ -21,8 +21,11 @@ packages/export-shell/  index.html do export: decifra no navegador (WebCrypto + 
 pnpm install
 pnpm dev               # abre o app em modo desenvolvimento
 cargo test --workspace # testes Rust
-pnpm --filter export-shell test:e2e   # abre exports reais no Chromium e no WebKit (file://)
+pnpm test:e2e          # abre exports reais no Chromium e no WebKit (file://)
+pnpm lint:security     # padrões proibidos no frontend
 ```
+
+Modelo de ameaças, proteções e limitações: [SECURITY.md](SECURITY.md).
 
 ## Que backups dá para abrir
 

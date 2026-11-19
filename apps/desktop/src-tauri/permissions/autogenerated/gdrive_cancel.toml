@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-gdrive-cancel"
+description = "Enables the gdrive_cancel command without any pre-configured scope."
+commands.allow = ["gdrive_cancel"]
+
+[[permission]]
+identifier = "deny-gdrive-cancel"
+description = "Denies the gdrive_cancel command without any pre-configured scope."
+commands.deny = ["gdrive_cancel"]

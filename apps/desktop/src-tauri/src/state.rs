@@ -32,6 +32,8 @@ pub struct AppState {
     last_activity: Mutex<Instant>,
     /// Importações em andamento. O autolock espera elas terminarem.
     busy: AtomicUsize,
+    /// Senhas erradas seguidas (para atrasar tentativas pela UI).
+    failed_unlocks: AtomicUsize,
     /// Sessão do Google Drive (só tokens de acesso, nunca o token mestre).
     pub drive: crate::gdrive::DriveState,
     pub export: crate::export::ExportState,
@@ -47,6 +49,7 @@ impl AppState {
             vault: Mutex::new(None),
             last_activity: Mutex::new(Instant::now()),
             busy: AtomicUsize::new(0),
+            failed_unlocks: AtomicUsize::new(0),
             drive: Default::default(),
             export: Default::default(),
         }
@@ -137,6 +140,23 @@ impl AppState {
         BusyGuard(self)
     }
 
+    /// Espera antes de testar a senha: nada nas 3 primeiras tentativas, depois
+    /// 1, 2, 4... até 30 s. Somado ao Argon2id, chutar senhas pela UI fica
+    /// inviável. (Quem copiar o vault.json ainda pode atacar offline: por isso
+    /// o Argon2id caro e a recomendação de uma senha longa.)
+    pub fn unlock_delay(&self) -> Duration {
+        let n = self.failed_unlocks.load(Ordering::SeqCst);
+        if n < 3 { Duration::ZERO } else { Duration::from_secs((1u64 << (n - 3).min(5)).min(30)) }
+    }
+
+    pub fn unlock_result(&self, ok: bool) {
+        if ok {
+            self.failed_unlocks.store(0, Ordering::SeqCst);
+        } else {
+            self.failed_unlocks.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
     fn idle_for(&self) -> Duration {
         self.last_activity.lock().unwrap_or_else(|e| e.into_inner()).elapsed()
     }
@@ -173,4 +193,24 @@ pub fn spawn_autolock(app: AppHandle) {
 pub fn lock_all(app: &AppHandle) {
     crate::gdrive::shutdown(app);
     app.state::<AppState>().lock();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn atraso_cresce_com_as_senhas_erradas() {
+        let s = AppState::new(PathBuf::from("/nao/existe"));
+        let delays: Vec<u64> = (0..10)
+            .map(|_| {
+                let d = s.unlock_delay().as_secs();
+                s.unlock_result(false);
+                d
+            })
+            .collect();
+        assert_eq!(delays, [0, 0, 0, 1, 2, 4, 8, 16, 30, 30]);
+        s.unlock_result(true);
+        assert_eq!(s.unlock_delay(), Duration::ZERO);
+    }
 }

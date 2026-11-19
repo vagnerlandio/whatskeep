@@ -6,7 +6,9 @@ export type ViewerCtx = {
   /** A lista está rolando: imagens em resolução total esperam parar. */
   scrolling: boolean;
   openMedia: (m: Message) => void;
+  /** Pede confirmação antes de abrir um link da mensagem. */
+  openLink: (url: string) => void;
 };
 
-export const ViewerContext = createContext<ViewerCtx>({ scrolling: false, openMedia: () => {} });
+export const ViewerContext = createContext<ViewerCtx>({ scrolling: false, openMedia: () => {}, openLink: () => {} });
 export const useViewer = () => useContext(ViewerContext);

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-gdrive-login"
+description = "Enables the gdrive_login command without any pre-configured scope."
+commands.allow = ["gdrive_login"]
+
+[[permission]]
+identifier = "deny-gdrive-login"
+description = "Denies the gdrive_login command without any pre-configured scope."
+commands.deny = ["gdrive_login"]

@@ -6,6 +6,7 @@ import { chatTitle, formatPhone } from "./format";
 import Avatar from "./Avatar";
 import MessageRow from "./MessageRow";
 import { Lightbox } from "./MediaView";
+import LinkConfirm from "./LinkConfirm";
 import { ViewerContext } from "./context";
 
 const PAGE = 80;
@@ -38,7 +39,8 @@ export default function ChatPane({ chat, anchor: externalAnchor, onSearchInChat 
   const [atBottom, setAtBottom] = useState(true);
   const [scrolling, setScrolling] = useState(false);
   const [lightbox, setLightbox] = useState<Message | null>(null);
-  const viewerCtx = useMemo(() => ({ scrolling, openMedia: setLightbox }), [scrolling]);
+  const [link, setLink] = useState<string | null>(null);
+  const viewerCtx = useMemo(() => ({ scrolling, openMedia: setLightbox, openLink: setLink }), [scrolling]);
   const loading = useRef(false);
   const virtuoso = useRef<VirtuosoHandle>(null);
 
@@ -241,6 +243,7 @@ export default function ChatPane({ chat, anchor: externalAnchor, onSearchInChat 
       </div>
       </ViewerContext.Provider>
       {lightbox && <Lightbox m={lightbox} onClose={() => setLightbox(null)} />}
+      {link && <LinkConfirm url={link} onClose={() => setLink(null)} />}
     </section>
   );
 }

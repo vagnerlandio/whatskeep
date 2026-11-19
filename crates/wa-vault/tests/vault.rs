@@ -256,3 +256,14 @@ fn tempo_do_kdf_padrao() {
     Vault::unlock(dir.path(), PW).unwrap();
     println!("unlock com KdfParams::DEFAULT: {:?}", t.elapsed());
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn fora_do_time_machine() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("vault");
+    drop(Vault::create(&root, PW, FAST).unwrap());
+    let out = std::process::Command::new("tmutil").arg("isexcluded").arg(&root).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("[Excluded]"), "{text}");
+}

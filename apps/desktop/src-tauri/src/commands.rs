@@ -73,8 +73,10 @@ pub async fn vault_unlock(app: AppHandle, password: String) -> Result<(), CmdErr
     let password = Zeroizing::new(password);
     blocking(move || {
         let state = app.state::<AppState>();
-        let vault = Vault::unlock(&state.vault_dir, &password)?;
-        *state.vault() = Some(vault);
+        std::thread::sleep(state.unlock_delay());
+        let result = Vault::unlock(&state.vault_dir, &password);
+        state.unlock_result(!matches!(result, Err(wa_vault::Error::WrongPassword)));
+        *state.vault() = Some(result?);
         state.touch();
         Ok(())
     })

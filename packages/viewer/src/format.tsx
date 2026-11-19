@@ -4,6 +4,7 @@
 // React de texto. Nunca use dangerouslySetInnerHTML, innerHTML nem href
 // montado a partir de conteúdo de mensagem.
 import { Fragment, ReactNode } from "react";
+import { useViewer } from "./context";
 import type { Chat, MessageKind, Person } from "./types";
 
 // ---------------------------------------------------------------- pessoas
@@ -119,7 +120,11 @@ const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
 
 // ---------------------------------------------------------------- marcação do WhatsApp
 
-type Span = string | { tag: "b" | "i" | "s" | "code"; children: Span[] } | { tag: "pre"; text: string };
+type Span =
+  | string
+  | { tag: "b" | "i" | "s" | "code"; children: Span[] }
+  | { tag: "pre"; text: string }
+  | { tag: "link"; url: string };
 
 // *negrito*, _itálico_, ~tachado~: o marcador precisa estar fora de uma palavra
 // e o conteúdo não pode começar nem terminar com espaço (regra do WhatsApp).
@@ -144,20 +149,60 @@ function parseInline(text: string, depth = 0): Span[] {
   return out;
 }
 
+// Só http(s). A pontuação final (ponto, vírgula, parêntese) fica de fora do link.
+const URL_RE = /\bhttps?:\/\/[^\s<>"'`]+/gi;
+
+function withLinks(text: string): Span[] {
+  const out: Span[] = [];
+  let last = 0;
+  for (const m of text.matchAll(URL_RE)) {
+    let url = m[0];
+    const trail = /[.,;:!?)\]}'"]+$/.exec(url);
+    if (trail) url = url.slice(0, -trail[0].length);
+    const at = m.index!;
+    if (at > last) out.push(...parseInline(text.slice(last, at)));
+    out.push({ tag: "link", url });
+    last = at + url.length;
+  }
+  if (last < text.length) out.push(...parseInline(text.slice(last)));
+  return out;
+}
+
 export function parseWaText(text: string): Span[] {
   const out: Span[] = [];
   const parts = text.split(/```([\s\S]+?)```/);
   parts.forEach((part, i) => {
     if (i % 2 === 1) out.push({ tag: "pre", text: part });
-    else if (part) out.push(...parseInline(part));
+    else if (part) out.push(...withLinks(part));
   });
   return out;
+}
+
+/** Link de mensagem: nunca vira <a href>. Clicar pede confirmação (veja ChatPane). */
+function LinkSpan({ url }: { url: string }) {
+  const { openLink } = useViewer();
+  return (
+    <span
+      className="msg-link"
+      role="link"
+      tabIndex={0}
+      title={url}
+      onClick={(e) => {
+        e.stopPropagation();
+        openLink(url);
+      }}
+      onKeyDown={(e) => e.key === "Enter" && openLink(url)}
+    >
+      {url}
+    </span>
+  );
 }
 
 function renderSpans(spans: Span[]): ReactNode {
   return spans.map((s, i) => {
     if (typeof s === "string") return <Fragment key={i}>{s}</Fragment>;
     if (s.tag === "pre") return <pre key={i}>{s.text}</pre>;
+    if (s.tag === "link") return <LinkSpan key={i} url={s.url} />;
     const Tag = s.tag === "b" ? "strong" : s.tag === "i" ? "em" : s.tag === "s" ? "del" : "code";
     return <Tag key={i}>{renderSpans(s.children)}</Tag>;
   });

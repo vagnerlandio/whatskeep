@@ -23,6 +23,14 @@ wa-vault = { path = "../../../crates/wa-vault" }
 wa-gdrive = { path = "../../../crates/wa-gdrive" }
 wa-export = { path = "../../../crates/wa-export" }
 tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+url = "2"
+
+[dev-dependencies]
+tauri = { version = "2", features = ["test"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 zeroize = { version = "1", features = ["std"] }
 base64 = "0.22"
 rusqlite = { workspace = true }

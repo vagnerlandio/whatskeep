@@ -1,14 +1,37 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permissões mínimas da janela principal. Cada plugin novo entra aqui com escopo explícito.",
+  "description": "Permissões mínimas da janela principal. Sem devtools, sem consultas de janela, sem emitir eventos. Cada comando do app é liberado aqui um a um.",
   "windows": [
     "main"
   ],
   "permissions": [
-    "core:event:default",
-    "core:window:default",
-    "core:webview:default",
-    "dialog:allow-open"
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "dialog:allow-open",
+    "allow-vault-status",
+    "allow-vault-create",
+    "allow-vault-unlock",
+    "allow-vault-lock",
+    "allow-vault-touch",
+    "allow-vault-change-password",
+    "allow-list-stores",
+    "allow-inspect-backup",
+    "allow-import-backup",
+    "allow-list-chats",
+    "allow-get-messages",
+    "allow-get-messages-around",
+    "allow-search-messages",
+    "allow-gdrive-login",
+    "allow-gdrive-login-manual",
+    "allow-gdrive-cancel",
+    "allow-gdrive-download",
+    "allow-import-media-folder",
+    "allow-media-cancel",
+    "allow-save-media",
+    "allow-export-pick-destination",
+    "allow-export-html",
+    "allow-export-cancel",
+    "allow-open-link"
   ]
 }

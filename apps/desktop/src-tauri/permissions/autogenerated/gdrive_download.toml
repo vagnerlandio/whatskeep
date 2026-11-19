@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-gdrive-download"
+description = "Enables the gdrive_download command without any pre-configured scope."
+commands.allow = ["gdrive_download"]
+
+[[permission]]
+identifier = "deny-gdrive-download"
+description = "Denies the gdrive_download command without any pre-configured scope."
+commands.deny = ["gdrive_download"]
