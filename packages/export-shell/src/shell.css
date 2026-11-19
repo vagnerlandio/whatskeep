@@ -9,3 +9,9 @@
   gap: 8px;
   align-items: flex-start;
 }
+
+/* Seletor de idioma na tela de senha (antes de abrir o histórico). */
+.unlock-lang {
+  align-self: flex-end;
+  margin-bottom: -8px;
+}

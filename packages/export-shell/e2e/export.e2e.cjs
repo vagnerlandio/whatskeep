@@ -8,7 +8,8 @@ const results = [];
 const check = (name, ok, extra = "") => (ok || failed++, results.push(`${ok ? "OK  " : "FALHOU"} ${name}${extra ? " — " + extra : ""}`));
 
 async function openPkg(browser, pkg) {
-  const page = await browser.newPage({ viewport: { width: 1200, height: 800 } });
+  // Força o português: as verificações procuram os textos da interface em pt-BR.
+  const page = await browser.newPage({ viewport: { width: 1200, height: 800 }, locale: "pt-BR" });
   const problems = [];
   page.on("request", (r) => { if (!r.url().startsWith("file:") && !r.url().startsWith("blob:") && !r.url().startsWith("data:")) problems.push("REDE " + r.url()); });
   page.on("console", (m) => { if (m.type() === "error" || /Content Security Policy|Refused/i.test(m.text())) problems.push("CONSOLE " + m.text()); });
@@ -103,6 +104,20 @@ async function unlock(page, password) {
       const found = await page.waitForSelector(".search-hit", { timeout: 10000 }).then(() => true, () => false);
       check(`${bname}: com a senha B, a busca cobre as duas`, found);
       check(`${bname}: (por conversa) sem rede/CSP/erros`, problems.length === 0, problems.slice(0, 3).join(" | "));
+      await page.close();
+    }
+
+    // 4) Troca de idioma na tela de senha (só na memória da página)
+    {
+      const { page, problems } = await openPkg(browser, "cifrado");
+      await page.waitForSelector("input[type=password]");
+      await page.click(".unlock-lang .lang-trigger");
+      await page.click(".lang-option:has-text('English')");
+      const en = await page.waitForSelector("text=This history is encrypted", { timeout: 5000 }).then(() => true, () => false);
+      await unlock(page, "senha errada qualquer");
+      const wrong = await page.waitForSelector("text=Wrong password", { timeout: 30000 }).then(() => true, () => false);
+      check(`${bname}: tela de senha em inglês`, en && wrong);
+      check(`${bname}: (idioma) sem rede/CSP/erros`, problems.length === 0, problems.slice(0, 3).join(" | "));
       await page.close();
     }
     await browser.close();

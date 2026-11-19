@@ -1,5 +1,6 @@
 // Carrega os arquivos do pacote. Em file:// o navegador bloqueia fetch(), mas
 // permite <script src>: cada arquivo de dados chama uma função global.
+import { ShellError } from "./messages";
 
 declare global {
   interface Window {
@@ -24,7 +25,7 @@ function loadScript(src: string): Promise<void> {
     };
     s.onerror = () => {
       s.remove();
-      reject(new Error(`não foi possível ler ${src}`));
+      reject(new ShellError("read_failed", src));
     };
     document.head.appendChild(s);
   });
@@ -34,13 +35,13 @@ export async function loadManifest(): Promise<unknown> {
   await loadScript("data/manifest.js");
   const m = window.__waManifest;
   delete window.__waManifest;
-  if (!m) throw new Error("manifest ausente");
+  if (!m) throw new ShellError("manifest_missing");
   return m;
 }
 
 /** Conteúdo (base64) de um pedaço. O id vem do slot decifrado. */
 export async function loadChunk(id: string): Promise<string> {
-  if (!/^[0-9a-f]{16}$/.test(id)) throw new Error("id de pedaço inválido");
+  if (!/^[0-9a-f]{16}$/.test(id)) throw new ShellError("bad_chunk_id");
   const got = new Promise<string>((resolve) => pending.set(id, resolve));
   await loadScript(`data/${id}.js`);
   return got;

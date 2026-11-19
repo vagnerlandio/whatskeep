@@ -1,14 +1,27 @@
 import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
-import { errorOf, Icon, RailButton, Viewer } from "@wa/viewer";
+import { detectLang, Icon, Lang, LangProvider, LanguageSelect, RailButton, useLang, Viewer } from "@wa/viewer";
 import { BundleSource } from "./bundle";
 import { loadManifest } from "./loader";
+import { errorText, useShellT } from "./messages";
 
 /** Sem interação por esse tempo, a página esquece tudo (recarrega). */
 const AUTOLOCK_MS = 15 * 60 * 1000;
 
 export default function App() {
+  // A escolha do idioma vale só para esta sessão: a página não grava nada.
+  const [lang, setLang] = useState<Lang>(detectLang);
+  return (
+    <LangProvider lang={lang} setLang={setLang}>
+      <Shell />
+    </LangProvider>
+  );
+}
+
+function Shell() {
+  const t = useShellT();
+  const { lang } = useLang();
   const [source, setSource] = useState<BundleSource | null>(null);
-  const [fatal, setFatal] = useState<string | null>(null);
+  const [fatal, setFatal] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
   const [version, setVersion] = useState(0);
   const [askMore, setAskMore] = useState(false);
@@ -17,12 +30,11 @@ export default function App() {
   useEffect(() => {
     loadManifest()
       .then((m) => setSource(new BundleSource(m as ConstructorParameters<typeof BundleSource>[0])))
-      .catch(() =>
-        setFatal(
-          "Não foi possível ler os dados do histórico. Abra o index.html de dentro da pasta exportada (com a pasta data ao lado).",
-        ),
-      );
+      .catch(() => setFatal(true));
   }, []);
+
+  // As dicas de mídia vêm do BundleSource; ele acompanha o idioma da tela.
+  if (source) source.lang = lang;
 
   useEffect(() => {
     if (!unlocked) return;
@@ -48,13 +60,13 @@ export default function App() {
     if (!source || !files) return;
     const n = source.setFolder(files);
     if (n === 0) {
-      alert("Nenhuma mídia encontrada. Selecione a pasta que contém o index.html deste histórico.");
+      alert(t.noMediaFound);
       return;
     }
     setVersion((v) => v + 1); // remonta o visualizador para carregar as mídias
   }
 
-  if (fatal) return <Centered><div className="result error">{fatal}</div></Centered>;
+  if (fatal) return <Centered><div className="result error">{t.cantRead}</div></Centered>;
   if (!source) return null;
   if (!unlocked || askMore) {
     return (
@@ -76,15 +88,15 @@ export default function App() {
   const needsFolder = source.mediaMode === "encrypted" && !source.hasMediaFolder;
   const railBottom = (
     <>
-      <RailButton icon="key" title="Liberar mais conversas com outra senha" onClick={() => setAskMore(true)} />
+      <RailButton icon="key" title={t.unlockMore} onClick={() => setAskMore(true)} />
       {source.mediaMode === "encrypted" && (
         <RailButton
           icon="folder"
-          title="Selecionar a pasta do histórico (fotos e vídeos)"
+          title={t.pickFolderTitle}
           onClick={() => folderInput.current?.click()}
         />
       )}
-      <RailButton icon="lock" title="Travar (esquece tudo o que foi aberto)" onClick={lock} />
+      <RailButton icon="lock" title={t.lock} onClick={lock} />
       <input
         ref={folderInput}
         type="file"
@@ -97,8 +109,8 @@ export default function App() {
   );
   const banner = needsFolder ? (
     <div className="folder-banner">
-      <span>Para ver fotos e vídeos, selecione a pasta deste histórico.</span>
-      <button onClick={() => folderInput.current?.click()}>Selecionar pasta</button>
+      <span>{t.folderBanner}</span>
+      <button onClick={() => folderInput.current?.click()}>{t.pickFolder}</button>
     </div>
   ) : null;
 
@@ -106,11 +118,11 @@ export default function App() {
     <Viewer
       key={version}
       source={source}
-      title="Histórico"
+      title={t.viewerTitle}
       railBottom={railBottom}
       banner={banner}
-      emptyTitle="Histórico do WhatsApp"
-      emptyNote={`${source.unlockedCount} conversas liberadas. Nada sai deste computador: a página não acessa a internet.`}
+      emptyTitle={t.title}
+      emptyNote={t.emptyNote(source.unlockedCount)}
     />
   );
 }
@@ -134,9 +146,12 @@ function Unlock({
   onDone: () => void;
   onCancel?: () => void;
 }) {
+  const t = useShellT();
+  const { lang } = useLang();
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Guarda o erro em si (não o texto) para trocar de idioma junto com a tela.
+  const [error, setError] = useState<"wrong" | "noNew" | { err: unknown } | null>(null);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -149,30 +164,29 @@ function Unlock({
       const added = await source.unlock(password);
       setPassword("");
       if (added === 0) {
-        setError(more ? "Essa senha não liberou nenhuma conversa nova." : "Senha incorreta.");
+        setError(more ? "noNew" : "wrong");
         setBusy(false);
         return;
       }
       onDone();
     } catch (err) {
-      setError(errorOf(err).message);
+      setError({ err });
       setBusy(false);
     }
   }
 
   return (
     <form className="card narrow" onSubmit={submit}>
+      <LanguageSelect className="unlock-lang" />
       <div className="lock-icon">
         <Icon name="lockKeyhole" size={40} strokeWidth={1.5} />
       </div>
-      <h1>{more ? "Outra senha" : "Histórico do WhatsApp"}</h1>
+      <h1>{more ? t.moreTitle : t.title}</h1>
       <p className="muted">
-        {more
-          ? "Cada senha libera as conversas que foram exportadas com ela."
-          : "Este histórico é cifrado. Digite a senha definida na exportação."}
+        {more ? t.moreIntro : t.intro}
       </p>
       <label>
-        Senha
+        {t.password}
         <input
           type="password"
           autoFocus
@@ -182,15 +196,19 @@ function Unlock({
           disabled={busy}
         />
       </label>
-      {error && <div className="result error">{error}</div>}
+      {error && (
+        <div className="result error">
+          {error === "wrong" ? t.wrongPassword : error === "noNew" ? t.noNewChats : errorText(error.err, lang)}
+        </div>
+      )}
       <div className="row-buttons">
         {onCancel && (
           <button type="button" onClick={onCancel} disabled={busy}>
-            Voltar
+            {t.back}
           </button>
         )}
         <button className="primary" type="submit" disabled={!password || busy}>
-          {busy ? "Abrindo…" : "Abrir"}
+          {busy ? t.opening : t.open}
         </button>
       </div>
     </form>

@@ -1,7 +1,8 @@
 // DataSource do export: tudo é decifrado aqui no navegador, sob demanda.
-import type { Anchor, Around, Chat, Cursor, DataSource, Message, SearchHit } from "@wa/viewer";
+import type { Anchor, Around, Chat, Cursor, DataSource, Lang, Message, SearchHit } from "@wa/viewer";
 import { aesKey, b64, hkdf, Kdf, open, openStream, passwordKey, streamLen, unpackChunk } from "./crypto";
 import { loadChunk } from "./loader";
+import { ShellError, shellMessages } from "./messages";
 
 type Manifest = {
   format: number;
@@ -38,9 +39,11 @@ export class BundleSource implements DataSource {
   private packs = new Map<number, File>();
   private urls = new Map<string, string>();
   readonly mediaMode: Manifest["media"];
+  /** Idioma dos textos que o visualizador lê daqui (dicas e erros). */
+  lang: Lang = "pt-BR";
 
   constructor(private manifest: Manifest) {
-    if (manifest.format !== 1) throw new Error("versão do pacote não suportada");
+    if (manifest.format !== 1) throw new ShellError("unsupported_format");
     this.salt = b64(manifest.kdf.salt);
     this.mediaMode = manifest.media;
   }
@@ -99,13 +102,13 @@ export class BundleSource implements DataSource {
 
   private load(chatId: number): Promise<StoredMessage[]> {
     const s = this.chatsById.get(chatId);
-    if (!s) return Promise.reject(new Error("conversa não liberada"));
+    if (!s) return Promise.reject(new ShellError("chat_locked", "", this.lang));
     if (s.messages) return Promise.resolve(s.messages);
     s.loading ??= (async () => {
       const key = await this.chatKey(s);
       const all: StoredMessage[] = [];
       for (const id of s.chunks) {
-        const blob = b64(await loadChunk(id));
+        const blob = b64(await loadChunk(id).catch((e) => Promise.reject(e instanceof ShellError ? e.in(this.lang) : e)));
         const plain = await open(key, blob.subarray(0, 12), blob.subarray(12), id);
         const json = (await unpackChunk(plain)) as { messages: Partial<StoredMessage>[] };
         for (const m of json.messages) all.push(normalizeMessage(m));
@@ -201,7 +204,7 @@ export class BundleSource implements DataSource {
       raw.fill(0);
       const read = async (off: number, len: number) =>
         new Uint8Array(await pack.slice(ref.o + off, ref.o + off + len).arrayBuffer());
-      if (ref.o + streamLen(ref.n) > pack.size) throw new Error("pacote de mídia truncado");
+      if (ref.o + streamLen(ref.n) > pack.size) throw new ShellError("media_truncated", "", this.lang);
       const parts = await openStream(key, b64(ref.np), ref.id, read, ref.n);
       return this.cachedUrl(cacheKey, () => new Blob(parts, { type: safeMime(ref.mime) }));
     })();
@@ -219,9 +222,9 @@ export class BundleSource implements DataSource {
 
   mediaHint(): string | null {
     if (this.mediaMode === "encrypted" && !this.hasMediaFolder) {
-      return "Para ver fotos e vídeos, selecione a pasta deste histórico (botão no topo).";
+      return shellMessages[this.lang].hintPickFolder;
     }
-    return "Arquivo grande demais para abrir no navegador.";
+    return shellMessages[this.lang].hintTooLarge;
   }
 
   /** Esquece chaves e mídias decifradas (travar). */

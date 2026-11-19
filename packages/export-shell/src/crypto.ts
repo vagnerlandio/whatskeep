@@ -1,5 +1,6 @@
 // Leitura do formato do export (espelho de crates/wa-export/src/format.rs).
 import { argon2id } from "hash-wasm";
+import { ShellError } from "./messages";
 
 export const SEGMENT = 1 << 20;
 export const TAG = 16;
@@ -16,7 +17,7 @@ export type Kdf = { alg: string; m: number; t: number; p: number; salt: string }
 
 /** Senha → chave do slot (Argon2id em WASM, ~1 s com os parâmetros padrão). */
 export async function passwordKey(password: string, kdf: Kdf): Promise<CryptoKey> {
-  if (kdf.alg !== "argon2id") throw new Error("KDF desconhecido");
+  if (kdf.alg !== "argon2id") throw new ShellError("unknown_kdf");
   const raw = await argon2id({
     password,
     salt: b64(kdf.salt),
