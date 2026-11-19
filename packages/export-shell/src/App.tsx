@@ -4,11 +4,11 @@ import { BundleSource } from "./bundle";
 import { loadManifest } from "./loader";
 import { errorText, useShellT } from "./messages";
 
-/** Sem interação por esse tempo, a página esquece tudo (recarrega). */
+/** With no interaction for this long, the page forgets everything (reloads). */
 const AUTOLOCK_MS = 15 * 60 * 1000;
 
 export default function App() {
-  // A escolha do idioma vale só para esta sessão: a página não grava nada.
+  // The language choice only lasts for this session: the page stores nothing.
   const [lang, setLang] = useState<Lang>(detectLang);
   return (
     <LangProvider lang={lang} setLang={setLang}>
@@ -33,7 +33,7 @@ function Shell() {
       .catch(() => setFatal(true));
   }, []);
 
-  // As dicas de mídia vêm do BundleSource; ele acompanha o idioma da tela.
+  // The media hints come from the BundleSource; it follows the screen's language.
   if (source) source.lang = lang;
 
   useEffect(() => {
@@ -63,7 +63,7 @@ function Shell() {
       alert(t.noMediaFound);
       return;
     }
-    setVersion((v) => v + 1); // remonta o visualizador para carregar as mídias
+    setVersion((v) => v + 1); // remounts the viewer to load the media
   }
 
   if (fatal) return <Centered><div className="result error">{t.cantRead}</div></Centered>;
@@ -101,7 +101,7 @@ function Shell() {
         ref={folderInput}
         type="file"
         hidden
-        // Seleciona a pasta inteira: o navegador só lê arquivos que o usuário escolhe.
+        // Selects the whole folder: the browser only reads files the user picks.
         {...{ webkitdirectory: "", directory: "" }}
         onChange={(e) => onFolder(e.target.files)}
       />
@@ -150,7 +150,7 @@ function Unlock({
   const { lang } = useLang();
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  // Guarda o erro em si (não o texto) para trocar de idioma junto com a tela.
+  // Stores the error itself (not the text) so it switches language along with the screen.
   const [error, setError] = useState<"wrong" | "noNew" | { err: unknown } | null>(null);
 
   async function submit(e: FormEvent) {
@@ -158,7 +158,7 @@ function Unlock({
     if (!password || busy) return;
     setBusy(true);
     setError(null);
-    // Deixa o "Abrindo…" aparecer antes do Argon2id ocupar a página.
+    // Lets "Opening…" show up before Argon2id hogs the page.
     await new Promise((r) => setTimeout(r, 30));
     try {
       const added = await source.unlock(password);

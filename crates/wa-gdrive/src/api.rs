@@ -1,12 +1,12 @@
-//! API `backup.googleapis.com/v1` usada pelo app do WhatsApp.
+//! The `backup.googleapis.com/v1` API used by the WhatsApp app.
 //!
-//! * `clients/wa/backups` lista os backups da conta (um por número de telefone).
-//! * `<backup>/files` lista os arquivos, com `md5Hash` (base64) e `sizeBytes`.
-//! * `<arquivo>?alt=media` baixa o conteúdo.
+//! * `clients/wa/backups` lists the account's backups (one per phone number).
+//! * `<backup>/files` lists the files, with `md5Hash` (base64) and `sizeBytes`.
+//! * `<file>?alt=media` downloads the content.
 //!
-//! Em backups com criptografia de ponta a ponta, as mídias têm nome ofuscado
-//! (`<hash>.mcrypt1`) e o nome real fica em `metadata`, cifrado. O banco de
-//! mensagens continua em `Databases/msgstore.db.crypt15`.
+//! In end-to-end encrypted backups, media files have obfuscated names
+//! (`<hash>.mcrypt1`) and the real name is in `metadata`, encrypted. The
+//! message database is still `Databases/msgstore.db.crypt15`.
 
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -21,19 +21,19 @@ use serde::{Deserialize, Serialize};
 use crate::auth::AccessToken;
 use crate::{Endpoints, Error, http};
 
-/// Limite de tamanho de um arquivo baixado para a memória.
+/// Size limit for a file downloaded into memory.
 pub const MAX_DOWNLOAD: u64 = 8 << 30;
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Backup {
-    /// `clients/wa/backups/<id>`. Não é exibido: o id costuma ser o telefone.
+    /// `clients/wa/backups/<id>`. Not displayed: the id is usually the phone number.
     pub name: String,
-    /// Telefone do backup (o id), quando é só dígitos.
+    /// The backup's phone number (the id), when it is digits only.
     pub phone: Option<String>,
     pub update_time: Option<String>,
     pub size_bytes: Option<u64>,
-    /// Ainda sendo enviado pelo celular (incompleto).
+    /// Still being uploaded by the phone (incomplete).
     pub uploading: bool,
     pub encrypted: Option<bool>,
     pub chat_db_size: Option<u64>,
@@ -45,15 +45,15 @@ pub struct Backup {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackupFile {
-    /// Caminho completo na API.
+    /// Full path in the API.
     pub name: String,
-    /// Caminho dentro do backup (`Databases/msgstore.db.crypt15`).
+    /// Path inside the backup (`Databases/msgstore.db.crypt15`).
     pub path: String,
     pub size_bytes: u64,
-    /// MD5 do conteúdo, quando informado.
+    /// MD5 of the content, when provided.
     #[serde(skip)]
     pub md5: Option<[u8; 16]>,
-    /// Metadados cifrados (base64) de arquivos `.mcrypt1`, com o nome real.
+    /// Encrypted metadata (base64) of `.mcrypt1` files, with the real name.
     #[serde(skip)]
     pub metadata: Option<String>,
 }
@@ -88,14 +88,14 @@ pub struct Api<'a> {
 
 impl<'a> Api<'a> {
     pub fn new(ep: &'a Endpoints, token: &'a AccessToken) -> Result<Self, Error> {
-        // Sem timeout total: um download grande pode levar muito tempo. O
-        // timeout de conexão fica no cliente.
+        // No overall timeout: a large download can take a long time. The
+        // connect timeout is set on the client.
         Ok(Self { ep, token, client: http::client(None)? })
     }
 
     fn get(&self, path: &str, query: &[(&str, &str)]) -> Result<reqwest::blocking::Response, Error> {
-        // Cada segmento do caminho é codificado separadamente (nomes de
-        // arquivo vêm do Google e podem ter espaços ou `%`).
+        // Each path segment is encoded separately (file names come from
+        // Google and may contain spaces or `%`).
         let mut url = url::Url::parse(&self.ep.backup).map_err(|_| Error::Unexpected("URL base inválida"))?;
         url.path_segments_mut()
             .map_err(|_| Error::Unexpected("URL base inválida"))?
@@ -109,21 +109,21 @@ impl<'a> Api<'a> {
             if query.is_empty() {
                 String::new()
             } else {
-                // pageToken é opaco, mas não precisa aparecer.
+                // pageToken is opaque, but it does not need to be shown.
                 let q: Vec<String> = query
                     .iter()
-                    .map(|(k, v)| if *k == "pageToken" { format!("{k}=<redigido>") } else { format!("{k}={v}") })
+                    .map(|(k, v)| if *k == "pageToken" { format!("{k}=<redacted>") } else { format!("{k}={v}") })
                     .collect();
                 format!("?{}", q.join("&"))
             }
         );
         let started = std::time::Instant::now();
-        tracing::debug!(target: "wa_gdrive::http", "→ GET {shown} (Authorization: Bearer <redigido>)");
+        tracing::debug!(target: "wa_gdrive::http", "→ GET {shown} (Authorization: Bearer <redacted>)");
         let resp = match self.client.get(url).bearer_auth(self.token.expose()).send() {
             Ok(r) => r,
             Err(e) => {
                 let err: Error = e.into();
-                tracing::warn!(target: "wa_gdrive::http", ms = started.elapsed().as_millis() as u64, "✗ GET {shown} falhou: {}", err);
+                tracing::warn!(target: "wa_gdrive::http", ms = started.elapsed().as_millis() as u64, "✗ GET {shown} failed: {}", err);
                 return Err(err);
             }
         };
@@ -135,7 +135,7 @@ impl<'a> Api<'a> {
             tracing::debug!(target: "wa_gdrive::http", status = status.as_u16(), ms, content_type, length, "← GET {shown}");
             return Ok(resp);
         }
-        // Erro: o corpo (JSON de erro do Google) ajuda a entender o motivo.
+        // Error: the body (Google's error JSON) helps understand the reason.
         let body = resp.bytes().map(|b| b.to_vec()).unwrap_or_default();
         let detail = match serde_json::from_slice::<serde_json::Value>(&body) {
             Ok(v) => crate::trace::json(&v).to_string(),
@@ -150,7 +150,7 @@ impl<'a> Api<'a> {
         }
     }
 
-    /// Todas as páginas de uma listagem (`<path>` → campo com o último segmento).
+    /// All pages of a listing (`<path>` → field named after the last segment).
     fn list<T: for<'de> Deserialize<'de>>(&self, path: &str) -> Result<Vec<T>, Error> {
         let field = path.rsplit('/').next().unwrap_or(path);
         let mut out = Vec::new();
@@ -164,11 +164,11 @@ impl<'a> Api<'a> {
             let page: serde_json::Value = match serde_json::from_slice(&body) {
                 Ok(v) => v,
                 Err(_) => {
-                    tracing::warn!(target: "wa_gdrive::http", "listagem não é JSON: {}", crate::trace::text_snippet(&body));
+                    tracing::warn!(target: "wa_gdrive::http", "listing is not JSON: {}", crate::trace::text_snippet(&body));
                     return Err(Error::Unexpected("JSON inválido na listagem"));
                 }
             };
-            tracing::debug!(target: "wa_gdrive::http", bytes = body.len(), "  corpo: {}", crate::trace::json(&page));
+            tracing::debug!(target: "wa_gdrive::http", bytes = body.len(), "  body: {}", crate::trace::json(&page));
             if let Some(items) = page.get(field) {
                 out.extend(
                     serde_json::from_value::<Vec<T>>(items.clone())
@@ -208,9 +208,9 @@ impl<'a> Api<'a> {
             .collect())
     }
 
-    /// Baixa um arquivo para a memória, conferindo tamanho e MD5.
+    /// Downloads a file into memory, checking size and MD5.
     ///
-    /// `progress(baixado, total)` é chamado a cada ~1 MiB. `cancel` interrompe.
+    /// `progress(downloaded, total)` is called every ~1 MiB. `cancel` aborts.
     pub fn download(
         &self,
         file: &BackupFile,
@@ -248,21 +248,21 @@ impl<'a> Api<'a> {
         progress(out.len() as u64, file.size_bytes);
         let ms = started.elapsed().as_millis() as u64;
         if file.size_bytes > 0 && out.len() as u64 != file.size_bytes {
-            tracing::warn!(target: "wa_gdrive::http", recebido = out.len(), anunciado = file.size_bytes, ms, "download incompleto: {shown}");
+            tracing::warn!(target: "wa_gdrive::http", received = out.len(), announced = file.size_bytes, ms, "incomplete download: {shown}");
             return Err(Error::Incomplete);
         }
         let md5_ok = file.md5.map(|expected| md5.finalize().as_slice() == expected);
         let mbps = out.len() as f64 / 1_048_576.0 / (ms.max(1) as f64 / 1000.0);
         if md5_ok == Some(false) {
-            tracing::warn!(target: "wa_gdrive::http", bytes = out.len(), ms, "MD5 não confere: {shown}");
+            tracing::warn!(target: "wa_gdrive::http", bytes = out.len(), ms, "MD5 mismatch: {shown}");
             return Err(Error::Checksum);
         }
-        tracing::debug!(target: "wa_gdrive::http", bytes = out.len(), ms, md5 = ?md5_ok, "baixado {shown} ({mbps:.1} MB/s)");
+        tracing::debug!(target: "wa_gdrive::http", bytes = out.len(), ms, md5 = ?md5_ok, "downloaded {shown} ({mbps:.1} MB/s)");
         Ok(out)
     }
 }
 
-/// `clients/wa/backups/<id>` com id seguro para entrar numa URL.
+/// `clients/wa/backups/<id>` with an id that is safe to put in a URL.
 fn is_backup_name(name: &str) -> bool {
     name.strip_prefix("clients/wa/backups/")
         .is_some_and(|id| !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'))
@@ -284,7 +284,7 @@ fn parse_backup(raw: RawBackup) -> Backup {
         update_time: raw.update_time,
         size_bytes: raw.size_bytes.and_then(|s| s.parse().ok()),
         uploading: raw.active_transaction_id.is_some(),
-        // Formato antigo: `encryptedBackupEnabled`. Atual (visto em 2026-11):
+        // Old format: `encryptedBackupEnabled`. Current (seen in 2026-11):
         // `encryptedBackupMetadata.isPasswordOrEncryptionKeyEncrypted`.
         encrypted: meta.get("encryptedBackupEnabled").and_then(|v| v.as_bool()).or_else(|| {
             let m = meta.get("encryptedBackupMetadata")?;
@@ -302,8 +302,8 @@ fn parse_backup(raw: RawBackup) -> Backup {
     }
 }
 
-/// O banco de mensagens principal do backup: `Databases/msgstore.db.crypt15`
-/// (ou `.crypt14`/`.crypt12`, em backups sem criptografia de ponta a ponta).
+/// The backup's main message database: `Databases/msgstore.db.crypt15`
+/// (or `.crypt14`/`.crypt12`, in backups without end-to-end encryption).
 pub fn find_msgstore(files: &[BackupFile]) -> Option<&BackupFile> {
     ["crypt15", "crypt14", "crypt12"].iter().find_map(|ext| {
         let want = format!("Databases/msgstore.db.{ext}");
@@ -316,7 +316,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn nome_de_backup_seguro() {
+    fn safe_backup_name() {
         assert!(is_backup_name("clients/wa/backups/5511999999999"));
         assert!(!is_backup_name("clients/wa/backups/../../x"));
         assert!(!is_backup_name("clients/wa/backups/"));
@@ -324,7 +324,7 @@ mod tests {
     }
 
     #[test]
-    fn metadados_do_backup() {
+    fn backup_metadata() {
         let b = parse_backup(RawBackup {
             name: "clients/wa/backups/5511999999999".into(),
             update_time: Some("2026-11-01T10:00:00.000Z".into()),
@@ -339,7 +339,7 @@ mod tests {
     }
 
     #[test]
-    fn escolhe_o_msgstore() {
+    fn picks_the_msgstore() {
         let f = |p: &str| BackupFile { name: format!("x/files/{p}"), path: p.into(), size_bytes: 1, md5: None, metadata: None };
         let files = [f("Databases/msgstore-2026-01-01.1.db.crypt15"), f("Databases/msgstore.db.crypt14"), f("Databases/msgstore.db.crypt15"), f("Media/ab.mcrypt1")];
         assert_eq!(find_msgstore(&files).unwrap().path, "Databases/msgstore.db.crypt15");
@@ -348,7 +348,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod tests_metadados {
+mod tests_metadata {
     use super::*;
 
     fn raw(metadata: &str) -> RawBackup {
@@ -362,15 +362,15 @@ mod tests_metadados {
     }
 
     #[test]
-    fn e2e_nos_dois_formatos_de_metadados() {
-        // Formato atual (backup real de 2026-11, sem E2E).
-        let atual = r#"{"backupSize":3591962311,"chatdbSize":673041098,"encryptedBackupMetadata":{"isEncryptionKeyEncrypted":false,"isPasswordEncrypted":false,"isPasswordOrEncryptionKeyEncrypted":false},"numOfMessages":841593,"mediaSize":2860451951,"versionOfAppWhenBackup":"2.26.44.90-play-release"}"#;
-        let b = parse_backup(raw(atual));
+    fn e2e_in_both_metadata_formats() {
+        // Current format (real backup from 2026-11, without E2E).
+        let current = r#"{"backupSize":3591962311,"chatdbSize":673041098,"encryptedBackupMetadata":{"isEncryptionKeyEncrypted":false,"isPasswordEncrypted":false,"isPasswordOrEncryptionKeyEncrypted":false},"numOfMessages":841593,"mediaSize":2860451951,"versionOfAppWhenBackup":"2.26.44.90-play-release"}"#;
+        let b = parse_backup(raw(current));
         assert_eq!(b.encrypted, Some(false));
         assert_eq!((b.chat_db_size, b.messages), (Some(673041098), Some(841593)));
-        let com_chave = r#"{"encryptedBackupMetadata":{"isEncryptionKeyEncrypted":true,"isPasswordEncrypted":false}}"#;
-        assert_eq!(parse_backup(raw(com_chave)).encrypted, Some(true));
-        // Formato antigo.
+        let with_key = r#"{"encryptedBackupMetadata":{"isEncryptionKeyEncrypted":true,"isPasswordEncrypted":false}}"#;
+        assert_eq!(parse_backup(raw(with_key)).encrypted, Some(true));
+        // Old format.
         assert_eq!(parse_backup(raw(r#"{"encryptedBackupEnabled":true}"#)).encrypted, Some(true));
         assert_eq!(parse_backup(raw("{}")).encrypted, None);
     }

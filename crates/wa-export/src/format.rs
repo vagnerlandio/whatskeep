@@ -1,19 +1,19 @@
-//! Formato do pacote exportado (versão 1). O navegador (`packages/export-shell`)
-//! implementa a leitura com WebCrypto + Argon2id em WASM; este módulo implementa
-//! a escrita e, para os testes, a mesma leitura.
+//! Format of the exported package (version 1). The browser (`packages/export-shell`)
+//! implements reading with WebCrypto + Argon2id in WASM; this module implements
+//! writing and, for the tests, the same reading.
 //!
 //! ```text
-//! senha ──Argon2id(salt, m, t, p)──► chave do slot ──AES-GCM──► { master, conversas }
-//! master ──HKDF(salt, "wa-export chat v1:" ‖ id)──► chave da conversa (pedaços)
-//! chave da conversa ──HKDF(salt, "wa-export media v1:" ‖ id da mídia)──► chave da mídia
+//! password ──Argon2id(salt, m, t, p)──► slot key ──AES-GCM──► { master, chats }
+//! master ──HKDF(salt, "wa-export chat v1:" ‖ id)──► chat key (chunks)
+//! chat key ──HKDF(salt, "wa-export media v1:" ‖ media id)──► media key
 //! ```
 //!
-//! * Os ids (de conversa, pedaço e mídia) são aleatórios: nada no nome dos
-//!   arquivos revela contato, data ou quantidade.
-//! * Pedaço: `[u32 LE tamanho][gzip(JSON)][zeros até múltiplo de 64 KiB]`,
-//!   cifrado com AES-256-GCM (nonce aleatório, AAD = id do pedaço).
-//! * Mídia cifrada: segmentos STREAM de 1 MiB (nonce = prefixo 7 ‖ i u32 BE ‖
-//!   último, AAD = id da mídia), como no cofre.
+//! * The ids (of chats, chunks and media) are random: nothing in the file
+//!   names reveals a contact, date or count.
+//! * Chunk: `[u32 LE length][gzip(JSON)][zeros up to a multiple of 64 KiB]`,
+//!   encrypted with AES-256-GCM (random nonce, AAD = chunk id).
+//! * Encrypted media: 1 MiB STREAM segments (nonce = 7-byte prefix ‖ i u32 BE ‖
+//!   last, AAD = media id), as in the vault.
 
 use std::io::{Read, Write};
 
@@ -34,13 +34,13 @@ pub const FORMAT: u32 = 1;
 pub const SLOT_AAD: &[u8] = b"wa-export slot v1";
 pub const SEGMENT: usize = 1 << 20;
 pub const TAG: usize = 16;
-/// Pedaços arredondados para múltiplos disso: o tamanho do arquivo não
-/// revela o volume exato de mensagens.
+/// Chunks are rounded up to multiples of this: the file size does not
+/// reveal the exact message volume.
 pub const PAD: usize = 64 << 10;
 
 pub type Key = Zeroizing<[u8; 32]>;
 
-/// Custo do Argon2id no navegador (WASM, uma thread): 64 MiB, 3 iterações.
+/// Argon2id cost in the browser (WASM, single thread): 64 MiB, 3 iterations.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Kdf {
     pub m: u32,
@@ -50,7 +50,7 @@ pub struct Kdf {
 
 impl Kdf {
     pub const DEFAULT: Self = Self { m: 64 * 1024, t: 3, p: 1 };
-    /// Só para testes.
+    /// Tests only.
     pub const TEST: Self = Self { m: 8 * 1024, t: 1, p: 1 };
 }
 
@@ -59,7 +59,7 @@ pub struct Manifest {
     pub format: u32,
     pub kdf: KdfJson,
     pub slots: Vec<Sealed>,
-    /// `none`, `encrypted` ou `plain`.
+    /// `none`, `encrypted` or `plain`.
     pub media: String,
 }
 
@@ -72,7 +72,7 @@ pub struct KdfJson {
     pub salt: String,
 }
 
-/// Nonce + texto cifrado, em base64.
+/// Nonce + ciphertext, in base64.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Sealed {
     pub n: String,
@@ -112,7 +112,7 @@ pub fn derive(ikm: &[u8; 32], salt: &[u8], info: &str) -> Key {
     let mut out = Key::default();
     Hkdf::<Sha256>::new(Some(salt), ikm)
         .expand(info.as_bytes(), out.as_mut())
-        .expect("32 bytes cabem no HKDF-SHA256");
+        .expect("32 bytes fit in HKDF-SHA256");
     out
 }
 
@@ -144,7 +144,7 @@ pub fn open(key: &[u8; 32], aad: &[u8], nonce: &[u8], ct: &[u8]) -> Result<Zeroi
     Ok(buf)
 }
 
-/// JSON → gzip → `[u32 LE tamanho][gzip][padding]`.
+/// JSON → gzip → `[u32 LE length][gzip][padding]`.
 pub fn pack_chunk(json: &[u8]) -> Result<Zeroizing<Vec<u8>>, Error> {
     let mut gz = GzEncoder::new(Vec::new(), Compression::default());
     gz.write_all(json)?;
@@ -175,13 +175,13 @@ pub fn stream_nonce(prefix: &[u8; 7], i: u64, last: bool) -> Result<[u8; 12], Er
     Ok(n)
 }
 
-/// Tamanho cifrado de uma mídia com `size` bytes.
+/// Encrypted size of a media file with `size` bytes.
 pub fn stream_len(size: u64) -> u64 {
     let segs = size.div_ceil(SEGMENT as u64).max(1);
     size + segs * TAG as u64
 }
 
-/// Cifra uma mídia em segmentos, gravando em `out` à medida que o conteúdo chega.
+/// Encrypts a media file in segments, writing to `out` as the content arrives.
 pub struct StreamWriter<'a, W: Write> {
     out: &'a mut W,
     cipher: Aes256Gcm,
@@ -219,7 +219,7 @@ impl<'a, W: Write> StreamWriter<'a, W> {
         Ok(())
     }
 
-    /// Fecha a mídia. Mídia vazia vira um segmento só com a tag.
+    /// Closes the media file. Empty media becomes a single tag-only segment.
     pub fn finish(mut self) -> std::io::Result<()> {
         if self.written != self.total {
             return Err(std::io::Error::other("tamanho da mídia diferente do esperado"));
@@ -248,7 +248,7 @@ impl<W: Write> Write for StreamWriter<'_, W> {
     }
 }
 
-/// Decifra uma mídia inteira (para os testes; o navegador faz o mesmo em JS).
+/// Decrypts a whole media file (for the tests; the browser does the same in JS).
 pub fn open_stream(key: &[u8; 32], prefix: &[u8; 7], media_id: &str, ct: &[u8], size: u64) -> Result<Vec<u8>, Error> {
     let cipher = Aes256Gcm::new(key.into());
     let segs = size.div_ceil(SEGMENT as u64).max(1);

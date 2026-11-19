@@ -1,13 +1,13 @@
-//! Consultas do visualizador sobre um banco do cofre.
+//! Viewer queries over a vault database.
 //!
-//! * Paginação por cursor `(sent_at, id)`, sempre pelo índice
-//!   `message_by_chat(chat_id, sent_at, id)`: abrir a conversa no fim ou pular
-//!   para o meio de 1M de mensagens custa o mesmo.
-//! * As páginas voltam em ordem cronológica crescente.
-//! * O texto das mensagens é conteúdo não confiável e sai como está. Quem
-//!   renderiza é que garante que vira texto, nunca HTML.
-//! * O snippet da busca marca o trecho encontrado com `\u{1}` … `\u{2}`
-//!   (em vez de HTML), para a UI montar o destaque com nós de texto.
+//! * Cursor pagination on `(sent_at, id)`, always through the
+//!   `message_by_chat(chat_id, sent_at, id)` index: opening the chat at the end or
+//!   jumping to the middle of 1M messages costs the same.
+//! * Pages come back in ascending chronological order.
+//! * Message text is untrusted content and goes out as is. Whoever renders it
+//!   is responsible for making sure it becomes text, never HTML.
+//! * The search snippet marks the matched range with `\u{1}` … `\u{2}`
+//!   (instead of HTML), so the UI can build the highlight with text nodes.
 
 use std::collections::HashMap;
 
@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::Error;
 
-/// Máximo de itens por página, para um pedido do webview não puxar o banco inteiro.
+/// Maximum items per page, so a webview request cannot pull the whole database.
 pub const MAX_PAGE: u32 = 500;
 
 pub const HIGHLIGHT_START: char = '\u{1}';
@@ -32,9 +32,9 @@ pub struct Cursor {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Direction {
-    /// Mensagens mais antigas que o cursor (sem cursor: as últimas da conversa).
+    /// Messages older than the cursor (no cursor: the chat's latest ones).
     Before,
-    /// Mensagens mais novas que o cursor (sem cursor: as primeiras da conversa).
+    /// Messages newer than the cursor (no cursor: the chat's first ones).
     After,
 }
 
@@ -42,17 +42,17 @@ pub enum Direction {
 #[serde(rename_all = "camelCase", tag = "type")]
 pub enum Anchor {
     Message { id: i64 },
-    /// Primeira mensagem a partir desse instante (ms). Se não houver, a última.
+    /// First message from this instant (ms) on. If there is none, the last one.
     Time { at: i64 },
 }
 
-// ---------------------------------------------------------------- conversas
+// ---------------------------------------------------------------- chats
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Chat {
     pub id: i64,
-    /// `direct`, `group`, `broadcast` ou `channel`.
+    /// `direct`, `group`, `broadcast` or `channel`.
     pub kind: String,
     pub title: Option<String>,
     pub jid: String,
@@ -68,7 +68,7 @@ pub struct Chat {
 #[serde(rename_all = "camelCase")]
 pub struct LastMessage {
     pub kind: String,
-    /// Até 120 caracteres.
+    /// Up to 120 characters.
     pub text: Option<String>,
     pub from_me: bool,
     pub sender: Option<Person>,
@@ -82,7 +82,7 @@ pub struct Person {
     pub name: Option<String>,
 }
 
-/// Todas as conversas com mensagens, da mais recente para a mais antiga.
+/// All chats with messages, from most recent to oldest.
 pub fn chats(conn: &Connection) -> Result<Vec<Chat>, Error> {
     let mut stmt = conn.prepare_cached(
         "SELECT c.id, c.kind, c.title, ct.jid, ct.phone, ct.name, c.archived, c.message_count,
@@ -121,7 +121,7 @@ pub fn chats(conn: &Connection) -> Result<Vec<Chat>, Error> {
     Ok(rows.collect::<Result<_, _>>()?)
 }
 
-// ---------------------------------------------------------------- mensagens
+// ---------------------------------------------------------------- messages
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -132,7 +132,7 @@ pub struct Message {
     pub from_me: bool,
     pub kind: String,
     pub text: Option<String>,
-    /// Autor, em grupos (mensagens recebidas).
+    /// Author, in groups (received messages).
     pub sender: Option<Person>,
     pub starred: bool,
     pub edited: bool,
@@ -147,7 +147,7 @@ pub struct Message {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Quoted {
-    /// Mensagem original, quando ela está no banco (para pular até ela).
+    /// Original message, when it is in the database (to jump to it).
     pub message_id: Option<i64>,
     pub text: Option<String>,
     pub from_me: bool,
@@ -165,12 +165,12 @@ pub struct Media {
     pub file_name: Option<String>,
     pub transcription: Option<String>,
     pub has_thumbnail: bool,
-    /// O arquivo está no cofre (preenchido por quem consulta o índice de mídias).
+    /// The file is in the vault (filled in by whoever queries the media index).
     pub available: bool,
-    /// SHA-256 do arquivo (base64), como o WhatsApp grava. Não vai para a UI.
+    /// SHA-256 of the file (base64), as WhatsApp stores it. Not sent to the UI.
     #[serde(skip)]
     pub file_hash: Option<String>,
-    /// Caminho no celular. Não vai para a UI.
+    /// Path on the phone. Not sent to the UI.
     #[serde(skip)]
     pub file_path: Option<String>,
 }
@@ -196,7 +196,7 @@ pub struct ContactCard {
 pub struct Reaction {
     pub emoji: String,
     pub count: u32,
-    /// Uma das reações é sua.
+    /// One of the reactions is yours.
     pub mine: bool,
 }
 
@@ -246,7 +246,7 @@ fn message_row(r: &Row) -> rusqlite::Result<Message> {
             file_hash: r.get(32)?,
             file_path: r.get(33)?,
         }),
-        // Figurinhas e afins sem linha em `media` ainda podem ter miniatura.
+        // Stickers and the like with no row in `media` may still have a thumbnail.
         None if r.get::<_, bool>(27)? => Some(Media {
             mime: None,
             size: None,
@@ -290,7 +290,7 @@ fn message_row(r: &Row) -> rusqlite::Result<Message> {
     })
 }
 
-/// Uma página de mensagens de uma conversa, em ordem cronológica.
+/// A page of a chat's messages, in chronological order.
 pub fn messages(
     conn: &Connection,
     chat_id: i64,
@@ -328,11 +328,11 @@ pub fn messages(
 #[serde(rename_all = "camelCase")]
 pub struct Around {
     pub messages: Vec<Message>,
-    /// Índice da âncora em `messages`. `None` se a conversa estiver vazia.
+    /// Index of the anchor in `messages`. `None` if the chat is empty.
     pub anchor_index: Option<usize>,
 }
 
-/// Mensagens em volta de uma âncora (resultado de busca, citação, data).
+/// Messages around an anchor (search result, quote, date).
 pub fn messages_around(conn: &Connection, chat_id: i64, anchor: Anchor, limit: u32) -> Result<Around, Error> {
     let limit = limit.clamp(2, MAX_PAGE);
     let anchor_row = match anchor {
@@ -367,7 +367,7 @@ pub fn messages_around(conn: &Connection, chat_id: i64, anchor: Anchor, limit: u
     Ok(Around { messages: out, anchor_index: Some(anchor_index) })
 }
 
-/// Reações e cartões de contato da página, em duas consultas.
+/// Reactions and contact cards for the page, in two queries.
 fn attach_extras(conn: &Connection, page: &mut [Message]) -> Result<(), Error> {
     if page.is_empty() {
         return Ok(());
@@ -397,8 +397,8 @@ fn attach_extras(conn: &Connection, page: &mut [Message]) -> Result<(), Error> {
     Ok(())
 }
 
-/// Extrai nome e telefones de um vCard. Só o necessário para exibir: o vCard
-/// completo nunca vai para a UI.
+/// Extracts the name and phone numbers from a vCard. Only what is needed for display:
+/// the full vCard never goes to the UI.
 pub fn parse_vcard(data: &str) -> ContactCard {
     let mut card = ContactCard { name: None, phones: Vec::new() };
     for line in data.lines() {
@@ -411,7 +411,7 @@ pub fn parse_vcard(data: &str) -> ContactCard {
         }
         match field.as_str() {
             "FN" if card.name.is_none() => card.name = Some(value.to_owned()),
-            // `TEL;type=CELL;waid=5511...:+55 11 ...`: o número vem depois do último `:`.
+            // `TEL;type=CELL;waid=5511...:+55 11 ...`: the number comes after the last `:`.
             "TEL" => card.phones.push(line.rsplit(':').next().unwrap_or(value).trim().to_owned()),
             _ => {}
         }
@@ -419,7 +419,7 @@ pub fn parse_vcard(data: &str) -> ContactCard {
     card
 }
 
-// ---------------------------------------------------------------- busca
+// ---------------------------------------------------------------- search
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -429,22 +429,22 @@ pub struct SearchHit {
     pub sent_at: i64,
     pub from_me: bool,
     pub sender: Option<Person>,
-    /// Trecho com os termos entre `\u{1}` e `\u{2}`.
+    /// Excerpt with the terms between `\u{1}` and `\u{2}`.
     pub snippet: String,
 }
 
-/// Tabela `fts5vocab` temporária, criada na conexão do visualizador
-/// (veja [`crate::StoreHandle::open_read_only`]).
+/// Temporary `fts5vocab` table, created on the viewer's connection
+/// (see [`crate::StoreHandle::open_read_only`]).
 pub(crate) const VOCAB_DDL: &str =
     "CREATE VIRTUAL TABLE IF NOT EXISTS temp.message_vocab USING fts5vocab(main, message_fts, row);";
 
-/// Prefixos mais curtos que isso não são expandidos (casam palavra exata).
+/// Prefixes shorter than this are not expanded (they match the exact word).
 const MIN_PREFIX_CHARS: usize = 3;
-/// Máximo de palavras do vocabulário por prefixo.
+/// Maximum vocabulary words per prefix.
 const MAX_PREFIX_TERMS: usize = 64;
 
-/// Palavras digitadas, sem pontuação nas pontas. Operadores do FTS5 (`OR`,
-/// `NEAR`, `-`, aspas) viram texto comum porque cada palavra vai entre aspas.
+/// Typed words, without punctuation at the ends. FTS5 operators (`OR`,
+/// `NEAR`, `-`, quotes) become plain text because each word is quoted.
 fn terms(input: &str) -> Vec<&str> {
     input
         .split_whitespace()
@@ -457,13 +457,13 @@ fn quoted(term: &str) -> String {
     format!("\"{}\"", term.replace('"', "\"\""))
 }
 
-/// Monta a expressão FTS5. As palavras anteriores casam exatamente e a última
-/// por prefixo (o usuário ainda pode estar digitando).
+/// Builds the FTS5 expression. The earlier words match exactly and the last one
+/// by prefix (the user may still be typing).
 ///
-/// O prefixo nativo do FTS5 (`"men"*`) monta em memória a lista de todas as
-/// ocorrências antes de devolver a primeira: ~200 ms para um termo comum em
-/// 300k mensagens. Por isso o prefixo é expandido para as palavras reais do
-/// índice (`"mensagem" OR "mensagens"`), que o FTS5 percorre sob demanda.
+/// FTS5's native prefix (`"men"*`) builds the list of all occurrences in memory
+/// before returning the first one: ~200 ms for a common term in
+/// 300k messages. So the prefix is expanded into the index's real words
+/// (`"mensagem" OR "mensagens"`), which FTS5 walks on demand.
 pub fn fts_query(conn: &Connection, input: &str) -> Result<Option<String>, Error> {
     let terms = terms(input);
     let Some((last, init)) = terms.split_last() else { return Ok(None) };
@@ -485,16 +485,16 @@ fn prefix_expr(conn: &Connection, term: &str) -> Result<String, Error> {
         .query_map(params![folded, upper, MAX_PREFIX_TERMS as i64], |r| r.get(0))?
         .collect::<Result<_, _>>()?;
     Ok(match words.len() {
-        // A dobra de acentos daqui pode divergir do tokenizer em escritas
-        // menos comuns: nesse caso, o prefixo nativo garante o resultado.
+        // The diacritic folding here may diverge from the tokenizer for less
+        // common scripts: in that case, the native prefix guarantees the result.
         0 => format!("{}*", quoted(term)),
         1 => quoted(&words[0]),
         _ => format!("({})", words.iter().map(|w| quoted(w)).collect::<Vec<_>>().join(" OR ")),
     })
 }
 
-/// Minúsculas e sem acentos, como o tokenizer `unicode61 remove_diacritics 2`
-/// (para o alfabeto latino; o resto passa só pelo minúsculo).
+/// Lowercase and without diacritics, like the `unicode61 remove_diacritics 2` tokenizer
+/// (for the Latin alphabet; everything else is only lowercased).
 pub fn fold(s: &str) -> String {
     s.chars().flat_map(char::to_lowercase).map(fold_char).collect()
 }
@@ -513,9 +513,9 @@ fn fold_char(c: char) -> char {
     }
 }
 
-/// Busca sem diferenciar acentos nem maiúsculas, das mais recentes para as
-/// mais antigas. `before` continua a partir do último resultado da página
-/// anterior (só o `id` importa, já que ele segue a ordem cronológica).
+/// Search ignoring diacritics and case, from most recent to
+/// oldest. `before` continues from the last result of the previous
+/// page (only the `id` matters, since it follows chronological order).
 pub fn search(
     conn: &Connection,
     input: &str,
@@ -528,9 +528,9 @@ pub fn search(
     let before_id = before.map_or(i64::MAX, |c| c.id);
     let highlight: Vec<String> = terms(input).iter().map(|t| fold(t)).collect();
 
-    // O importer grava as mensagens em ordem cronológica, então `rowid`
-    // decrescente = mais recente primeiro: o FTS5 entrega nessa ordem e para
-    // no LIMIT, sem ordenar todos os resultados.
+    // The importer writes messages in chronological order, so descending
+    // `rowid` = most recent first: FTS5 yields in that order and stops
+    // at the LIMIT, without sorting all results.
     let hits = conn
         .prepare_cached(
             "SELECT m.id, m.chat_id, m.sent_at, m.from_me, s.jid, s.phone, s.name, m.text
@@ -555,13 +555,13 @@ pub fn search(
     Ok(hits)
 }
 
-/// Trecho de até ~16 palavras em volta da primeira ocorrência, com cada
-/// palavra que começa por um dos termos entre `\u{1}` e `\u{2}`.
+/// Excerpt of up to ~16 words around the first occurrence, with every
+/// word starting with one of the terms between `\u{1}` and `\u{2}`.
 pub fn snippet(text: &str, terms: &[String]) -> String {
     const BEFORE: usize = 5;
     const WORDS: usize = 16;
 
-    // Palavras = sequências alfanuméricas (como o tokenizer), em offsets de byte.
+    // Words = alphanumeric runs (like the tokenizer), as byte offsets.
     let mut words: Vec<(usize, usize)> = Vec::new();
     let mut start = None;
     for (i, c) in text.char_indices() {
@@ -608,13 +608,13 @@ pub fn snippet(text: &str, terms: &[String]) -> String {
     if to < words.len() {
         out.push('…');
     }
-    // Quebras de linha viram espaço: o trecho é exibido numa linha.
+    // Line breaks become spaces: the excerpt is shown on one line.
     out.replace(['\n', '\r'], " ")
 }
 
-// ---------------------------------------------------------------- mídia
+// ---------------------------------------------------------------- media
 
-/// Referência de uma mídia no msgstore, para achar o arquivo no cofre.
+/// Reference to a media item in the msgstore, to find the file in the vault.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MediaRef {
     pub message_id: i64,
@@ -647,8 +647,8 @@ pub fn media_ref(conn: &Connection, message_id: i64) -> Result<Option<MediaRef>,
         .optional()?)
 }
 
-/// Todas as mídias com hash ou caminho (para escolher o que importar).
-/// Mensagens apagadas ficam de fora.
+/// All media with a hash or path (to choose what to import).
+/// Deleted messages are left out.
 pub fn media_refs(conn: &Connection) -> Result<Vec<MediaRef>, Error> {
     Ok(conn
         .prepare(&format!(
@@ -658,7 +658,7 @@ pub fn media_refs(conn: &Connection) -> Result<Vec<MediaRef>, Error> {
         .collect::<Result<_, _>>()?)
 }
 
-/// Miniatura (normalmente JPEG de poucos KB) de uma mensagem.
+/// A message's thumbnail (usually a JPEG of a few KB).
 pub fn thumbnail(conn: &Connection, message_id: i64) -> Result<Option<Vec<u8>>, Error> {
     Ok(conn
         .prepare_cached("SELECT data FROM thumbnail WHERE message_id = ?1")?
@@ -684,31 +684,31 @@ mod tests {
     }
 
     #[test]
-    fn query_fts_neutraliza_operadores() {
+    fn fts_query_neutralizes_operators() {
         let conn = conn_with_words(&[]);
         let q = |s: &str| fts_query(&conn, s).unwrap();
         assert_eq!(q("  "), None);
         assert_eq!(q("?!"), None);
-        // Sem palavras no índice que comecem com o prefixo: prefixo nativo.
+        // No words in the index starting with the prefix: native prefix.
         assert_eq!(q("café"), Some("\"café\"*".into()));
-        // Prefixo curto: palavra exata.
+        // Short prefix: exact word.
         assert_eq!(q("a OR b"), Some("\"a\" \"OR\" \"b\"".into()));
         assert_eq!(q("\"x\" -y NEAR(z)"), Some("\"x\" \"y\" \"NEAR(z\"*".into()));
     }
 
     #[test]
-    fn prefixo_expandido_pelo_vocabulario() {
+    fn prefix_expanded_from_vocabulary() {
         let conn = conn_with_words(&["Mensagem", "mensagens", "menos", "Café", "cafeteira"]);
         let q = |s: &str| fts_query(&conn, s).unwrap().unwrap();
         assert_eq!(q("mensa"), "(\"mensagem\" OR \"mensagens\")");
         assert_eq!(q("MENO"), "\"menos\"");
-        // Acento no que foi digitado: a busca no vocabulário usa a forma sem acento.
+        // Diacritic in the typed text: the vocabulary lookup uses the unaccented form.
         assert_eq!(q("cafê"), "(\"cafe\" OR \"cafeteira\")");
         assert_eq!(q("menos mensa"), "\"menos\" (\"mensagem\" OR \"mensagens\")");
     }
 
     #[test]
-    fn trecho_com_destaque() {
+    fn snippet_with_highlight() {
         let s = snippet("Oi, tudo bem? Vamos tomar um café\namanhã", &["cafe".into()]);
         assert_eq!(s, "…tudo bem? Vamos tomar um \u{1}café\u{2} amanhã");
 
@@ -718,7 +718,7 @@ mod tests {
         assert!(s.contains("\u{1}p20\u{2}"));
 
         assert_eq!(snippet("", &["x".into()]), "");
-        assert_eq!(snippet("sem termo", &["zzz".into()]), "sem termo");
+        assert_eq!(snippet("no term", &["zzz".into()]), "no term");
     }
 
     #[test]

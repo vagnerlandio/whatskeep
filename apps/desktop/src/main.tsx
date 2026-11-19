@@ -1,4 +1,4 @@
-// Primeiro import: congela os protótipos antes de qualquer outro código do app.
+// First import: freezes the prototypes before any other app code.
 import "./freeze";
 import React, { Component, ErrorInfo, ReactNode } from "react";
 import ReactDOM from "react-dom/client";
@@ -8,14 +8,14 @@ import { detectLang } from "@wa/viewer";
 
 installDiagnostics();
 
-// A tela de erro fica fora do LangProvider: usa o idioma do sistema.
+// The error screen sits outside the LangProvider: it uses the system language.
 const CRASH_TEXT = {
   "pt-BR": { title: "Algo deu errado", reload: "Recarregar" },
   en: { title: "Something went wrong", reload: "Reload" },
 };
 
-/** Falha de renderização: registra no log e mostra uma tela de erro em vez
- * de deixar a janela em branco. */
+/** Render failure: logs it and shows an error screen instead of
+ * leaving the window blank. */
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
 
@@ -24,7 +24,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    uiLog("error", `falha de renderização: ${describe(error)}\ncomponentes:${(info.componentStack ?? "").split("\n").slice(0, 8).join("\n")}`);
+    uiLog("error", `render failure: ${describe(error)}\ncomponents:${(info.componentStack ?? "").split("\n").slice(0, 8).join("\n")}`);
   }
 
   render() {

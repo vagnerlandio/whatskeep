@@ -1,4 +1,4 @@
-// Peças compartilhadas pela importação local e pelo download do Google Drive.
+// Pieces shared by the local import and the Google Drive download.
 import { open } from "@tauri-apps/plugin-dialog";
 import { useLang } from "@wa/viewer";
 import { errorOf, formatCount, formatSize, ImportPhase, ImportSummary, KeyInput, MediaProgress, MediaSummary, SOURCE_LABEL, SourceApp } from "../api";
@@ -14,7 +14,7 @@ export const initialKey = (version: BackupVersion): KeyState => ({
   file: null,
 });
 
-/** Dígitos hex da chave, ignorando espaços e hífens. `null` se houver outro caractere. */
+/** Hex digits of the key, ignoring spaces and hyphens. `null` if there's any other character. */
 function hexDigits(value: string): number | null {
   const clean = value.replace(/[\s-]/g, "");
   return /^[0-9a-fA-F]*$/.test(clean) ? clean.length : null;
@@ -109,12 +109,12 @@ export function SourcePicker({ value, onChange }: { value: SourceApp; onChange: 
   );
 }
 
-/** Rótulos das fases da importação no idioma atual. */
+/** Labels of the import phases in the current language. */
 export function usePhaseLabel(): Record<ImportPhase, string> {
   return useImportT().phase;
 }
 
-/** Mensagens amigáveis para os códigos de erro mais comuns; os demais vêm de `useErrorText`. */
+/** Friendly messages for the most common error codes; the rest come from `useErrorText`. */
 export function useFriendlyError(): (e: unknown) => string {
   const t = useImportT();
   const errorText = useErrorText();
@@ -158,7 +158,8 @@ export function SummaryView({
   );
 }
 
-// Motivos de parada que o backend manda em português (ver gdrive.rs e media_import.rs).
+// Stop reasons the backend sends in Portuguese (see gdrive.rs and media_import.rs).
+// Matched exactly: keep in sync with the backend strings.
 const STOPPED_CANCELLED = "cancelado";
 const STOPPED_EXPIRED = "a sessão do Google expirou; entre de novo para continuar";
 

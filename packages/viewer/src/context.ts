@@ -1,12 +1,12 @@
 import { createContext, useContext } from "react";
 import type { Message } from "./types";
 
-/** Estado compartilhado pelas bolhas sem passar por props (as linhas são memo). */
+/** State shared by the bubbles without going through props (the rows are memoized). */
 export type ViewerCtx = {
-  /** A lista está rolando: imagens em resolução total esperam parar. */
+  /** The list is scrolling: full-resolution images wait until it stops. */
   scrolling: boolean;
   openMedia: (m: Message) => void;
-  /** Pede confirmação antes de abrir um link da mensagem. */
+  /** Asks for confirmation before opening a link from the message. */
   openLink: (url: string) => void;
 };
 

@@ -5,7 +5,7 @@ target/
 *.log
 logs/
 
-# --- Dados sensíveis: NUNCA versionar backups, chaves ou bancos reais ---
+# --- Sensitive data: NEVER commit real backups, keys or databases ---
 *.crypt12
 *.crypt14
 *.crypt15
@@ -17,7 +17,7 @@ encrypted_backup.key
 historico/
 vault/
 
-# Exceção: vetores de teste sintéticos (chaves aleatórias, conteúdo fictício)
+# Exception: synthetic test vectors (random keys, fictitious content)
 !crates/wa-crypt/tests/fixtures/
 !crates/wa-crypt/tests/fixtures/**
 !crates/wa-import/tests/fixtures/

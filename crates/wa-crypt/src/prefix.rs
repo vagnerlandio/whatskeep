@@ -1,4 +1,4 @@
-//! Leitura mínima do protobuf `BackupPrefix`, sem codegen.
+//! Minimal reader for the `BackupPrefix` protobuf, without codegen.
 //!
 //! ```text
 //! BackupPrefix { 2: C14Cipher { 5: bytes encryption_iv }, 3: C15IV { 1: bytes encryption_iv }, ... }
@@ -16,14 +16,14 @@ pub enum CryptVersion {
 pub struct Prefix {
     pub version: CryptVersion,
     pub iv: [u8; 16],
-    /// Bytes do varint + protobuf. O ciphertext começa aqui.
+    /// Bytes of the varint + protobuf. The ciphertext starts here.
     pub header_len: usize,
 }
 
-/// Lê o header de um arquivo `.crypt14`/`.crypt15`.
+/// Reads the header of a `.crypt14`/`.crypt15` file.
 pub fn parse_prefix(data: &[u8]) -> Result<Prefix, Error> {
     let mut pos = 0;
-    // O wa-crypt-tools limita o varint do tamanho a 5 bytes.
+    // wa-crypt-tools limits the size varint to 5 bytes.
     let size = read_varint(data, &mut pos, 5)? as usize;
     let end = pos.checked_add(size).ok_or(Error::Truncated)?;
     let proto = data.get(pos..end).ok_or(Error::Truncated)?;
@@ -45,7 +45,7 @@ pub fn parse_prefix(data: &[u8]) -> Result<Prefix, Error> {
     })
 }
 
-/// Retorna `msg.outer.inner` como bytes (vazio conta como ausente).
+/// Returns `msg.outer.inner` as bytes (empty counts as absent).
 fn nested_bytes(msg: &[u8], outer: u64, inner: u64) -> Result<Option<&[u8]>, Error> {
     let Some(sub) = last_bytes_field(msg, outer)? else {
         return Ok(None);
@@ -53,7 +53,7 @@ fn nested_bytes(msg: &[u8], outer: u64, inner: u64) -> Result<Option<&[u8]>, Err
     Ok(last_bytes_field(sub, inner)?.filter(|v| !v.is_empty()))
 }
 
-/// No protobuf, a última ocorrência de um campo escalar é a que vale.
+/// In protobuf, the last occurrence of a scalar field is the one that counts.
 fn last_bytes_field(msg: &[u8], field: u64) -> Result<Option<&[u8]>, Error> {
     let mut pos = 0;
     let mut found = None;
@@ -106,8 +106,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn crypt15_minimo() {
-        // tamanho=20 | campo 3 (len 18) { campo 1 (len 16) IV }
+    fn minimal_crypt15() {
+        // size=20 | field 3 (len 18) { field 1 (len 16) IV }
         let mut d = vec![20, 0x1A, 18, 0x0A, 16];
         d.extend_from_slice(&[7u8; 16]);
         d.extend_from_slice(b"ciphertext");
@@ -118,20 +118,20 @@ mod tests {
     }
 
     #[test]
-    fn sem_iv_e_nao_suportado() {
-        // crypt12 começa com 00 01 → varint 0, protobuf vazio
+    fn missing_iv_is_unsupported() {
+        // crypt12 starts with 00 01 → varint 0, empty protobuf
         assert!(matches!(parse_prefix(&[0, 1, 2, 3]), Err(Error::Unsupported)));
     }
 
     #[test]
-    fn truncado() {
+    fn truncated() {
         assert!(matches!(parse_prefix(&[50, 0x1A]), Err(Error::Truncated)));
         assert!(matches!(parse_prefix(&[]), Err(Error::Truncated)));
         assert!(matches!(parse_prefix(&[0x80, 0x80, 0x80, 0x80, 0x80, 0x01]), Err(Error::Header(_))));
     }
 
     #[test]
-    fn iv_de_tamanho_errado() {
+    fn iv_with_wrong_length() {
         let d = [7, 0x1A, 5, 0x0A, 3, 1, 2, 3];
         assert!(matches!(parse_prefix(&d), Err(Error::Header(_))));
     }

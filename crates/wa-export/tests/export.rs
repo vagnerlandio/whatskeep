@@ -11,7 +11,7 @@ use wa_vault::{KdfParams, Vault};
 use zeroize::Zeroizing;
 
 const SHELL: &str = "<!doctype html><html><head><meta charset=\"UTF-8\"><title>x</title><script type=\"module\">console.log(1)</script></head><body></body></html>";
-const PHOTO: &[u8] = b"\xFF\xD8\xFF\xE0 foto da praia em resolucao total";
+const PHOTO: &[u8] = b"\xFF\xD8\xFF\xE0 beach photo at full resolution";
 
 struct Fixture {
     _dir: tempfile::TempDir,
@@ -25,7 +25,7 @@ impl Fixture {
 
     fn with_photo(photo: &[u8], mime: &str) -> Self {
         let dir = tempfile::tempdir().unwrap();
-        let vault = Vault::create(&dir.path().join("vault"), "senha do cofre", KdfParams::MINIMUM).unwrap();
+        let vault = Vault::create(&dir.path().join("vault"), "vault password", KdfParams::MINIMUM).unwrap();
         let src = Connection::open_in_memory().unwrap();
         src.execute_batch(include_str!("../../wa-import/tests/fixtures/modern.sql")).unwrap();
         vault.store(SourceApp::WhatsApp).unwrap().import(&src).unwrap();
@@ -54,7 +54,7 @@ impl Fixture {
     }
 }
 
-// ---------------------------------------------------------------- leitor (como o navegador)
+// ---------------------------------------------------------------- reader (like the browser)
 
 fn manifest(dir: &Path) -> Manifest {
     let js = fs::read_to_string(dir.join("data/manifest.js")).unwrap();
@@ -62,7 +62,7 @@ fn manifest(dir: &Path) -> Manifest {
     serde_json::from_str(json).unwrap()
 }
 
-/// Slots que a senha abre.
+/// Slots the password opens.
 fn unlock(dir: &Path, password: &str) -> Vec<SlotContent> {
     let m = manifest(dir);
     let salt = format::unb64(&m.kdf.salt).unwrap();
@@ -109,30 +109,30 @@ fn all_files(dir: &Path) -> Vec<std::path::PathBuf> {
     out
 }
 
-// ---------------------------------------------------------------- testes
+// ---------------------------------------------------------------- tests
 
 #[test]
-fn uma_senha_todas_as_conversas_com_midia_cifrada() {
+fn one_password_all_chats_with_encrypted_media() {
     let f = Fixture::new();
     let (alice, group) = f.chat_ids();
     let out = tempfile::tempdir().unwrap();
-    let s = f.export(out.path(), vec![("senha do export", vec![alice, group])], MediaMode::Encrypted).unwrap();
+    let s = f.export(out.path(), vec![("export password", vec![alice, group])], MediaMode::Encrypted).unwrap();
     assert_eq!((s.chats, s.slots, s.media_files), (2, 1, 1));
     assert_eq!(s.messages, 12);
 
-    let slots = unlock(out.path(), "senha do export");
+    let slots = unlock(out.path(), "export password");
     assert_eq!(slots.len(), 1);
     let entry = slots[0].chats.iter().find(|c| c.chat["id"] == alice).unwrap();
     let msgs = messages(out.path(), &slots[0], entry);
     assert_eq!(msgs.len(), 9);
     assert!(msgs.iter().any(|m| m["text"] == "Oi, tudo bem? Vamos tomar um café"));
-    // Campos internos (hash e caminho do arquivo no celular) não vão para o pacote.
+    // Internal fields (hash and file path on the phone) do not go into the package.
     let photo = msgs.iter().find(|m| m["kind"] == "image").unwrap();
     assert!(photo["media"].get("fileHash").is_none() && photo["media"].get("filePath").is_none());
     assert_eq!(photo["media"]["available"], true);
     assert!(photo["media"]["thumb"].is_string());
 
-    // A mídia abre com a chave derivada da conversa.
+    // The media opens with the key derived from the chat.
     let r = &photo["media"]["ref"];
     let key = format::media_key(&chat_key(out.path(), &slots[0], entry), &salt(out.path()), r["id"].as_str().unwrap());
     let pack = fs::read(out.path().join(format!("media/pack-{:03}.bin", r["p"].as_u64().unwrap()))).unwrap();
@@ -140,40 +140,40 @@ fn uma_senha_todas_as_conversas_com_midia_cifrada() {
     let prefix: [u8; 7] = format::unb64(r["np"].as_str().unwrap()).unwrap().try_into().unwrap();
     let ct = &pack[o..o + format::stream_len(n) as usize];
     assert_eq!(format::open_stream(&key, &prefix, r["id"].as_str().unwrap(), ct, n).unwrap(), PHOTO);
-    // A chave de outra conversa não abre.
+    // Another chat's key does not open it.
     let other = slots[0].chats.iter().find(|c| c.chat["id"] == group).unwrap();
     let wrong = format::media_key(&chat_key(out.path(), &slots[0], other), &salt(out.path()), r["id"].as_str().unwrap());
     assert!(format::open_stream(&wrong, &prefix, r["id"].as_str().unwrap(), ct, n).is_err());
 }
 
 #[test]
-fn senha_por_conversa_isola() {
+fn password_per_chat_isolates() {
     let f = Fixture::new();
     let (alice, group) = f.chat_ids();
     let out = tempfile::tempdir().unwrap();
-    f.export(out.path(), vec![("senha da alice", vec![alice]), ("senha do grupo", vec![group])], MediaMode::None)
+    f.export(out.path(), vec![("alice password", vec![alice]), ("group password", vec![group])], MediaMode::None)
         .unwrap();
 
-    let a = unlock(out.path(), "senha da alice");
+    let a = unlock(out.path(), "alice password");
     assert_eq!(a.len(), 1);
     assert_eq!(a[0].chats.len(), 1);
     assert_eq!(a[0].chats[0].chat["id"], alice);
-    let g = unlock(out.path(), "senha do grupo");
+    let g = unlock(out.path(), "group password");
     assert_eq!(g[0].chats[0].chat["id"], group);
-    assert!(unlock(out.path(), "senha errada!!").is_empty());
+    assert!(unlock(out.path(), "wrong password!!").is_empty());
 
-    // A chave da Alice não abre os pedaços do grupo.
+    // Alice's key does not open the group's chunks.
     let alice_key = chat_key(out.path(), &a[0], &a[0].chats[0]);
     assert!(matches!(read_chunk(out.path(), &alice_key, &g[0].chats[0].chunks[0]), Err(Error::Authentication)));
 }
 
 #[test]
-fn export_parcial_nao_inclui_outras_conversas() {
+fn partial_export_excludes_other_chats() {
     let f = Fixture::new();
     let (alice, _) = f.chat_ids();
     let out = tempfile::tempdir().unwrap();
-    f.export(out.path(), vec![("senha do export", vec![alice])], MediaMode::Encrypted).unwrap();
-    let slots = unlock(out.path(), "senha do export");
+    f.export(out.path(), vec![("export password", vec![alice])], MediaMode::Encrypted).unwrap();
+    let slots = unlock(out.path(), "export password");
     assert_eq!(slots[0].chats.len(), 1);
     let texts: Vec<String> = messages(out.path(), &slots[0], &slots[0].chats[0])
         .iter()
@@ -183,46 +183,46 @@ fn export_parcial_nao_inclui_outras_conversas() {
 }
 
 #[test]
-fn nada_em_claro_nem_telefone_nos_arquivos() {
+fn no_plaintext_or_phone_numbers_in_files() {
     let f = Fixture::new();
     let (alice, group) = f.chat_ids();
     for mode in [MediaMode::Encrypted, MediaMode::None] {
         let out = tempfile::tempdir().unwrap();
-        f.export(out.path(), vec![("senha do export", vec![alice, group])], mode).unwrap();
+        f.export(out.path(), vec![("export password", vec![alice, group])], mode).unwrap();
         for path in all_files(out.path()) {
             let name = path.to_string_lossy().to_string();
             let bytes = fs::read(&path).unwrap();
-            for needle in ["Vamos tomar um caf", "5511911111111", "5511922222222", "whatsapp.net", "Família", "IMG-0001", "foto da praia"] {
-                assert!(!name.contains(needle), "nome {name}");
-                assert!(!bytes.windows(needle.len()).any(|w| w == needle.as_bytes()), "{name} contém {needle}");
+            for needle in ["Vamos tomar um caf", "5511911111111", "5511922222222", "whatsapp.net", "Família", "IMG-0001", "beach photo"] {
+                assert!(!name.contains(needle), "name {name}");
+                assert!(!bytes.windows(needle.len()).any(|w| w == needle.as_bytes()), "{name} contains {needle}");
             }
-            assert!(!bytes.windows(PHOTO.len()).any(|w| w == PHOTO), "{name} tem a foto em claro");
+            assert!(!bytes.windows(PHOTO.len()).any(|w| w == PHOTO), "{name} has the photo in plaintext");
         }
     }
 }
 
 #[test]
-fn midia_em_claro_quando_escolhido() {
+fn plaintext_media_when_chosen() {
     let f = Fixture::new();
     let (alice, _) = f.chat_ids();
     let out = tempfile::tempdir().unwrap();
-    f.export(out.path(), vec![("senha do export", vec![alice])], MediaMode::Plain).unwrap();
+    f.export(out.path(), vec![("export password", vec![alice])], MediaMode::Plain).unwrap();
     assert!(out.path().join(".metadata_never_index").is_file());
-    let slots = unlock(out.path(), "senha do export");
+    let slots = unlock(out.path(), "export password");
     let msgs = messages(out.path(), &slots[0], &slots[0].chats[0]);
     let r = &msgs.iter().find(|m| m["kind"] == "image").unwrap()["media"]["ref"];
     let file = r["f"].as_str().unwrap();
-    assert!(file.starts_with("media/") && !file.contains('.'), "nome aleatório sem extensão: {file}");
+    assert!(file.starts_with("media/") && !file.contains('.'), "random name without extension: {file}");
     assert_eq!(fs::read(out.path().join(file)).unwrap(), PHOTO);
 }
 
 #[test]
-fn adulteracao_de_pedaco_falha() {
+fn tampered_chunk_fails() {
     let f = Fixture::new();
     let (alice, _) = f.chat_ids();
     let out = tempfile::tempdir().unwrap();
-    f.export(out.path(), vec![("senha do export", vec![alice])], MediaMode::None).unwrap();
-    let slots = unlock(out.path(), "senha do export");
+    f.export(out.path(), vec![("export password", vec![alice])], MediaMode::None).unwrap();
+    let slots = unlock(out.path(), "export password");
     let entry = &slots[0].chats[0];
     let path = out.path().join(format!("data/{}.js", entry.chunks[0]));
     let js = fs::read_to_string(&path).unwrap();
@@ -232,7 +232,7 @@ fn adulteracao_de_pedaco_falha() {
     fs::write(&path, js.replace(&b64, &base64_encode(&blob))).unwrap();
     assert!(matches!(read_chunk(out.path(), &chat_key(out.path(), &slots[0], entry), &entry.chunks[0]), Err(Error::Authentication)));
 
-    // Um pedaço íntegro servido com outro nome também falha (o id é o AAD).
+    // An intact chunk served under another name also fails (the id is the AAD).
     fs::write(&path, &js).unwrap();
     let renamed = out.path().join("data/0000000000000000.js");
     fs::copy(&path, &renamed).unwrap();
@@ -247,54 +247,57 @@ fn base64_encode(b: &[u8]) -> String {
 }
 
 #[test]
-fn validacoes() {
+fn validations() {
     let f = Fixture::new();
     let (alice, group) = f.chat_ids();
     let out = tempfile::tempdir().unwrap();
-    assert!(matches!(f.export(out.path(), vec![("curta", vec![alice])], MediaMode::None), Err(Error::Invalid(_))));
-    assert!(matches!(f.export(out.path(), vec![("senha do export", vec![])], MediaMode::None), Err(Error::Invalid(_))));
+    assert!(matches!(f.export(out.path(), vec![("short", vec![alice])], MediaMode::None), Err(Error::Invalid(_))));
+    assert!(matches!(f.export(out.path(), vec![("export password", vec![])], MediaMode::None), Err(Error::Invalid(_))));
     assert!(matches!(
-        f.export(out.path(), vec![("senha um 123", vec![alice]), ("senha dois 123", vec![alice, group])], MediaMode::None),
+        f.export(out.path(), vec![("password one 123", vec![alice]), ("password two 123", vec![alice, group])], MediaMode::None),
         Err(Error::Invalid(_))
     ));
-    assert!(matches!(f.export(out.path(), vec![("senha do export", vec![999])], MediaMode::None), Err(Error::Invalid(_))));
-    fs::write(out.path().join("outro.txt"), "x").unwrap();
+    assert!(matches!(f.export(out.path(), vec![("export password", vec![999])], MediaMode::None), Err(Error::Invalid(_))));
+    fs::write(out.path().join("other.txt"), "x").unwrap();
     assert!(matches!(
-        f.export(out.path(), vec![("senha do export", vec![alice])], MediaMode::None),
+        f.export(out.path(), vec![("export password", vec![alice])], MediaMode::None),
         Err(Error::DestinationNotEmpty)
     ));
 }
 
 #[test]
-fn csp_com_hash_dos_scripts() {
+fn csp_with_script_hashes() {
     let html = with_csp(SHELL);
     assert!(html.contains("connect-src 'none'"));
-    // 'self' em file:// libera a rede inteira no WebKit (testado no Safari/Playwright).
+    // 'self' on file:// opens up the whole network in WebKit (tested in Safari/Playwright).
     assert!(!html.contains("'self'"), "{html}");
     assert!(html.contains("form-action 'none'"));
-    // sha256 de "console.log(1)"
+    // sha256 of "console.log(1)"
     assert!(html.contains("'sha256-"), "{html}");
     let head = html.find("<head>").unwrap();
     assert!(html[head..].find("Content-Security-Policy").unwrap() < html[head..].find("<script").unwrap());
 }
 
 #[test]
-fn pedacos_tem_tamanho_arredondado() {
+fn chunks_have_rounded_size() {
     let f = Fixture::new();
     let (alice, _) = f.chat_ids();
     let out = tempfile::tempdir().unwrap();
-    f.export(out.path(), vec![("senha do export", vec![alice])], MediaMode::None).unwrap();
-    let slots = unlock(out.path(), "senha do export");
+    f.export(out.path(), vec![("export password", vec![alice])], MediaMode::None).unwrap();
+    let slots = unlock(out.path(), "export password");
     let js = fs::read_to_string(out.path().join(format!("data/{}.js", slots[0].chats[0].chunks[0]))).unwrap();
     let blob = format::unb64(js.split('"').nth(3).unwrap()).unwrap();
     assert_eq!((blob.len() - 12 - 16) % format::PAD, 0);
 }
 
-/// Gera pacotes reais para o teste no navegador (Playwright):
-/// `WA_EXPORT_OUT=<dir> WA_EXPORT_SHELL=<index.html> WA_EXPORT_IMAGE=<png> cargo test -p wa-export -- --ignored gerar`
+/// Generates real packages for the browser test (Playwright):
+/// `WA_EXPORT_OUT=<dir> WA_EXPORT_SHELL=<index.html> WA_EXPORT_IMAGE=<png> cargo test -p wa-export -- --ignored generate_browser_packages`
+///
+/// The package names and passwords below are matched by
+/// `packages/export-shell/e2e/export.e2e.cjs`; keep both in sync.
 #[test]
 #[ignore]
-fn gerar_pacotes_para_o_navegador() {
+fn generate_browser_packages() {
     let (Ok(out), Ok(shell), Ok(image)) =
         (std::env::var("WA_EXPORT_OUT"), std::env::var("WA_EXPORT_SHELL"), std::env::var("WA_EXPORT_IMAGE"))
     else {

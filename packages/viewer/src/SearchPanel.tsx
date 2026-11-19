@@ -10,7 +10,7 @@ const DEBOUNCE_MS = 200;
 
 type Props = {
   query: string;
-  /** Busca limitada a uma conversa, ou em todas. */
+  /** Search limited to one chat, or across all. */
   scope: Chat | null;
   chatsById: Map<number, Chat>;
   onOpen: (hit: SearchHit) => void;
@@ -34,7 +34,7 @@ export default function SearchPanel({ query, scope, chatsById, onOpen, onClearSc
       setBusy(true);
       try {
         const page = await source.search(query, scope?.id ?? null, null, PAGE);
-        if (id !== reqId.current) return; // resposta de uma busca antiga
+        if (id !== reqId.current) return; // response from an old search
         setHits(page);
         setDone(page.length < PAGE);
       } catch (e) {

@@ -1,23 +1,23 @@
-//! Descriptografia de backups do WhatsApp (`.crypt14` e `.crypt15`).
+//! Decryption of WhatsApp backups (`.crypt14` and `.crypt15`).
 //!
-//! Formato (referência: wa-crypt-tools, ElDavoo):
+//! Format (reference: wa-crypt-tools, ElDavoo):
 //!
 //! ```text
-//! [varint: tamanho N][N bytes: protobuf BackupPrefix][ciphertext][tag GCM 16][md5 16]
+//! [varint: size N][N bytes: protobuf BackupPrefix][ciphertext][GCM tag 16][md5 16]
 //! ```
 //!
-//! * O `BackupPrefix` traz o IV de 16 bytes. O campo 2 (`.5`) é usado no crypt14
-//!   e o campo 3 (`.1`) no crypt15.
-//! * A cifra é AES-256-GCM com **nonce de 16 bytes**, sem AAD.
-//! * O md5 final cobre o arquivo inteiro antes dele. Backups "multi-file"
-//!   (stickers, wallpapers) não têm md5: terminam direto na tag.
-//! * O payload decifrado normalmente vem comprimido em zlib (o `msgstore` é um SQLite).
+//! * The `BackupPrefix` carries the 16-byte IV. Field 2 (`.5`) is used by crypt14
+//!   and field 3 (`.1`) by crypt15.
+//! * The cipher is AES-256-GCM with a **16-byte nonce**, no AAD.
+//! * The trailing md5 covers the whole file before it. "Multi-file" backups
+//!   (stickers, wallpapers) have no md5: they end right at the tag.
+//! * The decrypted payload is usually zlib-compressed (the `msgstore` is a SQLite DB).
 //!
-//! Garantias de segurança deste crate:
-//! * Chaves e texto puro ficam em buffers [`zeroize::Zeroizing`], zerados no drop,
-//!   inclusive quando o buffer é realocado durante a descompressão.
-//! * Nenhum `Debug`, `Display` ou mensagem de erro expõe material de chave.
-//! * Não há I/O: o chamador decide onde os bytes entram e saem.
+//! Security guarantees of this crate:
+//! * Keys and plaintext live in [`zeroize::Zeroizing`] buffers, zeroed on drop,
+//!   including when the buffer is reallocated during decompression.
+//! * No `Debug`, `Display` or error message exposes key material.
+//! * There is no I/O: the caller decides where the bytes come in and go out.
 
 mod decrypt;
 mod error;

@@ -6,19 +6,19 @@ use crate::Error;
 
 type HmacSha256 = Hmac<Sha256>;
 
-/// O tipo de backup que a chave abre.
+/// The kind of backup the key opens.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum KeyKind {
-    /// Chave "fornecida pelo WhatsApp" (arquivo `key`, exige root no Android).
+    /// "WhatsApp-provided" key (the `key` file, requires root on Android).
     Crypt14,
-    /// Chave do backup E2E: os 64 dígitos ou o `encrypted_backup.key`.
+    /// E2E backup key: the 64 digits or the `encrypted_backup.key`.
     Crypt15,
 }
 
-/// Chave AES-256 pronta para uso, zerada da memória no drop.
+/// Ready-to-use AES-256 key, wiped from memory on drop.
 ///
-/// No crypt15 guarda também a root key: as mídias `.mcrypt1` do Google Drive
-/// têm uma chave por arquivo derivada dela. Nada disso sai do crate.
+/// For crypt15 it also keeps the root key: Google Drive `.mcrypt1` media
+/// have a per-file key derived from it. None of this leaves the crate.
 pub struct BackupKey {
     kind: KeyKind,
     aes: Zeroizing<[u8; 32]>,
@@ -34,25 +34,25 @@ impl std::fmt::Debug for BackupKey {
     }
 }
 
-/// Cabeçalho exato de um `byte[]` serializado em Java
-/// (`ObjectOutputStream.writeObject(byte[])`), sem os 4 bytes de tamanho.
+/// Exact header of a Java-serialized `byte[]`
+/// (`ObjectOutputStream.writeObject(byte[])`), without the 4 length bytes.
 const JAVA_BYTE_ARRAY_HEADER: [u8; 23] = [
     0xAC, 0xED, 0x00, 0x05, // STREAM_MAGIC, STREAM_VERSION
     0x75, // TC_ARRAY
     0x72, // TC_CLASSDESC
-    0x00, 0x02, b'[', b'B', // nome da classe "[B"
-    0xAC, 0xF3, 0x17, 0xF8, 0x06, 0x08, 0x54, 0xE0, // serialVersionUID de byte[]
+    0x00, 0x02, b'[', b'B', // class name "[B"
+    0xAC, 0xF3, 0x17, 0xF8, 0x06, 0x08, 0x54, 0xE0, // serialVersionUID of byte[]
     0x02, // SC_SERIALIZABLE
-    0x00, 0x00, // 0 campos
+    0x00, 0x00, // 0 fields
     0x78, // TC_ENDBLOCKDATA
-    0x70, // TC_NULL (sem superclasse)
+    0x70, // TC_NULL (no superclass)
 ];
 
 const CRYPT14_KEY_LEN: usize = 131;
 
 impl BackupKey {
-    /// Monta a chave a partir dos 64 dígitos hexadecimais que o WhatsApp mostra
-    /// ao ativar o backup E2E. Espaços, quebras de linha e hífens são ignorados.
+    /// Builds the key from the 64 hexadecimal digits WhatsApp shows when
+    /// E2E backup is enabled. Spaces, line breaks and hyphens are ignored.
     pub fn from_hex(input: &str) -> Result<Self, Error> {
         let mut root = Zeroizing::new([0u8; 32]);
         let mut n = 0usize;
@@ -81,7 +81,7 @@ impl BackupKey {
         Ok(Self::from_root_key(&root))
     }
 
-    /// Monta a chave a partir da root key de 32 bytes do crypt15.
+    /// Builds the key from the 32-byte crypt15 root key.
     pub fn from_root_key(root: &[u8; 32]) -> Self {
         Self {
             kind: KeyKind::Crypt15,
@@ -90,9 +90,9 @@ impl BackupKey {
         }
     }
 
-    /// Lê um arquivo de chave: `key` (crypt14, 158 bytes) ou
-    /// `encrypted_backup.key` (crypt15, 59 bytes). Aceita também o payload cru,
-    /// sem a serialização Java.
+    /// Reads a key file: `key` (crypt14, 158 bytes) or
+    /// `encrypted_backup.key` (crypt15, 59 bytes). Also accepts the raw payload,
+    /// without the Java serialization.
     pub fn from_key_file(data: &[u8]) -> Result<Self, Error> {
         let payload = unwrap_java_byte_array(data)?;
         match payload.len() {
@@ -120,22 +120,22 @@ impl BackupKey {
 }
 
 /// HKDF-SHA256 (salt = 32 zeros, info = "backup encryption", L = 32).
-/// Equivale ao `encryptionloop` do wa-crypt-tools com um único bloco.
+/// Equivalent to wa-crypt-tools' `encryptionloop` with a single block.
 fn derive_crypt15(root: &[u8; 32]) -> Zeroizing<[u8; 32]> {
-    let mut extract = HmacSha256::new_from_slice(&[0u8; 32]).expect("HMAC aceita qualquer tamanho");
+    let mut extract = HmacSha256::new_from_slice(&[0u8; 32]).expect("HMAC accepts any key length");
     extract.update(root);
     let prk = Zeroizing::new(<[u8; 32]>::from(extract.finalize().into_bytes()));
 
-    let mut expand = HmacSha256::new_from_slice(&*prk).expect("HMAC aceita qualquer tamanho");
+    let mut expand = HmacSha256::new_from_slice(&*prk).expect("HMAC accepts any key length");
     expand.update(b"backup encryption");
     expand.update(&[0x01]);
     Zeroizing::new(<[u8; 32]>::from(expand.finalize().into_bytes()))
 }
 
-/// Layout do payload do `key` do crypt14:
+/// Payload layout of the crypt14 `key`:
 /// `[0..2]` cipher_version = 00 01, `[2]` key_version ∈ {1,2,3},
 /// `[3..35]` server_salt, `[35..51]` google_id, `[51..83]` sha256(google_id),
-/// `[83..99]` zeros, `[99..131]` chave AES.
+/// `[83..99]` zeros, `[99..131]` AES key.
 fn parse_crypt14(p: &[u8]) -> Result<BackupKey, Error> {
     if p[0..2] != [0x00, 0x01] {
         return Err(Error::InvalidKey("cipher_version desconhecida no arquivo key"));
@@ -181,7 +181,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn hex_aceita_espacos_e_rejeita_lixo() {
+    fn hex_accepts_spaces_and_rejects_garbage() {
         let hex = "00112233 44556677 8899aabb ccddeeff\n00112233-44556677-8899AABB-CCDDEEFF";
         assert!(BackupKey::from_hex(hex).is_ok());
         assert!(matches!(BackupKey::from_hex("abc"), Err(Error::InvalidKey(_))));
@@ -191,7 +191,7 @@ mod tests {
     }
 
     #[test]
-    fn debug_nao_vaza_chave() {
+    fn debug_does_not_leak_key() {
         let k = BackupKey::from_hex(&"ab".repeat(32)).unwrap();
         let s = format!("{k:?}");
         assert!(s.contains("redacted"));
@@ -199,7 +199,7 @@ mod tests {
     }
 
     #[test]
-    fn arquivo_de_chave_com_tamanho_errado() {
+    fn key_file_with_wrong_length() {
         assert!(matches!(
             BackupKey::from_key_file(&[0u8; 40]),
             Err(Error::UnknownKeyFile)

@@ -12,7 +12,7 @@ import { Icon } from "./icons";
 import { useViewerT } from "./messages";
 
 const PAGE = 80;
-/** Índice virtual alto o bastante para ir prependendo páginas antigas. */
+/** Virtual index high enough to keep prepending older pages. */
 const START = 1_000_000_000;
 
 type Loaded = {
@@ -26,7 +26,7 @@ type Loaded = {
 
 type Props = {
   chat: Chat;
-  /** Âncora vinda de fora (resultado de busca). */
+  /** Anchor coming from outside (search result). */
   anchor: Anchor | null;
   onSearchInChat: () => void;
 };
@@ -34,7 +34,7 @@ type Props = {
 export default function ChatPane({ chat, anchor: externalAnchor, onSearchInChat }: Props) {
   const source = useSource();
   const [anchor, setAnchor] = useState<Anchor | null>(externalAnchor);
-  const [seq, setSeq] = useState(0); // força recarregar/remontar a lista
+  const [seq, setSeq] = useState(0); // forces reloading/remounting the list
   const [data, setData] = useState<Loaded | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [highlightId, setHighlightId] = useState<number | null>(null);
@@ -47,8 +47,8 @@ export default function ChatPane({ chat, anchor: externalAnchor, onSearchInChat 
   const virtuoso = useRef<VirtuosoHandle>(null);
   const t = useViewerT();
 
-  // Nova âncora vinda de fora com a conversa já aberta (o Viewer remonta este
-  // componente ao trocar de conversa, então a primeira âncora vem do estado inicial).
+  // New anchor from outside with the chat already open (the Viewer remounts this
+  // component when switching chats, so the first anchor comes from the initial state).
   const mounted = useRef(false);
   useEffect(() => {
     if (!mounted.current) {
@@ -98,11 +98,11 @@ export default function ChatPane({ chat, anchor: externalAnchor, onSearchInChat 
     return () => {
       cancelled = true;
     };
-    // `seq` muda a cada navegação (inclusive para a mesma âncora).
+    // `seq` changes on every navigation (even to the same anchor).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seq]);
 
-  // O destaque some depois de um tempo.
+  // The highlight fades after a while.
   useEffect(() => {
     if (highlightId === null) return;
     const t = setTimeout(() => setHighlightId(null), 2500);

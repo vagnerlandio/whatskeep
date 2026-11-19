@@ -21,25 +21,25 @@ impl SourceSchema {
     }
 }
 
-/// Abre um msgstore descriptografado direto da memória, somente leitura,
-/// sem tocar no disco.
+/// Opens a decrypted msgstore straight from memory, read-only,
+/// without touching the disk.
 ///
-/// Liga o `cipher_memory_security` do SQLCipher: toda memória alocada pelo
-/// SQLite (a cópia do banco e o cache de páginas) é zerada antes de ser
-/// liberada. A configuração vale para o processo inteiro.
+/// Turns on SQLCipher's `cipher_memory_security`: all memory allocated by
+/// SQLite (the database copy and the page cache) is zeroed before being
+/// freed. The setting applies to the whole process.
 pub fn open_msgstore(bytes: &[u8]) -> Result<Connection, Error> {
     let mut conn = Connection::open_in_memory()?;
-    // temp_store = MEMORY: ordenações grandes (a importação ordena por data)
-    // não podem virar arquivos temporários com o texto em claro no TMPDIR.
+    // temp_store = MEMORY: large sorts (the import sorts by date) must not
+    // turn into temporary files with plaintext in TMPDIR.
     conn.execute_batch("PRAGMA cipher_memory_security = ON; PRAGMA temp_store = MEMORY;")?;
     conn.deserialize_read_exact(MAIN_DB, bytes, bytes.len(), true)?;
-    // Falha cedo se os bytes não forem um SQLite válido.
+    // Fail early if the bytes are not a valid SQLite database.
     conn.query_row("SELECT count(*) FROM sqlite_master", [], |_| Ok(()))
         .map_err(|_| Error::NotMsgstore)?;
     Ok(conn)
 }
 
-/// Tabelas e colunas existentes no msgstore, para montar queries tolerantes a versão.
+/// Tables and columns present in the msgstore, to build version-tolerant queries.
 pub(crate) struct SourceInfo {
     pub kind: SourceSchema,
     tables: HashMap<String, HashSet<String>>,
@@ -65,8 +65,8 @@ impl SourceInfo {
             conn.query_row(&format!("SELECT count(*) FROM {t}"), [], |r| r.get(0))
                 .unwrap_or(0)
         };
-        // Bancos de transição têm as duas tabelas. Vale a que tem mensagens,
-        // e o schema novo em caso de empate.
+        // Transitional databases have both tables. The one with messages wins,
+        // and the modern schema on a tie.
         let modern = has("message", "chat_row_id") && has("chat", "jid_row_id") && tables.contains_key("jid");
         let legacy = has("messages", "key_remote_jid");
         let kind = match (modern, legacy) {
@@ -76,11 +76,11 @@ impl SourceInfo {
             (false, false) => {
                 let mut names: Vec<&String> = tables.keys().collect();
                 names.sort();
-                tracing::warn!(tabelas = ?names, "nenhum schema de mensagens reconhecido");
+                tracing::warn!(tables = ?names, "no message schema recognized");
                 return Err(Error::NotMsgstore);
             }
         };
-        // Diagnóstico: só nomes de tabelas do WhatsApp e contagens.
+        // Diagnostics: only WhatsApp table names and counts.
         let main: Vec<(&str, i64)> = [
             "message", "messages", "chat", "chat_list", "jid", "jid_map", "message_media", "message_quoted",
             "message_add_on", "message_vcard", "message_location", "message_thumbnail", "message_system",
@@ -89,21 +89,21 @@ impl SourceInfo {
         .filter(|t| tables.contains_key(*t))
         .map(|t| (t, count(t)))
         .collect();
-        tracing::info!(schema = kind.as_str(), tabelas = tables.len(), contagens = ?main, "msgstore reconhecido");
+        tracing::info!(schema = kind.as_str(), tables = tables.len(), counts = ?main, "msgstore recognized");
         let features = [
-            ("miniaturas", has("message_thumbnail", "message_row_id") || has("media_hash_thumbnail", "media_hash") || has("message_thumbnails", "key_id")),
-            ("edicoes", has("message_edit_info", "message_row_id") || has("messages", "edit_version")),
-            ("citacoes", has("message_quoted", "message_row_id") || has("messages", "quoted_row_id")),
-            ("reacoes", has("message_add_on_reaction", "reaction")),
+            ("thumbnails", has("message_thumbnail", "message_row_id") || has("media_hash_thumbnail", "media_hash") || has("message_thumbnails", "key_id")),
+            ("edits", has("message_edit_info", "message_row_id") || has("messages", "edit_version")),
+            ("quotes", has("message_quoted", "message_row_id") || has("messages", "quoted_row_id")),
+            ("reactions", has("message_add_on_reaction", "reaction")),
             ("vcards", has("message_vcard", "vcard") || has("messages_vcards", "vcard")),
-            ("lid_para_telefone", has("jid_map", "lid_row_id")),
-            ("mensagens_de_sistema", tables.contains_key("message_system")),
-            ("midias", has("message_media", "message_row_id") || has("messages", "media_wa_type")),
+            ("lid_to_phone", has("jid_map", "lid_row_id")),
+            ("system_messages", tables.contains_key("message_system")),
+            ("media", has("message_media", "message_row_id") || has("messages", "media_wa_type")),
         ];
-        tracing::info!(recursos = ?features, "recursos encontrados no msgstore");
+        tracing::info!(features = ?features, "features found in the msgstore");
         let mut all: Vec<&String> = tables.keys().collect();
         all.sort();
-        tracing::debug!(tabelas = ?all, "tabelas do msgstore");
+        tracing::debug!(tables = ?all, "msgstore tables");
         Ok(Self { kind, tables })
     }
 
@@ -111,27 +111,27 @@ impl SourceInfo {
         self.tables.get(table).is_some_and(|c| c.contains(col))
     }
 
-    /// `alias.col`, se a coluna existir. Senão, `NULL`.
+    /// `alias.col`, if the column exists. Otherwise, `NULL`.
     pub fn col(&self, table: &str, alias: &str, col: &str) -> String {
         if self.has_col(table, col) {
             format!("{alias}.{col}")
         } else {
-            tracing::debug!(tabela = table, coluna = col, existe_tabela = self.tables.contains_key(table), "coluna ausente no msgstore (vira NULL)");
+            tracing::debug!(table = table, column = col, table_exists = self.tables.contains_key(table), "column missing from the msgstore (becomes NULL)");
             "NULL".to_owned()
         }
     }
 
-    /// `LEFT JOIN table alias ON cond`, se a tabela existir (e tiver `required_col`).
+    /// `LEFT JOIN table alias ON cond`, if the table exists (and has `required_col`).
     pub fn left_join(&self, table: &str, alias: &str, required_col: &str, cond: &str) -> String {
         if self.has_col(table, required_col) {
             format!("LEFT JOIN {table} {alias} ON {cond}")
         } else {
-            tracing::debug!(tabela = table, coluna = required_col, "tabela/coluna ausente no msgstore (join ignorado)");
+            tracing::debug!(table = table, column = required_col, "table/column missing from the msgstore (join skipped)");
             String::new()
         }
     }
 
-    /// Colunas de um LEFT JOIN só podem ser selecionadas se o join existir.
+    /// Columns of a LEFT JOIN can only be selected if the join exists.
     pub fn joined_col(&self, table: &str, join_col: &str, alias: &str, col: &str) -> String {
         if self.has_col(table, join_col) {
             self.col(table, alias, col)

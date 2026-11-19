@@ -1,12 +1,12 @@
-// Textos da interface do visualizador, em português e inglês.
+// Viewer UI texts, in Portuguese and English.
 //
-// Só textos da interface: o conteúdo das mensagens do backup nunca passa por
-// aqui (é exibido como veio).
+// UI texts only: the content of the backup's messages never goes through
+// here (it is shown as it came).
 import { makeT, type Lang } from "./i18n";
 import { formatCount, type MessageKind } from "./types";
 
 const pt = {
-  // barra de navegação e lateral
+  // navigation rail and sidebar
   chats: "Conversas",
   backToChats: "Voltar às conversas",
   archived: "Arquivadas",
@@ -17,12 +17,12 @@ const pt = {
   filterGroups: "Grupos",
   emptyPaneHint: "Escolha uma conversa ou pesquise por uma mensagem.",
 
-  // lista de conversas
+  // chat list
   noChatsHere: "Nenhuma conversa aqui.",
   you: "Você",
   unknownPerson: "Desconhecido",
 
-  // conversa aberta
+  // open chat
   group: "Grupo",
   broadcast: "Lista de transmissão",
   channel: "Canal",
@@ -36,7 +36,7 @@ const pt = {
   goToLatest: "Ir para a mensagem mais recente",
   readOnly: "Somente leitura: este histórico veio de um backup.",
 
-  // bolhas
+  // bubbles
   media: "Mídia",
   starred: "Favoritada",
   edited: "Editada",
@@ -50,7 +50,7 @@ const pt = {
   readMore: "Ler mais",
   fileNotIncluded: "Arquivo não incluído no histórico",
 
-  // mídia
+  // media
   previewNotIncluded: "Prévia · arquivo não incluído",
   play: "Tocar",
   saving: "Salvando…",
@@ -59,7 +59,7 @@ const pt = {
   saveCopy: "Salvar uma cópia",
   close: "Fechar",
 
-  // busca
+  // search
   searchIn: "Em",
   searchAll: "buscar em todas",
   noResults: "Nenhuma mensagem encontrada.",
@@ -68,14 +68,14 @@ const pt = {
   searching: "Buscando…",
   moreResults: "Mais resultados",
 
-  // confirmação de link
+  // link confirmation
   linkTitle: "Abrir link externo?",
   linkExplain: "O link vai abrir no navegador, fora deste histórico. Ele veio de uma mensagem: confira o endereço.",
   linkInvalid: "Este link não pode ser aberto.",
   cancel: "Cancelar",
   open: "Abrir",
 
-  // prévias por tipo de mensagem (lista de conversas)
+  // previews by message kind (chat list)
   kinds: {
     image: "Foto",
     video: "Vídeo",
@@ -175,7 +175,7 @@ const en: typeof pt = {
 
 export type ViewerMessages = typeof pt;
 
-/** Dicionários por idioma, para funções que não são componentes. */
+/** Dictionaries by language, for functions that aren't components. */
 export const VIEWER_MESSAGES: Record<Lang, ViewerMessages> = { "pt-BR": pt, en };
 
 export const useViewerT = makeT(VIEWER_MESSAGES);

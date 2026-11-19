@@ -1,4 +1,4 @@
-/* Paleta próxima ao WhatsApp Desktop */
+/* Palette close to WhatsApp Desktop */
 :root {
   --wa-green: #00a884;
   --wa-teal-dark: #008069;
@@ -447,7 +447,7 @@ code {
   width: 100%;
 }
 
-/* ---------------------------------------------------------------- idioma */
+/* ---------------------------------------------------------------- language */
 
 .lang-menu {
   position: relative;

@@ -1,64 +1,86 @@
-# Segurança
+# Security
 
-O app lida com o histórico inteiro de conversas de alguém. Este documento diz
-contra o que ele protege, como, o que fica de fora e como verificar.
+*Resumo em português no [final deste arquivo](#português).*
 
-## Contra o que protege
+WhatsKeep handles someone's entire chat history. This document says what it protects against, how, what is out of scope, and how to verify it.
 
-| Ameaça | Proteção |
+## What it protects against
+
+| Threat | Protection |
 |---|---|
-| Alguém com acesso ao disco (computador roubado, backup do disco, outra conta) | Tudo o que é importado fica cifrado no cofre (SQLCipher + AES-256-GCM), com chave derivada da senha por Argon2id. Nada em claro é gravado. |
-| Alguém diante do computador destravado | Trava após 5 min sem uso e no botão "Travar"; a chave é zerada da memória. Trocar a senha pede a senha atual. Senhas erradas seguidas atrasam as próximas tentativas (até 30 s). |
-| Mensagem maliciosa (HTML, script, link enganoso) | Texto de mensagem é sempre renderizado como texto. Links só abrem depois de confirmação, só http/https, sem `usuário@host`. CSP sem rede. |
-| Página remota ganhando acesso ao app | A janela principal só navega dentro do app; os comandos do app são liberados um a um, só para ela (ACL testada em execução). A janela de login do Google não tem nenhuma permissão. |
-| Vazamento por arquivos auxiliares | `temp_store = MEMORY` em todas as conexões (inclusive no msgstore decifrado), sem core dumps, cofre fora do Time Machine e do Spotlight, mídias salvas só por ação explícita. |
-| Roubo da conta Google | O token mestre do Google existe por instantes e é zerado; só tokens de 1 h ficam em memória, até o fim do download. O app pede só `drive.appdata`, mas o Google emite o token com os escopos já concedidos ao WhatsApp (`drive.appdata`, `drive.file`, `userinfo.email`, `userinfo.profile`, `openid`; visto num teste real em 2026-11): continua sem acesso ao Drive inteiro, só aos arquivos criados pelo WhatsApp. Nada é gravado. Login numa janela anônima. |
-| Export HTML parar em mãos erradas | Mensagens sempre cifradas (Argon2id + AES-GCM, chave por conversa). Uma senha não abre nem lista as conversas de outra. Nomes de arquivo aleatórios, sem telefone ou texto em claro. A página não acessa a rede. |
+| Someone with access to the disk (stolen computer, disk backup, another account) | Everything imported is encrypted in the vault (SQLCipher + AES-256-GCM), with a key derived from the password by Argon2id. No plaintext is ever written. |
+| Someone at the unlocked computer | Locks after 5 minutes without use and with the "Lock" button; the key is zeroed in memory. Changing the password requires the current one. Repeated wrong passwords delay further attempts (up to 30 s). |
+| Malicious message (HTML, script, deceptive link) | Message text is always rendered as text. Links open only after a confirmation, only http/https, never `user@host`. CSP without network. |
+| A remote page gaining access to the app | The main window only navigates inside the app; app commands are allowed one by one, only for that window (ACL tested at runtime). The Google sign-in window has no permissions at all. |
+| Leaks through auxiliary files | `temp_store = MEMORY` on every connection (including the decrypted msgstore), no core dumps, vault excluded from Time Machine and Spotlight, media saved out of the vault only by explicit action. |
+| Leaks through the diagnostics log | The log is off in release builds unless `WA_LOG` is set, goes only to stderr, and never contains message text, phone numbers, names, passwords, keys, tokens, cookies, e-mail or backup ids. External requests are logged redacted; a test runs the full Google flow against a mock server and fails if any secret reaches the log. |
+| Google account takeover | Google's master token exists for an instant and is zeroed; only 1-hour access tokens stay in memory, until the download ends. The app asks only for `drive.appdata`, but Google issues the token with the scopes already granted to WhatsApp (`drive.appdata`, `drive.file`, `userinfo.email`, `userinfo.profile`, `openid`; seen in a real test in 2026-11): still no access to the whole Drive, only to files created by WhatsApp. Nothing is written to disk. Sign-in happens in an incognito window. |
+| An HTML export falling into the wrong hands | Messages are always encrypted (Argon2id + AES-GCM, per-chat key). One password neither opens nor lists another password's chats. Random file names, no phone number or plaintext. The page cannot access the network. |
 
-## Detalhes
+## Details
 
-### Cofre (`crates/wa-vault`)
-- `vault.json`: Argon2id (256 MiB, t=3, p=4) → chave que desembrulha a DEK (AES-256-GCM). Os parâmetros do KDF entram no AAD: baixá-los editando o arquivo faz a abertura falhar.
-- Um banco SQLCipher por app de origem, chave = HKDF(DEK, id do cofre, rótulo). Chave bruta (sem o PBKDF2 do SQLCipher), `cipher_memory_security = ON`.
-- Mídias: um arquivo por mídia, segmentos AES-GCM de 1 MiB (STREAM: nonce com contador e marca de último; AAD = id do arquivo). Detecta alteração, troca e truncamento.
-- Pastas 0700, arquivos 0600, `.metadata_never_index`, exclusão do Time Machine (`tmutil isexcluded` confirma).
+### Vault (`crates/wa-vault`)
+- `vault.json`: Argon2id (256 MiB, t=3, p=4) → key that unwraps the DEK (AES-256-GCM). The KDF parameters are part of the AAD: lowering them by editing the file makes opening fail.
+- One SQLCipher database per source app, key = HKDF(DEK, vault id, label). Raw key (no SQLCipher PBKDF2), `cipher_memory_security = ON`.
+- Media: one file per item, 1 MiB AES-GCM segments (STREAM: nonce with counter and last flag; AAD = file id). Detects tampering, swapping and truncation.
+- Folders 0700, files 0600, `.metadata_never_index`, Time Machine exclusion (`tmutil isexcluded` confirms).
+- `settings.json` (UI language only) lives outside the vault, because it is needed before unlocking; it holds nothing sensitive.
 
 ### App (`apps/desktop`)
-- Criptografia toda em Rust; o webview recebe só páginas de mensagens e URLs `wamedia://` (mídia servida do cofre com `Cache-Control: no-store` e lista fechada de tipos MIME).
-- CSP de produção: `default-src 'self'`, `connect-src ipc:`, imagens/mídia só do app e de `wamedia:`, sem `data:`/`blob:`.
-- Capabilities: só `event:listen/unlisten`, `dialog:open` e os comandos do app (manifesto em `build.rs`). Sem `core:webview:default` (que inclui abrir o devtools) e sem `core:window:default`.
-- Devtools não entram no build de release (feature `devtools` desligada).
-- Protótipos congelados (`Object.freeze(Object.prototype)`) na janela principal, como primeiro import de `main.tsx`. O `freezePrototype` do Tauri fica desligado porque vale para todas as janelas e quebra o JavaScript da página de login do Google; `pnpm lint:security` confere o import.
-- Caminhos de arquivo para gravar (export, salvar mídia) são escolhidos no seletor nativo pelo backend; o webview nunca informa onde gravar.
-- `panic = "abort"`, binário sem símbolos.
+- All cryptography in Rust; the webview only receives message pages and `wamedia://` URLs (media served from the vault with `Cache-Control: no-store` and a closed list of MIME types).
+- Production CSP: `default-src 'self'`, `connect-src ipc:`, images/media only from the app and `wamedia:`, no `data:`/`blob:`.
+- Capabilities: only `event:listen/unlisten`, `dialog:open` and the app's own commands (manifest in `build.rs`). No `core:webview:default` (which includes opening devtools) and no `core:window:default`.
+- Devtools are not part of release builds (`devtools` feature off).
+- Prototypes are frozen (`Object.freeze(Object.prototype)`) in the main window, as the first import of `main.tsx`. Tauri's `freezePrototype` is off because it applies to every window and breaks the JavaScript of Google's sign-in page; `pnpm lint:security` checks the import.
+- File paths to write to (export, save media) are chosen in the native picker by the backend; the webview never says where to write.
+- `panic = "abort"`, stripped binary.
 
-### Export HTML (`crates/wa-export`, `packages/export-shell`)
-- Formato em `crates/wa-export/src/format.rs`.
-- CSP injetada com o hash dos scripts inline e `connect-src 'none'`. **Sem `'self'`**: no WebKit, `'self'` numa página `file://` libera qualquer URL remota (verificado: buscou imagem e script de um servidor externo). Com `file:`, nenhum dos dois motores acessa a rede.
-- Trava (recarrega e esquece as chaves) após 15 min sem uso.
+### HTML export (`crates/wa-export`, `packages/export-shell`)
+- Format in `crates/wa-export/src/format.rs`.
+- CSP injected with the hashes of the inline scripts and `connect-src 'none'`. **No `'self'`**: in WebKit, `'self'` on a `file://` page allows any remote URL (verified: it fetched an image and a script from an external server). With `file:`, neither engine reaches the network.
+- Locks (reloads and forgets the keys) after 15 minutes without use.
 
-## Limitações conhecidas
+## Known limitations
 
-- **Malware rodando como o seu usuário** com o cofre destravado consegue ler a memória do app ou capturar a tela. Nenhum app desktop comum resolve isso.
-- **Senha fraca**: quem copiar o `vault.json` (ou um export) pode tentar senhas offline. O Argon2id encarece cada tentativa, mas uma senha longa é o que realmente protege. Não há recuperação de senha.
-- **Senhas e a chave de 64 dígitos passam pelo webview** ao serem digitadas (inevitável numa UI web); no Rust ficam em buffers zerados.
-- **Memória do sistema**: o SQLCipher e o Rust zeram o que liberam, mas o sistema pode ter paginado memória para o swap (no macOS o swap é cifrado).
-- **SSD/APFS**: arquivos apagados não são sobrescritos de verdade; por isso nada em claro é gravado em primeiro lugar.
-- **Fluxo do Google não oficial**: pode quebrar ou ser bloqueado a qualquer momento; a importação local continua funcionando.
-- **Windows/Linux**: a exclusão de backup do sistema só existe no macOS.
-- `cargo audit`: nenhuma vulnerabilidade; 6 avisos de crates sem manutenção/unsound na camada Linux do Tauri (GTK/glib, D-Bus), sem correção disponível e fora do build de macOS.
+- **Malware running as your user** while the vault is unlocked can read the app's memory or capture the screen. No ordinary desktop app solves this.
+- **Weak password**: whoever copies `vault.json` (or an export) can try passwords offline. Argon2id makes each attempt expensive, but a long password is what really protects you. There is no password recovery.
+- **Passwords and the 64-digit key pass through the webview** while typed (unavoidable in a web UI); in Rust they live in zeroed buffers.
+- **System memory**: SQLCipher and Rust zero what they free, but the OS may have paged memory to swap (swap is encrypted on macOS).
+- **SSD/APFS**: deleted files are not really overwritten; that is why no plaintext is written in the first place.
+- **Unofficial Google flow**: it may break or be blocked at any time; local import keeps working.
+- **Windows/Linux**: the system backup exclusion only exists on macOS.
+- `cargo audit`: no vulnerabilities; 6 warnings about unmaintained/unsound crates in Tauri's Linux layer (GTK/glib, D-Bus), with no fix available and not part of the macOS build.
 
-## Como verificar
+## How to verify
 
 ```sh
-cargo test --workspace          # cripto, cofre, isolamento, adulteração, ACL, vazamentos
-pnpm test:e2e                   # export aberto por file:// no Chromium e no WebKit, incluindo sonda de rede
-pnpm lint:security              # padrões proibidos no frontend (innerHTML, eval, href dinâmico...)
+cargo test --workspace          # crypto, vault, isolation, tampering, ACL, leaks
+pnpm test:e2e                   # export opened via file:// in Chromium and WebKit, including a network probe
+pnpm lint:security              # forbidden frontend patterns (innerHTML, eval, dynamic href...)
 cargo audit && pnpm audit --prod
 ```
 
-Testes que valem destacar:
-- `wa-vault/tests/vault.rs`: nenhum texto, telefone, schema ou senha em claro nos arquivos do cofre; exclusão do Time Machine.
-- `wa-vault/tests/tempfiles.rs` e `wa-import/tests/import.rs`: `temp_store = MEMORY` em todas as conexões com dados decifrados.
-- `wa-export/tests/export.rs`: isolamento entre senhas, nada em claro no pacote, adulteração detectada, CSP sem `'self'`.
-- `apps/desktop/src-tauri/src/lib.rs` (`acl_so_a_janela_principal_chama_comandos`): ACL real em execução.
+Tests worth highlighting:
+- `crates/wa-vault/tests/vault.rs`: no text, phone number, schema or password in plaintext in the vault files; Time Machine exclusion.
+- `crates/wa-vault/tests/tempfiles.rs` and `crates/wa-import/tests/import.rs`: `temp_store = MEMORY` on every connection with decrypted data.
+- `crates/wa-export/tests/export.rs`: isolation between passwords, no plaintext in the package, tampering detected, CSP without `'self'`.
+- `crates/wa-gdrive/tests/mock_drive.rs`: full Google flow against a mock server; the diagnostics log contains no secret.
+- `apps/desktop/src-tauri/src/lib.rs`: the real ACL at runtime (only the main window, with the app origin, can call commands).
+
+---
+
+## Português
+
+O WhatsKeep lida com o histórico inteiro de conversas de alguém. Em resumo:
+
+- **Disco:** tudo o que é importado fica cifrado no cofre (SQLCipher + AES-256-GCM, chave derivada da senha por Argon2id). Nada em claro é gravado em disco.
+- **Computador destravado:** o cofre trava após 5 minutos sem uso e no botão "Travar"; senhas erradas seguidas atrasam as próximas tentativas.
+- **Mensagens maliciosas:** o texto é sempre exibido como texto; links só abrem depois de confirmação e só http/https; a interface não acessa a rede.
+- **Janelas e comandos:** a janela principal só navega dentro do app, cada comando é liberado só para ela, e a janela de login do Google não tem nenhuma permissão.
+- **Arquivos auxiliares e log:** sem arquivos temporários em claro, sem core dumps, cofre fora do Time Machine e do Spotlight; o log de diagnóstico fica desligado no app final e nunca registra mensagens, telefones, senhas, chaves ou tokens.
+- **Conta Google:** o acesso fica só na memória, vale 1 hora e é apagado no fim do download; o login acontece numa janela anônima.
+- **Export HTML:** mensagens sempre cifradas, uma senha não abre as conversas de outra, nomes de arquivo aleatórios e a página não acessa a rede.
+
+**Limitações:** malware rodando com o seu usuário enquanto o cofre está aberto consegue ler a memória ou a tela; uma senha fraca pode ser atacada offline por quem copiar o cofre; não existe recuperação de senha; o fluxo do Google não é oficial e pode parar de funcionar (a importação local continua).
+
+Os detalhes técnicos e como verificar cada proteção estão nas seções em inglês acima.

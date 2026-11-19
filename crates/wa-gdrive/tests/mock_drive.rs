@@ -1,5 +1,5 @@
-//! Fluxo completo contra um servidor HTTP falso: login, listagem paginada,
-//! download com MD5 e descriptografia do msgstore baixado.
+//! Full flow against a fake HTTP server: login, paginated listing, download
+//! with MD5 and decryption of the downloaded msgstore.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
@@ -28,7 +28,7 @@ fn ok(body: impl Into<Vec<u8>>) -> Resp {
     Resp(200, "text/plain".into(), body.into())
 }
 
-/// Servidor HTTP/1.1 mínimo (uma requisição por conexão).
+/// Minimal HTTP/1.1 server (one request per connection).
 fn serve(route: impl Fn(&Req) -> Resp + Send + 'static) -> (String, Arc<Mutex<Vec<Req>>>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
@@ -87,9 +87,9 @@ fn md5_b64(data: &[u8]) -> String {
     B64.encode(Md5::digest(data))
 }
 
-/// Google falso: só o WhatsApp comum tem token; o Business é recusado.
+/// Fake Google: only regular WhatsApp gets a token; Business is refused.
 fn google(corrupt_md5: bool) -> (Endpoints, Arc<Mutex<Vec<Req>>>) {
-    let md5 = if corrupt_md5 { md5_b64(b"outra coisa") } else { md5_b64(BACKUP) };
+    let md5 = if corrupt_md5 { md5_b64(b"something else") } else { md5_b64(BACKUP) };
     let (base, log) = serve(move |r| {
         let f = form(&r.body);
         match (r.method.as_str(), r.target.as_str()) {
@@ -138,7 +138,7 @@ fn google(corrupt_md5: bool) -> (Endpoints, Arc<Mutex<Vec<Req>>>) {
 }
 
 #[test]
-fn fluxo_completo() {
+fn full_flow() {
     let (ep, log) = google(false);
     let session = login(&ep, "a@b.com", OauthCookie::new("oauth2_4/cookie".into())).unwrap();
     assert_eq!(session.tokens.len(), 1);
@@ -148,7 +148,7 @@ fn fluxo_completo() {
 
     let api = Api::new(&ep, &session.tokens[0].1).unwrap();
     let backups = api.backups().unwrap();
-    assert_eq!(backups.len(), 2, "duas páginas");
+    assert_eq!(backups.len(), 2, "two pages");
     assert_eq!(backups[0].phone.as_deref(), Some("5511900000001"));
     assert_eq!((backups[0].encrypted, backups[0].chat_db_size), (Some(true), Some(1234)));
     assert!(backups[1].uploading);
@@ -160,13 +160,13 @@ fn fluxo_completo() {
     assert_eq!(bytes, BACKUP);
     assert_eq!(seen.last(), Some(&(BACKUP.len() as u64, BACKUP.len() as u64)));
 
-    // O que foi baixado abre com a chave do backup.
+    // What was downloaded opens with the backup key.
     let key = wa_crypt::BackupKey::from_hex(KEY_HEX).unwrap();
     let plain = wa_crypt::decrypt(&bytes, &key).unwrap();
     assert_eq!(plain.payload, wa_crypt::Payload::Sqlite);
 
-    // O token mestre só foi para o endpoint de autenticação, e o token de
-    // acesso só no cabeçalho Authorization.
+    // The master token only went to the authentication endpoint, and the
+    // access token only in the Authorization header.
     let log = log.lock().unwrap();
     for r in log.iter() {
         if r.target != "/auth" {
@@ -182,14 +182,14 @@ fn fluxo_completo() {
 }
 
 #[test]
-fn cookie_recusado() {
+fn cookie_refused() {
     let (ep, _) = google(false);
-    let err = login(&ep, "a@b.com", OauthCookie::new("expirado".into())).err().unwrap();
+    let err = login(&ep, "a@b.com", OauthCookie::new("expired".into())).err().unwrap();
     assert!(matches!(err, Error::BadAuthentication), "{err:?}");
 }
 
 #[test]
-fn md5_divergente_e_recusado() {
+fn md5_mismatch_is_refused() {
     let (ep, _) = google(true);
     let session = login(&ep, "a@b.com", OauthCookie::new("oauth2_4/cookie".into())).unwrap();
     let api = Api::new(&ep, &session.tokens[0].1).unwrap();
@@ -199,7 +199,7 @@ fn md5_divergente_e_recusado() {
 }
 
 #[test]
-fn cancelamento_token_expirado_e_redirecionamento() {
+fn cancellation_expired_token_and_redirect() {
     let (ep, _) = google(false);
     let session = login(&ep, "a@b.com", OauthCookie::new("oauth2_4/cookie".into())).unwrap();
     let api = Api::new(&ep, &session.tokens[0].1).unwrap();
@@ -207,21 +207,21 @@ fn cancelamento_token_expirado_e_redirecionamento() {
     let db = find_msgstore(&files).unwrap();
     assert!(matches!(api.download(db, &AtomicBool::new(true), |_, _| {}), Err(Error::Cancelled)));
 
-    let stale = wa_gdrive::AccessToken::new("ya29.VELHO".into());
+    let stale = wa_gdrive::AccessToken::new("ya29.STALE".into());
     let api = Api::new(&ep, &stale).unwrap();
     assert!(matches!(api.backups(), Err(Error::TokenExpired)));
 
-    // Redirecionamento não é seguido (o token não vai para outro host).
+    // Redirects are not followed (the token never goes to another host).
     let api = Api::new(&ep, &session.tokens[0].1).unwrap();
     assert!(matches!(api.files("clients/wa/backups/redirect"), Err(Error::Http(302))));
-    // Nome de backup que tenta sair do caminho é recusado antes da rede.
+    // A backup name that tries to escape the path is refused before any network call.
     assert!(matches!(api.files("clients/wa/backups/../../x"), Err(Error::Unexpected(_))));
 }
 
-/// O log de diagnóstico (requests/responses) mostra o fluxo, mas nunca o
-/// cookie, os tokens, o e-mail, o id do aparelho nem o telefone do backup.
+/// The diagnostics log (requests/responses) shows the flow, but never the
+/// cookie, the tokens, the e-mail, the device id or the backup's phone number.
 #[test]
-fn log_de_requests_nao_vaza_segredos() {
+fn request_log_leaks_no_secrets() {
     #[derive(Clone, Default)]
     struct Buf(Arc<Mutex<Vec<u8>>>);
     impl Write for Buf {
@@ -241,9 +241,9 @@ fn log_de_requests_nao_vaza_segredos() {
         .with_writer(move || writer.clone())
         .finish();
 
-    // Global (não `with_default`): com testes em paralelo, um subscriber de
-    // escopo perde eventos pelo cache de interesse dos callsites. Assim os
-    // logs dos outros testes deste arquivo também passam pela checagem.
+    // Global (not `with_default`): with tests running in parallel, a scoped
+    // subscriber loses events because of the callsite interest cache. This way
+    // the logs of the other tests in this file also go through the check.
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
     let (ep, reqs) = google(false);
@@ -263,12 +263,12 @@ fn log_de_requests_nao_vaza_segredos() {
         .map(|(_, v)| v)
         .unwrap();
     for secret in ["oauth2_4/cookie", "aas_et", "MASTER", "ya29", "a@b.com", "5511900000001", "5511900000002", "p2", &android_id] {
-        assert!(!log.contains(secret), "o log contém {secret:?}:\n{log}");
+        assert!(!log.contains(secret), "the log contains {secret:?}:\n{log}");
     }
-    // Mas mostra o que importa para diagnosticar.
+    // But it shows what matters for diagnosing.
     for expected in [
         "→ POST",
-        "Token=<redigido:",
+        "Token=<redacted:",
         "service=ac2dm",
         "Error=",
         "→ GET",
@@ -276,8 +276,8 @@ fn log_de_requests_nao_vaza_segredos() {
         "Databases/msgstore.db.crypt15",
         "status=200",
         "encryptedBackupEnabled",
-        "baixado",
+        "downloaded",
     ] {
-        assert!(log.contains(expected), "o log não contém {expected:?}:\n{log}");
+        assert!(log.contains(expected), "the log does not contain {expected:?}:\n{log}");
     }
 }

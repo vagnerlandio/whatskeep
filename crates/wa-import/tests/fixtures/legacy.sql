@@ -1,5 +1,5 @@
--- msgstore sintético no schema LEGADO (subconjunto das colunas reais).
--- Note que `media_wa_type` é TEXT, como nos bancos reais.
+-- Synthetic msgstore in the LEGACY schema (subset of the real columns).
+-- Note that `media_wa_type` is TEXT, as in real databases.
 
 CREATE TABLE chat_list (_id INTEGER PRIMARY KEY AUTOINCREMENT, key_remote_jid TEXT UNIQUE,
     message_table_id INTEGER, subject TEXT, creation INTEGER, archived INTEGER);

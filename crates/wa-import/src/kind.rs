@@ -1,4 +1,4 @@
-/// Tipo normalizado de mensagem, gravado como texto no schema do app.
+/// Normalized message type, stored as text in the app's schema.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MessageKind {
     Text,
@@ -51,29 +51,29 @@ impl MessageKind {
     }
 }
 
-/// Dados de uma linha da origem relevantes para classificar a mensagem.
+/// Data from a source row relevant to classifying the message.
 pub(crate) struct Classify<'a> {
-    /// `message.message_type` (novo) ou `messages.media_wa_type` (legado).
+    /// `message.message_type` (modern) or `messages.media_wa_type` (legacy).
     pub wa_type: i64,
     pub status: Option<i64>,
-    /// `message_future.version` (novo) ou `messages.edit_version` (legado).
+    /// `message_future.version` (modern) or `messages.edit_version` (legacy).
     pub edit_version: Option<i64>,
     pub from_me: bool,
     pub mime: Option<&'a str>,
     pub file_path: Option<&'a str>,
-    /// Mensagem de sistema identificada por `message_system`.
+    /// System message identified by `message_system`.
     pub has_system_action: bool,
 }
 
-/// Retorna o tipo e, se o código for desconhecido, `true`.
+/// Returns the type and, if the code is unknown, `true`.
 ///
-/// Valores de `message_type` confirmados pela referência (WhatsApp-Chat-Exporter)
-/// e pela comunidade: 0 texto, 1 imagem, 2 áudio, 3 vídeo, 4 contato, 5 localização,
-/// 7 sistema, 9 documento, 13 GIF, 14 vários contatos, 15 apagada, 16 localização
-/// em tempo real, 20 figurinha, 42/43 imagem/vídeo de visualização única.
-/// Outros valores ficam como `Unknown` e são contados no relatório.
+/// `message_type` values confirmed by the reference (WhatsApp-Chat-Exporter)
+/// and by the community: 0 text, 1 image, 2 audio, 3 video, 4 contact, 5 location,
+/// 7 system, 9 document, 13 GIF, 14 multiple contacts, 15 deleted, 16 live
+/// location, 20 sticker, 42/43 view-once image/video.
+/// Other values stay `Unknown` and are counted in the report.
 pub(crate) fn classify(c: &Classify) -> (MessageKind, bool) {
-    // Apagada: tipo 15, ou edit_version 7 com status 5 (enviada) / 0 (recebida).
+    // Deleted: type 15, or edit_version 7 with status 5 (sent) / 0 (received).
     let deleted_by_version = c.edit_version == Some(7)
         && match c.status {
             Some(5) => c.from_me,
@@ -83,7 +83,7 @@ pub(crate) fn classify(c: &Classify) -> (MessageKind, bool) {
     if c.wa_type == 15 || deleted_by_version {
         return (MessageKind::Deleted, false);
     }
-    // No legado, status 6 marca mensagens de sistema.
+    // In the legacy schema, status 6 marks system messages.
     if c.has_system_action || c.status == Some(6) || c.wa_type == 7 {
         return (MessageKind::System, false);
     }
@@ -124,7 +124,7 @@ mod tests {
     }
 
     #[test]
-    fn tipos_basicos() {
+    fn basic_types() {
         assert_eq!(classify(&base(0)).0, MessageKind::Text);
         assert_eq!(classify(&base(1)).0, MessageKind::Image);
         assert_eq!(classify(&base(20)).0, MessageKind::Sticker);
@@ -132,7 +132,7 @@ mod tests {
     }
 
     #[test]
-    fn audio_vs_mensagem_de_voz() {
+    fn audio_vs_voice_message() {
         let mut c = base(2);
         c.mime = Some("audio/mp4");
         assert_eq!(classify(&c).0, MessageKind::Audio);
@@ -141,13 +141,13 @@ mod tests {
     }
 
     #[test]
-    fn apagadas() {
+    fn deleted_messages() {
         assert_eq!(classify(&base(15)).0, MessageKind::Deleted);
         let mut c = base(0);
         c.edit_version = Some(7);
         c.status = Some(0);
         assert_eq!(classify(&c).0, MessageKind::Deleted);
-        // status 5 só conta como apagada se a mensagem for minha
+        // status 5 only counts as deleted if the message is mine
         c.status = Some(5);
         assert_eq!(classify(&c).0, MessageKind::Text);
         c.from_me = true;

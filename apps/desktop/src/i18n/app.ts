@@ -1,5 +1,5 @@
-// Textos das telas do app (cofre, início, visualizador e exportação HTML).
-// Os textos de importação ficam em `import.ts`.
+// Texts for the app's screens (vault, home, viewer and HTML export).
+// The import texts live in `import.ts`.
 import { formatCount, formatSize } from "@wa/viewer";
 import { makeT } from "./errors";
 
@@ -9,7 +9,7 @@ const plPt = (n: number, one: string, many: string) => `${nPt(n)} ${n === 1 ? on
 const plEn = (n: number, one: string, many: string) => `${nEn(n)} ${n === 1 ? one : many}`;
 
 const pt = {
-  // Moldura
+  // Frame
   appName: "WhatsKeep",
   tagline: "Suas conversas do WhatsApp, seguras e acessíveis.",
   lockTitle: "Travar o cofre",
@@ -17,14 +17,14 @@ const pt = {
   footnote: "Tudo é processado localmente neste computador. Nada é enviado para servidores.",
   lockedIdle: "O cofre foi travado por inatividade.",
 
-  // Desbloqueio
+  // Unlock
   unlockTitle: "Cofre travado",
   vaultPassword: "Senha do cofre",
   wrongPassword: "Senha incorreta.",
   opening: "Abrindo…",
   open: "Abrir",
 
-  // Criação do cofre
+  // Vault creation
   createTitle: "Criar cofre",
   createIntro: (minutes: number) =>
     `O histórico importado fica guardado neste computador, cifrado com esta senha. Ela é pedida ao abrir o app e depois de ${minutes} ${minutes === 1 ? "minuto" : "minutos"} sem uso.`,
@@ -37,7 +37,7 @@ const pt = {
   noRecoveryCreate: "Se você esquecer, o cofre não pode ser aberto e será preciso importar os backups de novo.",
   creating: "Criando cofre…",
 
-  // Início
+  // Home
   backToHistory: "Voltar ao histórico",
   storesTitle: "Históricos no cofre",
   noStores: "Nenhum backup importado ainda.",
@@ -46,13 +46,13 @@ const pt = {
   media: (n: number) => plPt(n, "mídia", "mídias"),
   importedAt: (when: string) => `Importado em ${when}`,
 
-  // Visualizador
+  // Viewer
   switchTo: (app: string) => `Trocar para ${app}`,
   importOrExport: "Importar ou exportar",
   emptyTitle: (app: string) => `Histórico do ${app}`,
   emptyNote: "Os dados ficam cifrados neste computador e não saem dele.",
 
-  // Exportação HTML
+  // HTML export
   exportTitle: "Exportar HTML",
   exportIntro:
     "Gera uma pasta com o histórico que abre em qualquer navegador, sem este app e sem internet. As mensagens ficam cifradas com a senha que você definir.",

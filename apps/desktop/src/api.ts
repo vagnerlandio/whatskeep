@@ -1,5 +1,5 @@
-// Wrappers tipados dos comandos Rust. O webview nunca vê chaves nem o banco:
-// só envia senha/chave uma vez e recebe resumos.
+// Typed wrappers for the Rust commands. The webview never sees keys or the database:
+// it only sends the password/key once and receives summaries.
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import type { Anchor, Around, Chat, Cursor, DataSource, Lang, Message, SearchHit } from "@wa/viewer";
 export { errorOf, formatCount, formatSize } from "@wa/viewer";
@@ -54,7 +54,7 @@ export const api = {
     invoke<ImportSummary>("import_backup", { backupPath, key, sourceApp }),
 };
 
-// ---------------------------------------------------------------- visualizador
+// ---------------------------------------------------------------- viewer
 
 export const viewerApi = {
   chats: (store: SourceApp) => invoke<Chat[]>("list_chats", { store }),
@@ -66,11 +66,11 @@ export const viewerApi = {
     invoke<SearchHit[]>("search_messages", { store, query, chatId, before, limit }),
 };
 
-/** Miniatura servida pelo protocolo `wamedia://` (direto do cofre, sem cache em disco). */
+/** Thumbnail served by the `wamedia://` protocol (straight from the vault, no disk cache). */
 export const thumbUrl = (store: SourceApp, messageId: number) =>
   convertFileSrc(`thumb/${store}/${messageId}`, "wamedia");
 
-/** Arquivo completo (com suporte a Range para vídeo/áudio). */
+/** Full file (with Range support for video/audio). */
 export const mediaUrl = (store: SourceApp, messageId: number) =>
   convertFileSrc(`media/${store}/${messageId}`, "wamedia");
 
@@ -88,17 +88,17 @@ export type MediaSummary = {
 export type MediaProgress = { done: number; total: number; bytes: number; totalBytes: number; added: number };
 
 export const mediaApi = {
-  /** Abre o seletor de pasta no backend. `null` se o usuário cancelar. */
+  /** Opens the folder picker in the backend. `null` if the user cancels. */
   importFolder: (sourceApp: SourceApp) => invoke<MediaSummary | null>("import_media_folder", { sourceApp }),
   cancel: () => invoke<void>("media_cancel"),
-  /** Abre "Salvar como" no backend. `false` se o usuário cancelar. */
+  /** Opens "Save as" in the backend. `false` if the user cancels. */
   save: (store: SourceApp, messageId: number) => invoke<boolean>("save_media", { store, messageId }),
 };
 
 // ---------------------------------------------------------------- Google Drive
 
 export type DriveBackup = {
-  /** Índice na sessão do backend (o nome real do backup não sai do Rust). */
+  /** Index in the backend session (the backup's real name never leaves Rust). */
   id: number;
   phone: string | null;
   updateTime: string | null;
@@ -141,7 +141,7 @@ export type ExportSummary = {
 };
 
 export const exportApi = {
-  /** Seletor nativo de pasta; o caminho fica guardado no backend. */
+  /** Native folder picker; the path is kept in the backend. */
   pickDestination: () => invoke<{ path: string; cloud: string | null } | null>("export_pick_destination"),
   run: (store: SourceApp, groups: { password: string; chats: number[] }[], media: ExportMedia) =>
     invoke<{ summary: ExportSummary; path: string }>("export_html", { store, groups, media }),
@@ -150,17 +150,17 @@ export const exportApi = {
 
 export const MIN_PASSWORD_CHARS = 8;
 
-// ---------------------------------------------------------------- preferências
+// ---------------------------------------------------------------- preferences
 
 export const settingsApi = {
-  /** Idioma salvo, ou `null` (usar o do sistema). */
+  /** Saved language, or `null` (use the system one). */
   getLanguage: () => invoke<Lang | null>("get_language"),
   setLanguage: (language: Lang) => invoke<void>("set_language", { language }),
 };
 
 
 
-/** Fonte de dados do visualizador sobre o cofre (Rust, via IPC). */
+/** Viewer data source on top of the vault (Rust, via IPC). */
 export function tauriSource(store: SourceApp): DataSource {
   return {
     chats: () => viewerApi.chats(store),

@@ -7,7 +7,7 @@ Desktop app (**Tauri v2 + React**) that imports WhatsApp / WhatsApp Business bac
 Read this file before changing anything. For details:
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — data flow, key hierarchy, on-disk formats, dependencies between modules.
 - [docs/RECIPES.md](docs/RECIPES.md) — step-by-step checklists for common changes (new command, new message field, new WhatsApp message type...).
-- [SECURITY.md](SECURITY.md) — threat model and limitations. [README.md](README.md) — user-facing overview. (Both in Portuguese.)
+- [SECURITY.md](SECURITY.md) — threat model and limitations. [README.md](README.md) — user-facing overview (English first, Portuguese section at the end).
 
 ## Map
 
@@ -54,11 +54,11 @@ Breaking any of these requires discussing it with the user first.
 
 ## Conventions
 
-- **Language:** source code identifiers, code comments, test names, UI strings and user docs (README, SECURITY) are in **Portuguese** — keep it that way. Agent docs (this file, `docs/`) are in English. **Commit messages in English**, ending with the `Co-Authored-By` line the harness asks for.
+- **Language: English first.** New docs are written in English; the README is English with the same user instructions in Portuguese at the end. The UI is bilingual (pt-BR/en dictionaries, see [RECIPES](docs/RECIPES.md)). Code comments, test names and log messages are in English. **Kept in Portuguese on purpose:** the `pt` dictionaries, Rust error `Display` texts and `CmdError` messages (the pt-BR UI shows them; the English UI maps error codes in `apps/desktop/src/i18n/errors.ts`), strings the frontend compares exactly (`MediaSummary.stopped`), user-visible file names (`historico-whatsapp-<date>`, `midia-<id>`) and test fixture data. **Commit messages in English**, ending with the `Co-Authored-By` line the harness asks for.
 - Rust edition 2024, workspace in `Cargo.toml` (rusqlite with SQLCipher across the whole workspace — plain SQLite cannot be mixed in).
 - Heavy Tauri commands run inside `commands::blocking(...)` (spawn_blocking); long operations hold `state.busy()` so autolock does not fire mid-way.
 - Viewer DB/media access only through `AppState::with_store` / `with_media` (opened on demand, closed on lock). Lock order: `conns` → `media` → `vault`.
-- **Diagnostics log** (`tracing`, `src-tauri/src/diag.rs`): on in dev builds, in release only with `WA_LOG=<filter>`; stderr only, never a file written by the app. `pnpm dev:log` tees it to `logs/` (gitignored). External HTTP requests/responses are logged redacted by `wa_gdrive::trace` (test `log_de_requests_nao_vaza_segredos`). **Never log** message text, phone numbers/JIDs, contact names, passwords, keys, tokens, cookies, e-mail, backup ids or media file names — only phases, timings, sizes, counts, error codes and WhatsApp table/column names. Swallowed per-item failures go through `diag::Tally` (counts per reason + first examples). Frontend errors reach the log via the `ui_log` command.
+- **Diagnostics log** (`tracing`, `src-tauri/src/diag.rs`): on in dev builds, in release only with `WA_LOG=<filter>`; stderr only, never a file written by the app. `pnpm dev:log` tees it to `logs/` (gitignored). External HTTP requests/responses are logged redacted by `wa_gdrive::trace` (test `request_log_leaks_no_secrets`). **Never log** message text, phone numbers/JIDs, contact names, passwords, keys, tokens, cookies, e-mail, backup ids or media file names — only phases, timings, sizes, counts, error codes and WhatsApp table/column names. Swallowed per-item failures go through `diag::Tally` (counts per reason + first examples). Frontend errors reach the log via the `ui_log` command.
 - Progress to the UI via events: `import-progress`, `gdrive-progress`, `media-progress`, `export-progress`, `vault-locked`.
 - **UI look:** follow WhatsApp Desktop (nav rail, green title, filter chips, pastel avatars, bubble tails, light/dark palettes in `packages/viewer/src/viewer.css`). **Icons: Lucide only**, through `Icon` / `RailButton` exported by `@wa/viewer` (`packages/viewer/src/icons.tsx`; add new names to the `icons` map). Never emojis or Unicode symbols as UI icons (emoji inside message content is fine).
 - Shared types: structs in `wa_vault::query` serialize as camelCase and mirror `packages/viewer/src/types.ts`. Change one, change the other.

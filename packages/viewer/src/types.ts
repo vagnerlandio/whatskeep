@@ -1,5 +1,5 @@
-// Tipos dos dados exibidos. São os mesmos que o Rust serializa
-// (wa_vault::query) e que o export HTML grava.
+// Types of the displayed data. They are the same ones Rust serializes
+// (wa_vault::query) and the HTML export writes.
 
 export type Person = { jid: string; phone: string | null; name: string | null };
 
@@ -41,7 +41,7 @@ export type Media = {
   fileName: string | null;
   transcription: string | null;
   hasThumbnail: boolean;
-  /** O arquivo completo está disponível nesta fonte. */
+  /** The full file is available in this source. */
   available: boolean;
 };
 
@@ -72,7 +72,7 @@ export type SearchHit = {
   sentAt: number;
   fromMe: boolean;
   sender: Person | null;
-  /** Trecho com os termos entre \u0001 e \u0002. */
+  /** Excerpt with the terms between \u0001 and \u0002. */
   snippet: string;
 };
 

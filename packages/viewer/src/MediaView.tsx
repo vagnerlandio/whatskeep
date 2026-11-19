@@ -7,12 +7,12 @@ import { Icon } from "./icons";
 import { useViewerT } from "./messages";
 
 const MEDIA_MAX = 330;
-/** Espera depois que a rolagem para antes de decodificar a imagem completa. */
+/** Wait after scrolling stops before decoding the full image. */
 const FULL_DELAY_MS = 150;
 
-/** Foto/vídeo/GIF/figurinha. O espaço é reservado pelas dimensões gravadas,
- * para a lista não "pular". A miniatura aparece na hora; o arquivo completo
- * (se disponível) só carrega quando a rolagem para. */
+/** Photo/video/GIF/sticker. The space is reserved from the stored dimensions,
+ * so the list doesn't "jump". The thumbnail shows up right away; the full file
+ * (if available) only loads once scrolling stops. */
 export function Visual({ m }: { m: Message }) {
   const source = useSource();
   const { scrolling, openMedia } = useViewer();
@@ -102,7 +102,7 @@ export function AudioView({ m }: { m: Message }) {
   const source = useSource();
   const [play, setPlay] = useState(false);
   const t = useViewerT();
-  // Nada é carregado (nem decifrado) até o usuário pedir.
+  // Nothing is loaded (or decrypted) until the user asks.
   const url = useUrl(() => (play ? source.mediaUrl(m) : null), [source, m.id, play]);
   const icon = <Icon name={m.kind === "voice" ? "mic" : "headphones"} size={22} />;
   if (!m.media?.available) {
@@ -174,7 +174,7 @@ export function SaveButton({ m, compact }: { m: Message; compact?: boolean }) {
   );
 }
 
-/** Mídia em tela cheia. Esc ou clique fora fecha. */
+/** Fullscreen media. Esc or a click outside closes it. */
 export function Lightbox({ m, onClose }: { m: Message; onClose: () => void }) {
   const source = useSource();
   const url = useUrl(() => source.mediaUrl(m), [source, m.id]);

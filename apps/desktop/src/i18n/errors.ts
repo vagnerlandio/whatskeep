@@ -1,9 +1,9 @@
-// Erros dos comandos no idioma da interface.
+// Command errors in the UI language.
 //
-// O backend devolve `{ code, message }`: `code` é estável e `message` é um
-// texto em português, às vezes com detalhes (nome do erro de rede etc.).
-// Em português, mostra a mensagem do backend (mais específica). Em inglês,
-// um texto por código; o detalhe técnico fica no log de diagnóstico.
+// The backend returns `{ code, message }`: `code` is stable and `message` is a
+// Portuguese text, sometimes with details (name of the network error etc.).
+// In Portuguese, shows the backend's message (more specific). In English,
+// one text per code; the technical detail goes to the diagnostics log.
 import { errorOf, makeT, useLang } from "@wa/viewer";
 
 const en: Record<string, string> = {
@@ -31,7 +31,7 @@ const en: Record<string, string> = {
   internal: "Something went wrong. Details are in the diagnostics log.",
 };
 
-/** Texto do erro no idioma atual. */
+/** Error text in the current language. */
 export function useErrorText(): (e: unknown) => string {
   const { lang } = useLang();
   return (e: unknown) => {
@@ -41,5 +41,5 @@ export function useErrorText(): (e: unknown) => string {
   };
 }
 
-// Reexporta o utilitário de dicionários para as telas do app.
+// Re-exports the dictionary helper for the app's screens.
 export { makeT };

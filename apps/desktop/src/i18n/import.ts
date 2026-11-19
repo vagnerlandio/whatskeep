@@ -1,9 +1,9 @@
-// Textos das telas de importação (arquivo local, Google Drive e pasta de mídias).
+// Texts for the import screens (local file, Google Drive and media folder).
 import type { ImportPhase } from "../api";
 import { makeT } from "./errors";
 
 const pt = {
-  // Chave do backup
+  // Backup key
   keyLegend: "Chave do backup",
   keyTabHex: "64 dígitos",
   keyTabFile: "Arquivo encrypted_backup.key",
@@ -17,10 +17,10 @@ const pt = {
   passwordOnly:
     "Se o backup foi protegido só com uma senha (sem a chave de 64 dígitos), não há como abri-lo fora do WhatsApp: a chave fica guardada nos servidores dele. No celular, troque a proteção para a chave de 64 dígitos e faça um backup novo.",
 
-  // Origem
+  // Source
   importAs: "Importar como",
 
-  // Fases da importação
+  // Import phases
   phase: {
     reading: "Lendo o arquivo…",
     downloading: "Baixando do Google Drive…",
@@ -29,14 +29,14 @@ const pt = {
     done: "Concluído",
   } satisfies Record<ImportPhase, string>,
 
-  // Erros mais comuns
+  // Most common errors
   friendly: {
     wrong_key: "A chave não abre este backup. Confira os 64 dígitos ou o arquivo de chave.",
     key_mismatch: "Este arquivo de chave é de outro formato de backup.",
     not_msgstore: "O arquivo foi descriptografado, mas não é um banco de mensagens (msgstore).",
   } as Record<string, string>,
 
-  // Resumo
+  // Summary
   importDone: "Importação concluída",
   summaryMain: (chats: string, messages: string, media: string) =>
     `${chats} conversas · ${messages} mensagens · ${media} mídias`,
@@ -46,7 +46,7 @@ const pt = {
     `Tipos de mensagem ainda não reconhecidos: ${list}. Elas aparecem como "mensagem não suportada".`,
   importAnother: "Importar outro backup",
 
-  // Mídias
+  // Media
   media: "Mídias",
   mediaAdded: (added: string, already: string) => `${added} novas · ${already} já estavam no cofre`,
   mediaFailed: (n: string) => ` · ${n} com erro`,
@@ -62,7 +62,7 @@ const pt = {
   searchingFiles: "Procurando os arquivos…",
   stop: "Parar",
 
-  // Importação de arquivo local
+  // Local file import
   importing: "Importando",
   inMemoryNote: "O conteúdo descriptografado fica só na memória e vai direto para o cofre.",
   importFromFile: "Importar de um arquivo",
@@ -75,7 +75,7 @@ const pt = {
   replaceWarning: (app: string, at: string) =>
     `Já existe um histórico do ${app} importado em ${at}. Ele será substituído por este backup.`,
 
-  // Pasta de mídias
+  // Media folder
   mediaFolderTitle: "Escolha a pasta WhatsApp (ou WhatsApp Business) copiada do celular",
   mediaFolderAgain: "Importar mídias de outra pasta…",
   mediaFolder: "Importar mídias de uma pasta…",

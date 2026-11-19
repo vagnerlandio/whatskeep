@@ -1,25 +1,25 @@
-//! Mídias no cofre: um arquivo cifrado por mídia + um índice SQLCipher.
+//! Media in the vault: one encrypted file per media item + a SQLCipher index.
 //!
 //! ```text
-//! stores/<app>-media.db       índice: sha256 → blob, caminho no celular → sha256
-//! stores/<app>-media/<id>     blob cifrado (id aleatório: o nome não revela nada)
+//! stores/<app>-media.db       index: sha256 → blob, path on the phone → sha256
+//! stores/<app>-media/<id>     encrypted blob (random id: the name reveals nothing)
 //! ```
 //!
-//! **Blob** (esquema STREAM, Hoang–Reyhanitabar–Rogaway–Vizár):
+//! **Blob** (STREAM scheme, Hoang–Reyhanitabar–Rogaway–Vizár):
 //!
 //! ```text
-//! "WAMB" | versão 1 | prefixo de nonce (7) | segmento 0 | segmento 1 | ...
-//! segmento i = AES-256-GCM(chave, nonce = prefixo ‖ i (u32 BE) ‖ último (u8),
-//!                          aad = id do blob, até 1 MiB de texto) ‖ tag
+//! "WAMB" | version 1 | nonce prefix (7) | segment 0 | segment 1 | ...
+//! segment i = AES-256-GCM(key, nonce = prefix ‖ i (u32 BE) ‖ last (u8),
+//!                         aad = blob id, up to 1 MiB of plaintext) ‖ tag
 //! ```
 //!
-//! * Segmentos de tamanho fixo permitem ler qualquer trecho (seek de vídeo)
-//!   decifrando só os segmentos necessários.
-//! * O byte "último" no nonce impede truncar o arquivo; o id no AAD impede
-//!   trocar um blob por outro.
-//! * O índice é separado do banco de mensagens: reimportar o msgstore não
-//!   perde as mídias. A ligação com as mensagens é pelo `file_hash` que o
-//!   WhatsApp grava (SHA-256 do arquivo, base64) ou, sem ele, pelo caminho.
+//! * Fixed-size segments allow reading any range (video seeking)
+//!   by decrypting only the segments needed.
+//! * The "last" byte in the nonce prevents truncating the file; the id in the AAD
+//!   prevents swapping one blob for another.
+//! * The index is separate from the message database: re-importing the msgstore
+//!   does not lose the media. Messages are linked by the `file_hash` that
+//!   WhatsApp stores (SHA-256 of the file, base64) or, without it, by the path.
 
 use std::fs::{self, File};
 use std::io::{self, Read, Seek, SeekFrom, Write};
@@ -42,30 +42,30 @@ const HEADER: u64 = 12;
 pub const SEGMENT: usize = 1 << 20;
 const TAG: usize = 16;
 
-/// Limite por arquivo (vídeos longos cabem; um arquivo maior é suspeito).
+/// Per-file limit (long videos fit; a bigger file is suspicious).
 pub const MAX_MEDIA: u64 = 16 << 30;
 
 const DDL: &str = "
 CREATE TABLE IF NOT EXISTS blob (
-    sha256   TEXT PRIMARY KEY,     -- base64, igual ao file_hash do WhatsApp
-    id       TEXT NOT NULL UNIQUE, -- nome do arquivo cifrado
+    sha256   TEXT PRIMARY KEY,     -- base64, same as WhatsApp's file_hash
+    id       TEXT NOT NULL UNIQUE, -- name of the encrypted file
     size     INTEGER NOT NULL,
     mime     TEXT,
     added_at INTEGER NOT NULL
 ) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS path (
-    path   TEXT PRIMARY KEY,       -- caminho normalizado (Media/...)
+    path   TEXT PRIMARY KEY,       -- normalized path (Media/...)
     sha256 TEXT NOT NULL REFERENCES blob(sha256)
 ) WITHOUT ROWID;
 ";
 
-/// Caminho de mídia a partir de `Media/`, igual para o msgstore
-/// (`Media/WhatsApp Images/x.jpg` ou `/storage/.../WhatsApp/Media/...`) e para
-/// a pasta copiada do celular.
+/// Media path starting at `Media/`, the same for the msgstore
+/// (`Media/WhatsApp Images/x.jpg` or `/storage/.../WhatsApp/Media/...`) and for
+/// the folder copied from the phone.
 pub fn normalize_path(p: &str) -> Option<String> {
     let p = p.replace('\\', "/");
-    // A última ocorrência: a pasta onde o usuário copiou o backup pode ter
-    // "Media" no caminho (`/Volumes/Media/WhatsApp/Media/...`).
+    // The last occurrence: the folder where the user copied the backup may have
+    // "Media" in its path (`/Volumes/Media/WhatsApp/Media/...`).
     let i = match p.rfind("/Media/") {
         Some(i) => i + 1,
         None if p.starts_with("Media/") => 0,
@@ -75,7 +75,7 @@ pub fn normalize_path(p: &str) -> Option<String> {
     (out.len() > "Media/".len()).then(|| out.to_owned())
 }
 
-/// Caminhos e chaves das mídias de um app. Clonável para rodar fora do lock do estado.
+/// Paths and keys of an app's media. Cloneable to run outside the state lock.
 #[derive(Clone)]
 pub struct MediaHandle {
     index: PathBuf,
@@ -101,7 +101,7 @@ pub struct BlobRef {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Put {
     Added,
-    /// O conteúdo já estava no cofre (só o caminho foi registrado).
+    /// The content was already in the vault (only the path was recorded).
     AlreadyStored,
 }
 
@@ -119,7 +119,7 @@ impl MediaHandle {
         self.index.is_file()
     }
 
-    /// Índice para escrita (cria se não existir).
+    /// Index for writing (created if it does not exist).
     pub fn writer(&self) -> Result<MediaWriter, Error> {
         fsutil::create_private_dir(&self.dir)?;
         let created = !self.index.exists();
@@ -131,13 +131,13 @@ impl MediaHandle {
         if created {
             fsutil::set_private(&self.index)?;
         }
-        // WAL: o visualizador lê enquanto uma importação grava.
+        // WAL: the viewer reads while an import writes.
         conn.execute_batch("PRAGMA journal_mode = WAL;")?;
         conn.execute_batch(DDL)?;
         Ok(MediaWriter { handle: self.clone(), conn })
     }
 
-    /// Índice só para leitura. `None` se nenhuma mídia foi importada.
+    /// Read-only index. `None` if no media has been imported.
     pub fn reader(&self) -> Result<Option<MediaReader>, Error> {
         if !self.exists() {
             return Ok(None);
@@ -186,11 +186,11 @@ impl MediaWriter {
         find(&self.conn, sha256, path)
     }
 
-    /// Cifra o conteúdo de `reader` num blob novo e registra no índice.
+    /// Encrypts the content of `reader` into a new blob and records it in the index.
     ///
-    /// * `expected_sha256`: se informado, o conteúdo tem que ter esse hash
-    ///   (senão nada é gravado e retorna [`Error::Corrupt`]).
-    /// * `path`: caminho da mídia no celular, para achar mensagens sem `file_hash`.
+    /// * `expected_sha256`: if given, the content must have this hash
+    ///   (otherwise nothing is written and [`Error::Corrupt`] is returned).
+    /// * `path`: the media path on the phone, to find messages without `file_hash`.
     pub fn put(
         &self,
         reader: impl Read,
@@ -240,7 +240,7 @@ impl MediaWriter {
         Ok((sha256, outcome))
     }
 
-    /// Apaga temporários de importações interrompidas.
+    /// Deletes temporary files from interrupted imports.
     pub fn cleanup(&self) {
         let Ok(entries) = fs::read_dir(&self.handle.dir) else { return };
         for e in entries.flatten() {
@@ -261,7 +261,7 @@ impl MediaReader {
         find(&self.conn, sha256, path)
     }
 
-    /// Bytes `[start, end)` do conteúdo decifrado.
+    /// Bytes `[start, end)` of the decrypted content.
     pub fn read_range(&self, blob: &BlobRef, start: u64, end: u64) -> Result<Zeroizing<Vec<u8>>, Error> {
         let end = end.min(blob.size);
         let mut out = Zeroizing::new(Vec::with_capacity(end.saturating_sub(start) as usize));
@@ -283,7 +283,7 @@ impl MediaReader {
         Ok(out)
     }
 
-    /// Escreve o conteúdo decifrado inteiro em `out` (exportar um documento).
+    /// Writes the whole decrypted content to `out` (exporting a document).
     pub fn copy_to(&self, blob: &BlobRef, mut out: impl Write) -> Result<(), Error> {
         let mut f = File::open(self.handle.blob_path(&blob.id))?;
         let prefix = read_header(&mut f)?;
@@ -322,7 +322,7 @@ fn write_blob(path: &Path, key: &Key, id: &str, mut reader: impl Read) -> Result
     let mut current = Zeroizing::new(read_full(&mut reader, SEGMENT)?);
     let mut i = 0u64;
     loop {
-        // Lê o próximo antes de cifrar o atual, para saber se este é o último.
+        // Read the next one before encrypting the current one, to know whether this is the last.
         let next = if current.len() == SEGMENT { Zeroizing::new(read_full(&mut reader, SEGMENT)?) } else { Zeroizing::new(Vec::new()) };
         let last = next.is_empty();
         sha.update(&*current);

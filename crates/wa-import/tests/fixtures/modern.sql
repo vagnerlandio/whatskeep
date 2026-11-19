@@ -1,5 +1,5 @@
--- msgstore sintético no schema NOVO (subconjunto das colunas reais).
--- Todos os números e nomes são fictícios.
+-- Synthetic msgstore in the MODERN schema (subset of the real columns).
+-- All numbers and names are fictitious.
 
 CREATE TABLE jid (_id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT NOT NULL, server TEXT NOT NULL,
     agent INTEGER, device INTEGER, type INTEGER, raw_string TEXT);
@@ -30,11 +30,11 @@ CREATE TABLE message_add_on_reaction (message_add_on_row_id INTEGER PRIMARY KEY,
 
 INSERT INTO jid (_id, user, server, type, raw_string) VALUES
     (2, '5511911111111', 's.whatsapp.net', 0, '5511911111111@s.whatsapp.net'),  -- Alice
-    (3, '120363000000000001', 'g.us', 1, '120363000000000001@g.us'),              -- grupo
+    (3, '120363000000000001', 'g.us', 1, '120363000000000001@g.us'),              -- group
     (4, '98765', 'lid', 0, '98765@lid'),                                           -- Bob (LID)
-    (5, '5511922222222', 's.whatsapp.net', 0, '5511922222222@s.whatsapp.net'),    -- Bob (telefone)
+    (5, '5511922222222', 's.whatsapp.net', 0, '5511922222222@s.whatsapp.net'),    -- Bob (phone)
     (6, 'status', 'broadcast', 11, 'status@broadcast'),
-    (7, '55555', 'lid', 0, '55555@lid');                                           -- Carol (LID sem mapa)
+    (7, '55555', 'lid', 0, '55555@lid');                                           -- Carol (LID without mapping)
 INSERT INTO jid_map VALUES (4, 5);
 
 INSERT INTO chat (_id, jid_row_id, hidden, subject, archived) VALUES

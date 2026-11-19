@@ -1,18 +1,18 @@
-//! Download de backups do WhatsApp guardados no Google Drive.
+//! Download of WhatsApp backups stored in Google Drive.
 //!
-//! **Não oficial.** Usa o mesmo caminho do app do WhatsApp no Android
-//! (Google Play Services + `backup.googleapis.com`), como as ferramentas
-//! whapa e wabdd. O Google pode mudar ou bloquear esse fluxo sem aviso; a
-//! importação local continua sendo o plano B.
+//! **Unofficial.** Uses the same path as the WhatsApp app on Android
+//! (Google Play Services + `backup.googleapis.com`), like the whapa and wabdd
+//! tools. Google may change or block this flow without notice; local import
+//! remains the fallback.
 //!
-//! Segurança:
-//! * Cookie, token mestre e token de acesso ficam em `Zeroizing` e nunca são
-//!   gravados nem aparecem em `Debug`/erros.
-//! * O token mestre só existe durante a troca pelos tokens de acesso; quem
-//!   chama deve descartá-lo em seguida (veja [`login`]).
-//! * O token de acesso tem escopo `drive.appdata` (só a pasta oculta do app)
-//!   e vale 1 hora.
-//! * Redirecionamentos HTTP não são seguidos (o token não vai para outro host).
+//! Security:
+//! * Cookie, master token and access token live in `Zeroizing` and are never
+//!   written to disk nor shown in `Debug`/errors.
+//! * The master token only exists while it is exchanged for the access
+//!   tokens; the caller must discard it right after (see [`login`]).
+//! * The access token has the `drive.appdata` scope (only the app's hidden
+//!   folder) and is valid for 1 hour.
+//! * HTTP redirects are not followed (the token never goes to another host).
 
 pub mod trace;
 mod api;
@@ -24,7 +24,7 @@ pub use auth::{AccessToken, MasterToken, OauthCookie};
 
 pub(crate) const USER_AGENT: &str = "GoogleAuth/1.4";
 
-/// Página de login cujo cookie `oauth_token` é trocado pelo token mestre.
+/// Login page whose `oauth_token` cookie is exchanged for the master token.
 pub const LOGIN_URL: &str = "https://accounts.google.com/EmbeddedSetup";
 pub const LOGIN_COOKIE: &str = "oauth_token";
 
@@ -43,7 +43,7 @@ impl Default for Endpoints {
     }
 }
 
-/// App do WhatsApp em nome do qual o token do Drive é pedido.
+/// WhatsApp app on whose behalf the Drive token is requested.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DriveApp {
@@ -63,8 +63,8 @@ impl DriveApp {
         }
     }
 
-    /// SHA-1 do certificado de assinatura do app. O WhatsApp Business é
-    /// assinado pela mesma chave (a confirmar com uma conta real: ver README).
+    /// SHA-1 of the app's signing certificate. WhatsApp Business is signed
+    /// with the same key (to be confirmed with a real account: see README).
     pub fn client_sig(self) -> &'static str {
         "38a0f7d505fe18fec64fbf343ecaaaf310dbd799"
     }
@@ -104,20 +104,20 @@ pub enum Error {
 
 impl From<reqwest::Error> for Error {
     fn from(e: reqwest::Error) -> Self {
-        // `without_url`: a URL pode ter o caminho do backup (com o telefone).
+        // `without_url`: the URL may contain the backup path (with the phone number).
         Error::Network(e.without_url().to_string())
     }
 }
 
-/// Tokens de acesso obtidos num login. O token mestre já foi descartado.
+/// Access tokens obtained in a login. The master token has already been discarded.
 pub struct Session {
     pub tokens: Vec<(DriveApp, AccessToken)>,
-    /// Apps cujo token foi recusado (por exemplo, sem WhatsApp Business).
+    /// Apps whose token was refused (for example, no WhatsApp Business).
     pub refused: Vec<(DriveApp, String)>,
 }
 
-/// Cookie do login → token mestre → tokens de acesso para cada app.
-/// O token mestre é descartado (e zerado) antes de retornar.
+/// Login cookie → master token → access tokens for each app.
+/// The master token is discarded (and zeroed) before returning.
 pub fn login(ep: &Endpoints, email: &str, cookie: OauthCookie) -> Result<Session, Error> {
     let android_id = auth::random_android_id()?;
     let master = auth::exchange_token(ep, email, &cookie, &android_id)?;
@@ -127,7 +127,7 @@ pub fn login(ep: &Endpoints, email: &str, cookie: OauthCookie) -> Result<Session
         match auth::access_token(ep, &master, &android_id, app) {
             Ok(t) => session.tokens.push((app, t)),
             Err(e) => {
-                tracing::warn!(app = app.package(), "token de acesso recusado: {e}");
+                tracing::warn!(app = app.package(), "access token refused: {e}");
                 session.refused.push((app, e.to_string()))
             }
         }

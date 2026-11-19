@@ -1,7 +1,7 @@
-//! Export HTML cifrado (crate `wa-export`), disparado pela UI.
+//! Encrypted HTML export (crate `wa-export`), triggered by the UI.
 //!
-//! A pasta de destino é escolhida no seletor nativo pelo backend e fica
-//! guardada aqui: o webview nunca informa um caminho para gravar.
+//! The destination folder is chosen in the native picker by the backend and
+//! kept here: the webview never supplies a path to write to.
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -48,13 +48,13 @@ impl From<wa_export::Error> for CmdError {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Destination {
-    /// Caminho completo, para o usuário conferir.
+    /// Full path, for the user to check.
     path: String,
-    /// Dentro de uma pasta sincronizada com a nuvem (iCloud, Dropbox...).
+    /// Inside a cloud-synced folder (iCloud, Dropbox...).
     cloud: Option<&'static str>,
 }
 
-/// Pastas sincronizadas: mídias em claro ali vão parar na nuvem.
+/// Synced folders: plaintext media there ends up in the cloud.
 fn cloud_provider(path: &std::path::Path) -> Option<&'static str> {
     let p = path.to_string_lossy().to_lowercase();
     [
@@ -71,7 +71,7 @@ fn cloud_provider(path: &std::path::Path) -> Option<&'static str> {
     .map(|(_, v)| v)
 }
 
-/// Escolhe onde salvar. Cria dentro dela uma pasta nova `historico-whatsapp-<data>`.
+/// Picks where to save. Creates a new `historico-whatsapp-<date>` folder inside it.
 #[tauri::command]
 pub async fn export_pick_destination(app: AppHandle) -> Result<Option<Destination>, CmdError> {
     use tauri_plugin_dialog::DialogExt;
@@ -97,10 +97,10 @@ pub async fn export_pick_destination(app: AppHandle) -> Result<Option<Destinatio
     .await
 }
 
-/// `AAAA-MM-DD` (UTC) sem depender de crate de datas.
+/// `YYYY-MM-DD` (UTC) without depending on a date crate.
 fn date_label(secs: u64) -> String {
     let days = (secs / 86_400) as i64;
-    // Algoritmo civil_from_days (Howard Hinnant).
+    // civil_from_days algorithm (Howard Hinnant).
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z - era * 146_097;
@@ -152,7 +152,7 @@ pub async fn export_html(
         state.export.cancel.store(false, Ordering::SeqCst);
         let opts = Options { groups, media, kdf: wa_export::format::Kdf::DEFAULT };
 
-        // Conexões próprias (não as do visualizador): o export pode levar minutos.
+        // Its own connections (not the viewer's): the export may take minutes.
         let (store_handle, media_handle) = {
             let vault = state.vault();
             let vault = vault.as_ref().ok_or_else(CmdError::locked)?;
@@ -165,10 +165,10 @@ pub async fn export_html(
 
         tracing::info!(
             app = target.as_str(),
-            senhas = opts.groups.len(),
-            conversas = opts.groups.iter().map(|g| g.chats.len()).sum::<usize>(),
-            midias = ?media,
-            "export: iniciando"
+            passwords = opts.groups.len(),
+            chats = opts.groups.iter().map(|g| g.chats.len()).sum::<usize>(),
+            media = ?media,
+            "export: starting"
         );
         let t = crate::diag::timer("export");
         let result = wa_export::export(&conn, reader.as_ref(), SHELL, &dest, &opts, &state.export.cancel, |p| {
@@ -176,11 +176,11 @@ pub async fn export_html(
         });
         match result {
             Ok(summary) => {
-                tracing::info!(ms = t.ms() as u64, resumo = ?summary, "export: concluído");
+                tracing::info!(ms = t.ms() as u64, summary = ?summary, "export: done");
                 Ok(ExportResult { summary, path: dest.display().to_string() })
             }
             Err(e) => {
-                // Pacote pela metade não serve para nada: apaga a pasta que o app criou.
+                // A half-written package is useless: delete the folder the app created.
                 let _ = std::fs::remove_dir_all(&dest);
                 Err(e.into())
             }
@@ -199,17 +199,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn data() {
+    fn date() {
         assert_eq!(date_label(0), "1970-01-01");
         assert_eq!(date_label(1_795_000_000), "2026-11-18");
         assert_eq!(date_label(951_782_400), "2000-02-29");
     }
 
     #[test]
-    fn nuvem() {
+    fn cloud() {
         let p = |s: &str| cloud_provider(std::path::Path::new(s));
         assert_eq!(p("/Users/x/Library/Mobile Documents/com~apple~CloudDocs/h"), Some("iCloud Drive"));
         assert_eq!(p("/Users/x/Library/CloudStorage/Dropbox/h"), Some("Dropbox"));
-        assert_eq!(p("/Users/x/Documentos/h"), None);
+        assert_eq!(p("/Users/x/Documents/h"), None);
     }
 }

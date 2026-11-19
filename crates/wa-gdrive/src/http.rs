@@ -1,10 +1,10 @@
-//! Cliente HTTP com o TLS que o Google aceita no endpoint de autenticação.
+//! HTTP client with the TLS setup Google accepts on the authentication endpoint.
 //!
-//! O `android.clients.google.com/auth` responde 403 "BadAuthentication" se o
-//! cliente oferecer ALPN ou não aceitar session tickets (ver gpsoauth,
-//! `create_ssl_context`). Por isso o rustls é montado à mão: sem ALPN (e
-//! portanto só HTTP/1.1), tickets ligados (padrão do rustls) e certificados
-//! verificados pelo sistema operacional.
+//! `android.clients.google.com/auth` answers 403 "BadAuthentication" if the
+//! client offers ALPN or does not accept session tickets (see gpsoauth,
+//! `create_ssl_context`). That is why rustls is assembled by hand: no ALPN
+//! (and therefore HTTP/1.1 only), tickets enabled (the rustls default) and
+//! certificates verified by the operating system.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -29,10 +29,10 @@ pub(crate) fn tls_config() -> Result<rustls::ClientConfig, Error> {
 
 pub(crate) fn client(timeout: Option<Duration>) -> Result<Client, Error> {
     Client::builder()
-        // O reqwest não altera o ALPN de uma configuração pré-montada.
+        // reqwest does not change the ALPN of a preconfigured config.
         .tls_backend_preconfigured(tls_config()?)
         .connect_timeout(Duration::from_secs(20))
-        // Nada de redirecionar o token para outro host.
+        // Never redirect the token to another host.
         .redirect(reqwest::redirect::Policy::none())
         .user_agent(crate::USER_AGENT)
         .timeout(timeout)
@@ -43,18 +43,18 @@ pub(crate) fn client(timeout: Option<Duration>) -> Result<Client, Error> {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn tls_sem_alpn_e_com_tickets() {
+    fn tls_without_alpn_and_with_tickets() {
         let tls = super::tls_config().unwrap();
         assert!(tls.alpn_protocols.is_empty());
-        // Sem getter público: o Debug mostra a política (padrão do rustls).
+        // No public getter: Debug shows the policy (the rustls default).
         assert!(format!("{:?}", tls.resumption).contains("SessionIdOrTickets"));
     }
 
-    /// Handshake real com o Google (sem dados de conta: formulário vazio).
+    /// Real handshake with Google (no account data: empty form).
     /// `cargo test -p wa-gdrive -- --ignored`
     #[test]
     #[ignore]
-    fn handshake_real_com_o_google() {
+    fn real_handshake_with_google() {
         let resp = super::client(Some(std::time::Duration::from_secs(20)))
             .unwrap()
             .post(crate::Endpoints::default().auth)

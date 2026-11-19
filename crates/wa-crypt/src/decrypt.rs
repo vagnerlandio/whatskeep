@@ -9,10 +9,10 @@ use zeroize::Zeroizing;
 
 use crate::{parse_prefix, BackupKey, CryptVersion, Error, KeyKind};
 
-/// AES-256-GCM com nonce de 16 bytes, como o WhatsApp usa.
+/// AES-256-GCM with a 16-byte nonce, as WhatsApp uses it.
 type WaGcm = AesGcm<Aes256, U16>;
 
-/// Limite de segurança contra "zip bomb" na descompressão (8 GiB).
+/// Safety limit against a "zip bomb" during decompression (8 GiB).
 const MAX_INFLATED: u64 = 8 << 30;
 
 const SQLITE_MAGIC: &[u8] = b"SQLite format 3\0";
@@ -20,18 +20,18 @@ const ZIP_MAGIC: &[u8] = b"PK\x03\x04";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Payload {
-    /// Banco SQLite (`msgstore.db`, `wa.db`...).
+    /// SQLite database (`msgstore.db`, `wa.db`...).
     Sqlite,
-    /// Zip (backups multi-file de stickers/wallpapers).
+    /// Zip (multi-file sticker/wallpaper backups).
     Zip,
-    /// Qualquer outra coisa (por exemplo, mídia).
+    /// Anything else (for example, media).
     Other,
 }
 
-/// Resultado da descriptografia. Os bytes são zerados no drop.
+/// Decryption result. The bytes are zeroed on drop.
 pub struct Decrypted {
     pub version: CryptVersion,
-    /// `true` se o arquivo não tinha md5 final (backup multi-file).
+    /// `true` if the file had no trailing md5 (multi-file backup).
     pub multifile: bool,
     pub payload: Payload,
     pub data: Zeroizing<Vec<u8>>,
@@ -48,10 +48,10 @@ impl std::fmt::Debug for Decrypted {
     }
 }
 
-/// Descriptografa um `.crypt14`/`.crypt15` inteiro em memória e descomprime o zlib.
+/// Decrypts a whole `.crypt14`/`.crypt15` in memory and inflates the zlib.
 ///
-/// A tag GCM é verificada **antes** de liberar qualquer byte. Com chave errada
-/// ou arquivo adulterado, retorna [`Error::Authentication`] sem texto parcial.
+/// The GCM tag is verified **before** any byte is released. With a wrong key
+/// or a tampered file, returns [`Error::Authentication`] with no partial plaintext.
 pub fn decrypt(file: &[u8], key: &BackupKey) -> Result<Decrypted, Error> {
     let prefix = parse_prefix(file)?;
     let expected = match prefix.version {
@@ -70,7 +70,7 @@ pub fn decrypt(file: &[u8], key: &BackupKey) -> Result<Decrypted, Error> {
         return Err(Error::Truncated);
     }
 
-    // Com md5 final: [ct][tag][md5]. Sem md5 (multi-file): [ct][tag].
+    // With trailing md5: [ct][tag][md5]. Without md5 (multi-file): [ct][tag].
     let n = file.len();
     let has_checksum = Md5::digest(&file[..n - 16])[..] == file[n - 16..];
     let sealed = if has_checksum {
@@ -112,8 +112,8 @@ fn is_zlib(b: &[u8]) -> bool {
     b.len() >= 2 && b[0] & 0x0F == 8 && (u16::from(b[0]) << 8 | u16::from(b[1])) % 31 == 0
 }
 
-/// Descomprime sem deixar cópias do texto puro na memória: cada realocação
-/// troca o buffer por um maior, e o antigo (um `Zeroizing`) é zerado no drop.
+/// Inflates without leaving copies of the plaintext in memory: each reallocation
+/// swaps the buffer for a bigger one, and the old one (a `Zeroizing`) is zeroed on drop.
 fn inflate(compressed: &[u8]) -> Result<Zeroizing<Vec<u8>>, Error> {
     let mut decoder = flate2::read::ZlibDecoder::new(compressed);
     let mut out = Zeroizing::new(Vec::with_capacity(compressed.len().saturating_mul(3)));
@@ -130,7 +130,7 @@ fn inflate(compressed: &[u8]) -> Result<Zeroizing<Vec<u8>>, Error> {
             let new_cap = (out.capacity() * 2).max(out.len() + read);
             let mut bigger = Zeroizing::new(Vec::with_capacity(new_cap));
             bigger.extend_from_slice(&out);
-            out = bigger; // o buffer antigo é zerado aqui
+            out = bigger; // the old buffer is zeroed here
         }
         out.extend_from_slice(&chunk[..read]);
     }

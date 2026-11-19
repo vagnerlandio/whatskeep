@@ -3,17 +3,17 @@ resolver = "3"
 members = ["crates/wa-crypt", "crates/wa-import", "crates/wa-vault", "crates/wa-gdrive", "crates/wa-export", "apps/desktop/src-tauri"]
 
 [workspace.dependencies]
-# SQLCipher em todo o workspace: o rusqlite não aceita SQLite "comum" e
-# SQLCipher no mesmo build, e o cofre precisa do SQLCipher.
+# SQLCipher across the whole workspace: rusqlite does not accept "plain" SQLite
+# and SQLCipher in the same build, and the vault needs SQLCipher.
 rusqlite = { version = "0.43", features = ["bundled-sqlcipher-vendored-openssl", "serialize"] }
-# Diagnóstico. Sem subscriber instalado (bibliotecas, testes), não custa nada.
+# Diagnostics. With no subscriber installed (libraries, tests), it costs nothing.
 tracing = "0.1"
 
 [workspace.package]
 edition = "2024"
 license = "UNLICENSED"
 
-# Perfis só valem na raiz do workspace.
+# Profiles only apply at the workspace root.
 [profile.release]
 codegen-units = 1
 lto = true
@@ -21,7 +21,7 @@ opt-level = 3
 panic = "abort"
 strip = true
 
-# A descriptografia de backups grandes fica lenta demais sem otimização,
-# mesmo nos testes.
+# Decrypting large backups is far too slow without optimization, even in
+# tests.
 [profile.dev.package."*"]
 opt-level = 2

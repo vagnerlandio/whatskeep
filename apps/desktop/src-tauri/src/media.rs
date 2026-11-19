@@ -1,15 +1,15 @@
-//! Protocolo `wamedia://` para a UI carregar miniaturas (e, numa próxima
-//! fase, mídias) direto do cofre em `<img src>`, sem base64 no IPC.
+//! `wamedia://` protocol so the UI can load thumbnails (and media) straight
+//! from the vault in `<img src>`, without base64 over the IPC.
 //!
-//! * `wamedia://localhost/thumb/<app>/<message_id>`: miniatura.
-//! * `wamedia://localhost/media/<app>/<message_id>`: arquivo completo, com
-//!   suporte a `Range` (seek de vídeo/áudio sem decifrar o arquivo inteiro).
+//! * `wamedia://localhost/thumb/<app>/<message_id>`: thumbnail.
+//! * `wamedia://localhost/media/<app>/<message_id>`: full file, with `Range`
+//!   support (video/audio seeking without decrypting the whole file).
 //!
-//! No Windows o endereço é `http://wamedia.localhost/...`.
+//! On Windows the address is `http://wamedia.localhost/...`.
 //!
-//! * Só responde à janela principal e com o cofre destravado.
-//! * `Cache-Control: no-store`: o webview não guarda as imagens decifradas
-//!   no cache em disco.
+//! * Only answers the main window, and only with the vault unlocked.
+//! * `Cache-Control: no-store`: the webview does not keep the decrypted
+//!   images in its disk cache.
 
 use tauri::http::{Request, Response, StatusCode, header};
 use tauri::{AppHandle, Manager};
@@ -23,9 +23,9 @@ use crate::state::AppState;
 
 pub const SCHEME: &str = "wamedia";
 
-/// Maior trecho devolvido por requisição: vídeos são pedidos aos pedaços.
+/// Largest range returned per request: videos are requested in chunks.
 const MAX_CHUNK: u64 = 4 << 20;
-/// Sem `Range`, arquivos até esse tamanho vão inteiros (fotos).
+/// Without `Range`, files up to this size are sent whole (photos).
 const MAX_WHOLE: u64 = 64 << 20;
 
 pub fn handle(app: &AppHandle, from_main_window: bool, request: &Request<Vec<u8>>) -> Response<Vec<u8>> {
@@ -47,16 +47,16 @@ pub fn handle(app: &AppHandle, from_main_window: bool, request: &Request<Vec<u8>
     };
     match result {
         Ok(r) => {
-            tracing::trace!(tipo = kind, status = r.status().as_u16(), bytes = r.body().len(), "wamedia");
+            tracing::trace!(kind = kind, status = r.status().as_u16(), bytes = r.body().len(), "wamedia");
             r
         }
         Err(e) if e.code == "locked" => status(StatusCode::FORBIDDEN),
         Err(e) if e.code == "not_found" => {
-            tracing::debug!(tipo = kind, mensagem = id, "wamedia: não encontrado");
+            tracing::debug!(kind = kind, message = id, "wamedia: not found");
             status(StatusCode::NOT_FOUND)
         }
         Err(e) => {
-            tracing::warn!(tipo = kind, mensagem = id, codigo = e.code, "wamedia: erro: {}", e.message);
+            tracing::warn!(kind = kind, message = id, code = e.code, "wamedia: error: {}", e.message);
             status(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
@@ -92,7 +92,7 @@ fn media(state: &AppState, store: SourceApp, id: i64, range: Option<&str>) -> Re
                 .insert(header::CONTENT_RANGE, header::HeaderValue::from_str(&format!("bytes */{size}")).unwrap());
             return Ok(resp);
         }
-        // O buffer zerável é copiado para o corpo da resposta (o Tauri exige Vec).
+        // The zeroizable buffer is copied into the response body (Tauri requires a Vec).
         let body = m.read_range(&blob, start, end)?.to_vec();
         let mut resp = ok_response(if partial { StatusCode::PARTIAL_CONTENT } else { StatusCode::OK }, ctype, body);
         let h = resp.headers_mut();
@@ -115,7 +115,7 @@ fn ok_response(code: StatusCode, ctype: &str, body: Vec<u8>) -> Response<Vec<u8>
         .unwrap_or_else(|_| status(StatusCode::INTERNAL_SERVER_ERROR))
 }
 
-/// `bytes=a-b`, `bytes=a-` ou `bytes=-n` → `[início, fim)`. Só um intervalo.
+/// `bytes=a-b`, `bytes=a-` or `bytes=-n` → `[start, end)`. A single range only.
 fn parse_range(h: &str, size: u64) -> Option<(u64, u64)> {
     let spec = h.trim().strip_prefix("bytes=")?;
     if spec.contains(',') {
@@ -135,8 +135,8 @@ fn parse_range(h: &str, size: u64) -> Option<(u64, u64)> {
     }
 }
 
-/// Só tipos que o webview exibe como mídia. Qualquer outra coisa (HTML, SVG,
-/// PDF...) vai como binário genérico: um arquivo recebido nunca vira página.
+/// Only types the webview displays as media. Anything else (HTML, SVG,
+/// PDF...) goes out as generic binary: a received file never becomes a page.
 fn safe_mime(mime: Option<&str>) -> &'static str {
     let m = mime.unwrap_or("").split(';').next().unwrap_or("").trim().to_ascii_lowercase();
     match m.as_str() {
@@ -162,8 +162,8 @@ fn status(code: StatusCode) -> Response<Vec<u8>> {
     r
 }
 
-/// Só tipos de imagem conhecidos. Qualquer outra coisa vai como binário
-/// genérico (com `nosniff`, o webview não tenta interpretar).
+/// Only known image types. Anything else goes out as generic binary (with
+/// `nosniff`, the webview does not try to interpret it).
 fn sniff(bytes: &[u8]) -> &'static str {
     match bytes {
         [0xFF, 0xD8, 0xFF, ..] => "image/jpeg",
@@ -173,7 +173,7 @@ fn sniff(bytes: &[u8]) -> &'static str {
     }
 }
 
-/// O `convertFileSrc` do Tauri codifica o caminho inteiro (`/` vira `%2F`).
+/// Tauri's `convertFileSrc` encodes the whole path (`/` becomes `%2F`).
 fn percent_decode(s: &str) -> String {
     let bytes = s.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -198,14 +198,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn decodifica_caminho() {
+    fn decodes_path() {
         assert_eq!(percent_decode("/thumb%2Fwhatsapp%2F12"), "/thumb/whatsapp/12");
         assert_eq!(percent_decode("/a%2"), "/a%2");
         assert_eq!(percent_decode("%zz"), "%zz");
     }
 
     #[test]
-    fn intervalos() {
+    fn ranges() {
         assert_eq!(parse_range("bytes=0-99", 1000), Some((0, 100)));
         assert_eq!(parse_range("bytes=900-", 1000), Some((900, 1000)));
         assert_eq!(parse_range("bytes=-100", 1000), Some((900, 1000)));
@@ -216,7 +216,7 @@ mod tests {
     }
 
     #[test]
-    fn tipos_seguros() {
+    fn safe_types() {
         assert_eq!(safe_mime(Some("audio/ogg; codecs=opus")), "audio/ogg");
         assert_eq!(safe_mime(Some("text/html")), "application/octet-stream");
         assert_eq!(safe_mime(Some("image/svg+xml")), "application/octet-stream");
@@ -224,7 +224,7 @@ mod tests {
     }
 
     #[test]
-    fn tipo_da_imagem() {
+    fn image_type() {
         assert_eq!(sniff(&[0xFF, 0xD8, 0xFF, 0xE0]), "image/jpeg");
         assert_eq!(sniff(b"<svg onload=x>"), "application/octet-stream");
     }

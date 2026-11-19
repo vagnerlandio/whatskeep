@@ -10,7 +10,7 @@ type State =
   | { kind: "running"; progress: MediaProgress | null }
   | { kind: "done"; summary: MediaSummary };
 
-/** Importa as mídias da pasta WhatsApp copiada do celular para o cofre. */
+/** Imports the media from the WhatsApp folder copied from the phone into the vault. */
 export default function MediaFolderImport({ source }: { source: SourceApp }) {
   const [state, setState] = useState<State>({ kind: "idle" });
   const t = useImportT();

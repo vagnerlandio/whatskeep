@@ -5,10 +5,10 @@ use wa_vault::{KdfParams, Vault};
 
 const FIXTURE: &str = include_str!("../../wa-import/tests/fixtures/modern.sql");
 
-/// Cofre temporário com o fixture importado; devolve a conexão só-leitura.
+/// Temporary vault with the fixture imported; returns the read-only connection.
 fn store_with(extra_sql: &str) -> (tempfile::TempDir, Connection) {
     let dir = tempfile::tempdir().unwrap();
-    let vault = Vault::create(dir.path(), "senha forte 123", KdfParams::MINIMUM).unwrap();
+    let vault = Vault::create(dir.path(), "strong password 123", KdfParams::MINIMUM).unwrap();
     let src = Connection::open_in_memory().unwrap();
     src.execute_batch(FIXTURE).unwrap();
     src.execute_batch(extra_sql).unwrap();
@@ -38,10 +38,10 @@ fn times(page: &[Message]) -> Vec<i64> {
 }
 
 #[test]
-fn lista_de_conversas() {
+fn chat_list() {
     let (_d, conn) = fixture();
     let chats = query::chats(&conn).unwrap();
-    // O status não é importado e a conversa órfã não existe.
+    // The status is not imported and the orphan chat does not exist.
     assert_eq!(chats.len(), 2);
 
     let alice = &chats[0];
@@ -61,7 +61,7 @@ fn lista_de_conversas() {
 }
 
 #[test]
-fn paginacao_para_tras_e_para_frente() {
+fn pagination_backward_and_forward() {
     let (_d, conn) = fixture();
     let (alice, _) = alice_and_group(&conn);
 
@@ -82,7 +82,7 @@ fn paginacao_para_tras_e_para_frente() {
 }
 
 #[test]
-fn conteudo_das_mensagens() {
+fn message_content() {
     let (_d, conn) = fixture();
     let (alice, group) = alice_and_group(&conn);
     let page = query::messages(&conn, alice, Direction::After, None, 100).unwrap();
@@ -128,9 +128,9 @@ fn conteudo_das_mensagens() {
 
     let group_page = query::messages(&conn, group, Direction::After, None, 100).unwrap();
     let hello = by_time(&group_page, 7000);
-    // LID convertido para o telefone.
+    // LID converted to the phone number.
     assert_eq!(hello.sender.as_ref().unwrap().phone.as_deref(), Some("5511922222222"));
-    // A reação vazia (removida) não aparece.
+    // The empty (removed) reaction does not show up.
     assert_eq!(hello.reactions.len(), 1);
     assert_eq!((hello.reactions[0].emoji.as_str(), hello.reactions[0].count, hello.reactions[0].mine), ("👍", 1, false));
     let carol = by_time(&group_page, 8000).sender.as_ref().unwrap();
@@ -140,7 +140,7 @@ fn conteudo_das_mensagens() {
 }
 
 #[test]
-fn em_volta_de_uma_ancora() {
+fn around_an_anchor() {
     let (_d, conn) = fixture();
     let (alice, group) = alice_and_group(&conn);
     let all = query::messages(&conn, alice, Direction::After, None, 100).unwrap();
@@ -153,18 +153,18 @@ fn em_volta_de_uma_ancora() {
     let at = query::messages_around(&conn, alice, Anchor::Time { at: 9500 }, 2).unwrap();
     assert_eq!(at.messages[at.anchor_index.unwrap()].sent_at, 10000);
 
-    // Depois da última mensagem: âncora na última.
+    // After the last message: anchor on the last one.
     let end = query::messages_around(&conn, alice, Anchor::Time { at: 999_999 }, 4).unwrap();
     assert_eq!(times(&end.messages), [10000, 11000, 14000]);
     assert_eq!(end.anchor_index, Some(2));
 
-    // Mensagem de outra conversa: nada.
+    // Message from another chat: nothing.
     let wrong = query::messages_around(&conn, group, Anchor::Message { id: target }, 4).unwrap();
     assert!(wrong.messages.is_empty() && wrong.anchor_index.is_none());
 }
 
 #[test]
-fn busca() {
+fn search() {
     let (_d, conn) = fixture();
     let (_, group) = alice_and_group(&conn);
 
@@ -172,7 +172,7 @@ fn busca() {
     assert_eq!(hits.len(), 1);
     assert!(hits[0].snippet.contains("\u{1}café\u{2}"), "{:?}", hits[0].snippet);
 
-    // Prefixo, do mais recente para o mais antigo.
+    // Prefix, from most recent to oldest.
     let hits = query::search(&conn, "tud", None, None, 10).unwrap();
     assert_eq!(hits.iter().map(|h| h.sent_at).collect::<Vec<_>>(), [2000, 1000]);
 
@@ -184,24 +184,24 @@ fn busca() {
     assert_eq!(query::search(&conn, "grupo", Some(group), None, 10).unwrap().len(), 1);
     assert!(query::search(&conn, "café", Some(group), None, 10).unwrap().is_empty());
 
-    // Mensagens apagadas não são encontradas.
+    // Deleted messages are not found.
     assert!(query::search(&conn, "segredo", None, None, 10).unwrap().is_empty());
 
-    // Sintaxe do FTS5 digitada pelo usuário não quebra a busca.
+    // FTS5 syntax typed by the user does not break the search.
     for q in ["OR", "\"", "a AND", "NEAR(", "*", "-x", "(", ""] {
         query::search(&conn, q, None, None, 10).unwrap();
     }
 }
 
 #[test]
-fn conexao_do_visualizador_e_somente_leitura() {
+fn viewer_connection_is_read_only() {
     let (_d, conn) = fixture();
     assert!(conn.execute("DELETE FROM message", []).is_err());
 }
 
 #[test]
-fn texto_hostil_volta_intacto() {
-    // Conteúdo de mensagem é dado, não markup: a consulta não escapa nem altera.
+fn hostile_text_comes_back_intact() {
+    // Message content is data, not markup: the query neither escapes nor alters it.
     let payload = "<img src=x onerror=alert(1)> javascript:alert(1)";
     let (_d, conn) = store_with(&format!(
         "INSERT INTO message (_id, chat_row_id, from_me, key_id, sender_jid_row_id, status, timestamp, message_type, text_data)
@@ -215,7 +215,7 @@ fn texto_hostil_volta_intacto() {
 /// `cargo test -p wa-vault --test query -- --ignored --nocapture`
 #[test]
 #[ignore]
-fn desempenho_300k() {
+fn performance_300k() {
     let (_d, conn) = store_with(
         "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 300000)
          INSERT INTO message (chat_row_id, from_me, key_id, sender_jid_row_id, status, timestamp, message_type, text_data)
@@ -229,18 +229,18 @@ fn desempenho_300k() {
         let n = f();
         println!("{label:<40} {:>9.2?}  ({n})", t.elapsed());
     };
-    time("lista de conversas", &mut || query::chats(&conn).unwrap().len());
-    time("últimas 100 mensagens", &mut || {
+    time("chat list", &mut || query::chats(&conn).unwrap().len());
+    time("last 100 messages", &mut || {
         query::messages(&conn, alice, Direction::Before, None, 100).unwrap().len()
     });
-    time("100 em volta de uma data no meio", &mut || {
+    time("100 around a date in the middle", &mut || {
         query::messages_around(&conn, alice, Anchor::Time { at: 250_000 }, 100).unwrap().messages.len()
     });
-    time("busca rara (\"123456\")", &mut || query::search(&conn, "123456", None, None, 50).unwrap().len());
-    time("busca comum (\"mensagem\", 50 de 300k)", &mut || {
+    time("rare search (\"123456\")", &mut || query::search(&conn, "123456", None, None, 50).unwrap().len());
+    time("common search (\"mensagem\", 50 of 300k)", &mut || {
         query::search(&conn, "mensagem", None, None, 50).unwrap().len()
     });
-    time("busca comum numa conversa", &mut || {
+    time("common search within one chat", &mut || {
         query::search(&conn, "conversas reais", Some(alice), None, 50).unwrap().len()
     });
 }

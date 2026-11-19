@@ -1,17 +1,17 @@
-//! Registro de requests/responses para diagnóstico (alvo `wa_gdrive::http`).
+//! Request/response logging for diagnostics (target `wa_gdrive::http`).
 //!
-//! Tudo passa por redação **antes** de ir para o log:
-//! * tokens, cookie, e-mail, id do aparelho e `Authorization` nunca aparecem
-//!   (viram `<redigido:N>`);
-//! * o id do backup no caminho (`clients/wa/backups/<telefone>`) vira `<backup>`;
-//! * caminhos de mídia viram `<pasta>/…<.ext>`; só `Databases/...` aparece;
-//! * em JSON, só valores numéricos/booleanos e campos de uma lista segura
-//!   aparecem; os demais textos viram `<texto:N>`;
-//! * sequências longas de dígitos (telefones) em mensagens de erro viram `<n>`.
+//! Everything is redacted **before** it reaches the log:
+//! * tokens, cookie, e-mail, device id and `Authorization` never appear
+//!   (they become `<redacted:N>`);
+//! * the backup id in the path (`clients/wa/backups/<phone>`) becomes `<backup>`;
+//! * media paths become `<folder>/…<.ext>`; only `Databases/...` is shown;
+//! * in JSON, only numeric/boolean values and fields from a safe list are
+//!   shown; other strings become `<text:N>`;
+//! * long digit runs (phone numbers) in error messages become `<n>`.
 
 use serde_json::Value;
 
-/// Campos de formulário (login) que podem aparecer com o valor.
+/// Form fields (login) whose value may be shown.
 const SAFE_FORM_KEYS: &[&str] = &[
     "accountType",
     "has_permission",
@@ -27,7 +27,7 @@ const SAFE_FORM_KEYS: &[&str] = &[
     "client_sig",
     "callerSig",
     "app",
-    // Respostas do endpoint de autenticação.
+    // Responses from the authentication endpoint.
     "Error",
     "ErrorDetail",
     "Expiry",
@@ -37,7 +37,7 @@ const SAFE_FORM_KEYS: &[&str] = &[
     "grantedScopes",
 ];
 
-/// Campos de JSON (API de backup) cujos textos podem aparecer.
+/// JSON fields (backup API) whose strings may be shown.
 const SAFE_JSON_KEYS: &[&str] = &[
     "updateTime",
     "sizeBytes",
@@ -52,10 +52,10 @@ const SAFE_JSON_KEYS: &[&str] = &[
 ];
 
 fn redacted(v: &str) -> String {
-    format!("<redigido:{}>", v.chars().count())
+    format!("<redacted:{}>", v.chars().count())
 }
 
-/// `chave=valor&...` ou `chave=valor\n...` com valores sensíveis redigidos.
+/// `key=value&...` or `key=value\n...` with sensitive values redacted.
 pub fn form<'a>(pairs: impl IntoIterator<Item = (&'a str, &'a str)>) -> String {
     pairs
         .into_iter()
@@ -63,7 +63,7 @@ pub fn form<'a>(pairs: impl IntoIterator<Item = (&'a str, &'a str)>) -> String {
             if matches!(k, "Error" | "ErrorDetail") {
                 format!("{k}={}", scrub_digits(v))
             } else if SAFE_FORM_KEYS.contains(&k) {
-                // Constantes do protocolo (versões, assinatura do app, escopos).
+                // Protocol constants (versions, app signature, scopes).
                 format!("{k}={v}")
             } else {
                 format!("{k}={}", redacted(v))
@@ -73,7 +73,7 @@ pub fn form<'a>(pairs: impl IntoIterator<Item = (&'a str, &'a str)>) -> String {
         .join(" ")
 }
 
-/// Caminho da API sem o id do backup nem nomes de mídia.
+/// API path without the backup id or media names.
 pub fn path(p: &str) -> String {
     let mut out = Vec::new();
     let mut parts = p.split('/').filter(|s| !s.is_empty()).peekable();
@@ -90,7 +90,7 @@ pub fn path(p: &str) -> String {
     out.join("/")
 }
 
-/// `Databases/msgstore.db.crypt15` fica; o resto vira `<pasta>/…<.ext>`.
+/// `Databases/msgstore.db.crypt15` is kept; the rest becomes `<folder>/…<.ext>`.
 pub fn file_path(p: &str) -> String {
     if p.starts_with("Databases/") && !p.contains("..") {
         return p.to_owned();
@@ -101,7 +101,7 @@ pub fn file_path(p: &str) -> String {
     if top.is_empty() { format!("…{ext}") } else { format!("{top}/…{ext}") }
 }
 
-/// Troca sequências de 8+ dígitos (telefones, ids) por `<n>`.
+/// Replaces runs of 8+ digits (phone numbers, ids) with `<n>`.
 pub fn scrub_digits(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut run = String::new();
@@ -131,9 +131,9 @@ fn is_count_key(k: &str) -> bool {
     l.ends_with("size") || l.ends_with("sizebytes") || l.starts_with("numof") || l.ends_with("count")
 }
 
-/// JSON com a mesma estrutura, mas só com os valores seguros. Listas longas
-/// mostram os 2 primeiros itens e o total. O campo `metadata` (JSON dentro de
-/// texto) é aberto e redigido do mesmo jeito.
+/// JSON with the same structure, but only with the safe values. Long lists
+/// show the first 2 items and the total. The `metadata` field (JSON inside a
+/// string) is parsed and redacted the same way.
 pub fn json(v: &Value) -> Value {
     shape(v, None)
 }
@@ -147,7 +147,7 @@ fn shape(v: &Value, key: Option<&str>) -> Value {
                         ("name", Value::String(s)) => Value::String(path(s)),
                         ("metadata", Value::String(s)) => match serde_json::from_str::<Value>(s) {
                             Ok(inner) => shape(&inner, Some(k)),
-                            Err(_) => Value::String(format!("<texto:{}>", s.len())),
+                            Err(_) => Value::String(format!("<text:{}>", s.len())),
                         },
                         ("message", Value::String(s)) => Value::String(scrub_digits(s)),
                         _ => shape(v, Some(k)),
@@ -159,21 +159,21 @@ fn shape(v: &Value, key: Option<&str>) -> Value {
         Value::Array(items) => {
             let mut out: Vec<Value> = items.iter().take(2).map(|i| shape(i, key)).collect();
             if items.len() > 2 {
-                out.push(Value::String(format!("… +{} itens (total {})", items.len() - 2, items.len())));
+                out.push(Value::String(format!("… +{} items (total {})", items.len() - 2, items.len())));
             }
             Value::Array(out)
         }
         Value::String(s) if key.is_some_and(|k| SAFE_JSON_KEYS.contains(&k)) => Value::String(scrub_digits(s)),
-        // Tamanhos e contagens vêm como texto ("chatdbSize": "1234").
+        // Sizes and counts come as strings ("chatdbSize": "1234").
         Value::String(s) if key.is_some_and(is_count_key) && !s.is_empty() && s.len() <= 15 && s.chars().all(|c| c.is_ascii_digit()) => {
             Value::String(s.clone())
         }
-        Value::String(s) => Value::String(format!("<texto:{}>", s.chars().count())),
+        Value::String(s) => Value::String(format!("<text:{}>", s.chars().count())),
         other => other.clone(),
     }
 }
 
-/// Corpo de resposta que não é JSON (erro HTML etc.): só o começo, sem dígitos longos.
+/// Non-JSON response body (HTML error etc.): only the start, without long digit runs.
 pub fn text_snippet(body: &[u8]) -> String {
     let s = String::from_utf8_lossy(&body[..body.len().min(300)]);
     scrub_digits(&s).replace('\n', " ")
@@ -185,7 +185,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn caminho_sem_telefone_nem_midia() {
+    fn path_without_phone_or_media() {
         assert_eq!(path("clients/wa/backups"), "clients/wa/backups");
         assert_eq!(path("clients/wa/backups/5511999998888/files"), "clients/wa/backups/<backup>/files");
         assert_eq!(
@@ -200,20 +200,21 @@ mod tests {
     }
 
     #[test]
-    fn formulario_redigido() {
+    fn form_redacted() {
         let pairs = [
-            ("Email", "fulano@gmail.com"),
-            ("Token", "oauth2_4/segredo"),
+            ("Email", "someone@gmail.com"),
+            ("Token", "oauth2_4/secret"),
             ("service", "ac2dm"),
             ("Error", "BadAuthentication"),
         ];
         let s = form(pairs);
-        assert!(!s.contains("fulano") && !s.contains("segredo"), "{s}");
+        assert!(!s.contains("someone") && !s.contains("secret"), "{s}");
         assert!(s.contains("service=ac2dm") && s.contains("Error=BadAuthentication"), "{s}");
+        assert!(s.contains("Email=<redacted:17>"), "{s}");
     }
 
     #[test]
-    fn json_redigido() {
+    fn json_redacted() {
         let v = json!({
             "backups": [{
                 "name": "clients/wa/backups/5511999998888",
@@ -221,12 +222,13 @@ mod tests {
                 "sizeBytes": "123456",
                 "metadata": "{\"encryptedBackupEnabled\":true,\"numOfMessages\":42,\"backupFrequency\":\"daily\",\"lastUploadedPhone\":\"5511999998888\"}"
             }],
-            "nextPageToken": "segredo",
+            "nextPageToken": "secret",
             "error": {"message": "Backup 5511999998888 not found", "code": 404}
         });
         let s = json(&v).to_string();
         assert!(!s.contains("5511999998888"), "{s}");
-        assert!(!s.contains("segredo"), "{s}");
+        assert!(!s.contains("secret"), "{s}");
+        assert!(s.contains("\"nextPageToken\":\"<text:6>\""), "{s}");
         assert!(s.contains("2026-11-01") && s.contains("numOfMessages") && s.contains("42") && s.contains("daily"), "{s}");
         assert!(json(&json!({"metadata": "{\"chatdbSize\":\"123456789\"}"})).to_string().contains("123456789"));
         assert!(s.contains("Backup <n> not found"), "{s}");

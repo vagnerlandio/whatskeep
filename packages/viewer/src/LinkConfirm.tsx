@@ -3,7 +3,7 @@ import { useSource } from "./source";
 import { errorOf } from "./types";
 import { useViewerT } from "./messages";
 
-/** Host em destaque e URL completa: o usuário vê para onde vai antes de sair. */
+/** Highlighted host and full URL: the user sees where they are going before leaving. */
 export default function LinkConfirm({ url, onClose }: { url: string; onClose: () => void }) {
   const source = useSource();
   const t = useViewerT();

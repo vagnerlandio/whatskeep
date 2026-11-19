@@ -1,7 +1,7 @@
 [package]
 name = "wa-crypt"
 version = "0.1.0"
-description = "Descriptografia de backups do WhatsApp (.crypt14 / .crypt15)"
+description = "Decryption of WhatsApp backups (.crypt14 / .crypt15)"
 edition.workspace = true
 license.workspace = true
 

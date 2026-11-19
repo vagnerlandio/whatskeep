@@ -1,12 +1,12 @@
-//! Comandos chamados pelo frontend via `invoke`.
+//! Commands called by the frontend via `invoke`.
 //!
-//! Regras:
-//! * Senhas e chaves chegam como `String` (não há como evitar a passagem pelo
-//!   IPC) e são embrulhadas em `Zeroizing` na entrada.
-//! * Nada de chave, senha ou conteúdo de mensagem volta para o webview,
-//!   nem em mensagens de erro.
-//! * Trabalho pesado (Argon2id, descriptografia, importação) roda em
-//!   `spawn_blocking` para não travar a UI.
+//! Rules:
+//! * Passwords and keys arrive as `String` (passing through the IPC cannot be
+//!   avoided) and are wrapped in `Zeroizing` on entry.
+//! * No key, password or message content goes back to the webview, not even
+//!   in error messages.
+//! * Heavy work (Argon2id, decryption, import) runs in `spawn_blocking` so it
+//!   does not freeze the UI.
 
 use std::io::Read;
 
@@ -23,15 +23,15 @@ use crate::state::{AUTOLOCK_AFTER, AppState};
 
 const EVENT_IMPORT_PROGRESS: &str = "import-progress";
 
-/// Roda um comando fora da thread da UI e registra nome, duração e resultado.
-/// Comandos frequentes do visualizador (rolagem) ficam em `trace` quando dão certo.
+/// Runs a command off the UI thread and logs its name, duration and result.
+/// Frequent viewer commands (scrolling) are logged at `trace` when they succeed.
 pub(crate) async fn blocking<T, F>(name: &'static str, f: F) -> Result<T, CmdError>
 where
     T: Send + 'static,
     F: FnOnce() -> Result<T, CmdError> + Send + 'static,
 {
     let started = std::time::Instant::now();
-    tracing::trace!(comando = name, "início");
+    tracing::trace!(command = name, "start");
     let result = tauri::async_runtime::spawn_blocking(f)
         .await
         .map_err(|_| CmdError::new("internal", "a operação foi interrompida"))
@@ -39,23 +39,23 @@ where
     let ms = started.elapsed().as_millis() as u64;
     match &result {
         Ok(_) if matches!(name, "get_messages" | "get_messages_around" | "list_chats" | "list_stores") => {
-            tracing::trace!(comando = name, ms, "ok")
+            tracing::trace!(command = name, ms, "ok")
         }
-        Ok(_) => tracing::info!(comando = name, ms, "ok"),
+        Ok(_) => tracing::info!(command = name, ms, "ok"),
         Err(e) if matches!(e.code, "cancelled" | "locked") => {
-            tracing::info!(comando = name, ms, codigo = e.code, "{}", e.message)
+            tracing::info!(command = name, ms, code = e.code, "{}", e.message)
         }
-        Err(e) => tracing::warn!(comando = name, ms, codigo = e.code, "erro: {}", e.message),
+        Err(e) => tracing::warn!(command = name, ms, code = e.code, "error: {}", e.message),
     }
     result
 }
 
-// ---------------------------------------------------------------- cofre
+// ---------------------------------------------------------------- vault
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VaultStatus {
-    /// `none` (não criado), `locked` ou `unlocked`.
+    /// `none` (not created), `locked` or `unlocked`.
     state: &'static str,
     autolock_secs: u64,
 }
@@ -77,9 +77,9 @@ pub async fn vault_create(app: AppHandle, password: String) -> Result<(), CmdErr
     let password = Zeroizing::new(password);
     blocking("vault_create", move || {
         let state = app.state::<AppState>();
-        let t = crate::diag::timer("criar cofre (Argon2id)");
+        let t = crate::diag::timer("create vault (Argon2id)");
         let vault = Vault::create(&state.vault_dir, &password, KdfParams::DEFAULT)?;
-        tracing::info!(ms = t.ms() as u64, "cofre criado");
+        tracing::info!(ms = t.ms() as u64, "vault created");
         *state.vault() = Some(vault);
         state.touch();
         Ok(())
@@ -94,12 +94,12 @@ pub async fn vault_unlock(app: AppHandle, password: String) -> Result<(), CmdErr
         let state = app.state::<AppState>();
         let delay = state.unlock_delay();
         if !delay.is_zero() {
-            tracing::info!(espera_s = delay.as_secs(), "atraso por senhas erradas seguidas");
+            tracing::info!(wait_s = delay.as_secs(), "delay due to consecutive wrong passwords");
         }
         std::thread::sleep(delay);
-        let t = crate::diag::timer("destravar (Argon2id)");
+        let t = crate::diag::timer("unlock (Argon2id)");
         let result = Vault::unlock(&state.vault_dir, &password);
-        tracing::info!(ms = t.ms() as u64, ok = result.is_ok(), "tentativa de destravar");
+        tracing::info!(ms = t.ms() as u64, ok = result.is_ok(), "unlock attempt");
         state.unlock_result(!matches!(result, Err(wa_vault::Error::WrongPassword)));
         *state.vault() = Some(result?);
         state.touch();
@@ -110,11 +110,11 @@ pub async fn vault_unlock(app: AppHandle, password: String) -> Result<(), CmdErr
 
 #[tauri::command]
 pub fn vault_lock(app: AppHandle) {
-    tracing::info!("cofre travado pelo usuário");
+    tracing::info!("vault locked by the user");
     crate::state::lock_all(&app);
 }
 
-/// A UI chama isto (com throttle) a cada interação do usuário.
+/// The UI calls this (throttled) on every user interaction.
 #[tauri::command]
 pub fn vault_touch(state: State<'_, AppState>) {
     state.touch();
@@ -166,7 +166,7 @@ pub async fn list_stores(app: AppHandle) -> Result<Vec<StoreDto>, CmdError> {
     .await
 }
 
-// ---------------------------------------------------------------- importação
+// ---------------------------------------------------------------- import
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -175,16 +175,16 @@ pub struct BackupInfo {
     size_bytes: u64,
 }
 
-/// Identifica o formato (crypt14/crypt15) lendo só o header. Não precisa da
-/// chave e não descriptografa nada.
+/// Identifies the format (crypt14/crypt15) by reading only the header. Does
+/// not need the key and decrypts nothing.
 #[tauri::command]
 pub fn inspect_backup(path: String) -> Result<BackupInfo, CmdError> {
     let file = std::fs::File::open(&path)?;
     let size_bytes = file.metadata()?.len();
     let mut head = Vec::with_capacity(4096);
     file.take(4096).read_to_end(&mut head)?;
-    let prefix = wa_crypt::parse_prefix(&head).inspect_err(|e| tracing::warn!("inspect_backup: header não reconhecido: {e}"))?;
-    tracing::info!(versao = ?prefix.version, header_bytes = prefix.header_len, tamanho = %crate::diag::mb(size_bytes), "inspect_backup");
+    let prefix = wa_crypt::parse_prefix(&head).inspect_err(|e| tracing::warn!("inspect_backup: header not recognized: {e}"))?;
+    tracing::info!(version = ?prefix.version, header_bytes = prefix.header_len, size = %crate::diag::mb(size_bytes), "inspect_backup");
     Ok(BackupInfo {
         version: match prefix.version {
             wa_crypt::CryptVersion::Crypt14 => "crypt14",
@@ -197,9 +197,9 @@ pub fn inspect_backup(path: String) -> Result<BackupInfo, CmdError> {
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum KeyInput {
-    /// Os 64 dígitos digitados pelo usuário.
+    /// The 64 digits typed by the user.
     Hex { value: String },
-    /// Caminho do `key` (crypt14) ou do `encrypted_backup.key` (crypt15).
+    /// Path of the `key` (crypt14) or `encrypted_backup.key` (crypt15) file.
     File { path: String },
 }
 
@@ -209,8 +209,8 @@ impl KeyInput {
             KeyInput::Hex { value } => BackupKey::from_hex(&Zeroizing::new(value))?,
             KeyInput::File { path } => {
                 let meta = std::fs::metadata(&path)?;
-                // Arquivos de chave têm dezenas de bytes. Recusa arquivos
-                // grandes antes de ler (provavelmente o arquivo errado).
+                // Key files are tens of bytes. Refuses large files before
+                // reading them (probably the wrong file).
                 if meta.len() > 4096 {
                     return Err(wa_crypt::Error::UnknownKeyFile.into());
                 }
@@ -231,7 +231,7 @@ pub struct ImportSummary {
     vcards: u64,
     skipped_status: u64,
     skipped_orphans: u64,
-    /// `[tipo, quantidade]` de tipos de mensagem que o importer não conhece.
+    /// `[type, count]` of message types the importer does not know.
     unknown_types: Vec<(i64, u64)>,
 }
 
@@ -241,8 +241,8 @@ struct Progress {
     phase: &'static str,
 }
 
-/// Lê o backup, descriptografa em memória, importa para o cofre e descarta o
-/// texto puro. O msgstore descriptografado nunca é gravado em disco.
+/// Reads the backup, decrypts it in memory, imports it into the vault and
+/// discards the plaintext. The decrypted msgstore is never written to disk.
 #[tauri::command]
 pub async fn import_backup(
     app: AppHandle,
@@ -256,7 +256,7 @@ pub async fn import_backup(
         let source_app = self::source_app(&source_app)?;
         progress(&app, "reading");
         let key = key.load()?;
-        tracing::info!(chave = ?key.kind(), app = source_app.as_str(), "importar backup local");
+        tracing::info!(key = ?key.kind(), app = source_app.as_str(), "import local backup");
         let file = std::fs::read(&backup_path)?;
         import_encrypted(&app, &state, file, &key, source_app)
     })
@@ -267,9 +267,9 @@ pub(crate) fn progress(app: &AppHandle, phase: &'static str) {
     let _ = app.emit(EVENT_IMPORT_PROGRESS, Progress { phase });
 }
 
-/// Descriptografa um backup (já em memória) e importa para o cofre. O texto
-/// puro nunca vai para o disco: fica em buffers zerados e vai direto para o
-/// banco SQLCipher.
+/// Decrypts a backup (already in memory) and imports it into the vault. The
+/// plaintext never goes to disk: it stays in zeroed buffers and goes straight
+/// into the SQLCipher database.
 pub(crate) fn import_encrypted(
     app: &AppHandle,
     state: &AppState,
@@ -281,17 +281,17 @@ pub(crate) fn import_encrypted(
 
     progress(app, "decrypting");
     let size = file.len() as u64;
-    let t = crate::diag::timer("descriptografar");
-    let decrypted = wa_crypt::decrypt(&file, key).inspect_err(|e| tracing::warn!(tamanho = %crate::diag::mb(size), "descriptografia falhou: {e}"))?;
+    let t = crate::diag::timer("decrypt");
+    let decrypted = wa_crypt::decrypt(&file, key).inspect_err(|e| tracing::warn!(size = %crate::diag::mb(size), "decryption failed: {e}"))?;
     drop(file);
     tracing::info!(
-        versao = ?decrypted.version,
+        version = ?decrypted.version,
         multifile = decrypted.multifile,
-        conteudo = ?decrypted.payload,
-        cifrado = %crate::diag::mb(size),
+        content = ?decrypted.payload,
+        encrypted = %crate::diag::mb(size),
         sqlite = %crate::diag::mb(decrypted.data.len() as u64),
         ms = t.ms() as u64,
-        "backup descriptografado"
+        "backup decrypted"
     );
     drop(t);
     if decrypted.payload != Payload::Sqlite {
@@ -299,33 +299,33 @@ pub(crate) fn import_encrypted(
     }
 
     progress(app, "importing");
-    // `open_msgstore` copia os bytes para a memória do SQLite (zerada ao
-    // liberar). A cópia do wa-crypt é zerada logo em seguida.
+    // `open_msgstore` copies the bytes into SQLite's memory (zeroed when
+    // freed). The wa-crypt copy is zeroed right after.
     let src = wa_import::open_msgstore(&decrypted.data)?;
     drop(decrypted);
-    // A conexão do visualizador aponta para o arquivo antigo (e no Windows
-    // impediria a troca do arquivo).
+    // The viewer's connection points to the old file (and on Windows it would
+    // prevent the file from being replaced).
     state.forget_store(source_app);
-    let t = crate::diag::timer("importar para o cofre");
+    let t = crate::diag::timer("import into the vault");
     let report = store.import(&src);
     state.forget_store(source_app);
-    let report = report.inspect_err(|e| tracing::warn!("importação falhou: {e}"))?;
+    let report = report.inspect_err(|e| tracing::warn!("import failed: {e}"))?;
     drop(src);
     tracing::info!(
         app = source_app.as_str(),
         schema = ?report.source_schema,
-        conversas = report.chats,
-        mensagens = report.messages,
-        midias = report.media,
-        reacoes = report.reactions,
+        chats = report.chats,
+        messages = report.messages,
+        media = report.media,
+        reactions = report.reactions,
         vcards = report.vcards,
-        status_ignorados = report.skipped_status,
-        orfas = report.skipped_orphans,
+        skipped_status = report.skipped_status,
+        orphans = report.skipped_orphans,
         ms = t.ms() as u64,
-        "importação concluída"
+        "import done"
     );
     if !report.unknown_types.is_empty() {
-        tracing::warn!(tipos = ?report.unknown_types, "tipos de mensagem desconhecidos (message_type → quantidade)");
+        tracing::warn!(types = ?report.unknown_types, "unknown message types (message_type → count)");
     }
     drop(t);
 
@@ -346,7 +346,7 @@ pub(crate) fn import_encrypted(
     })
 }
 
-// ---------------------------------------------------------------- visualizador
+// ---------------------------------------------------------------- viewer
 
 pub(crate) fn source_app(s: &str) -> Result<SourceApp, CmdError> {
     SourceApp::parse(s).ok_or_else(|| CmdError::new("invalid_argument", "app de origem desconhecido"))
@@ -380,7 +380,7 @@ pub async fn get_messages(
     .await
 }
 
-/// Marca quais mídias da página têm o arquivo no cofre.
+/// Marks which media in the page have their file in the vault.
 fn mark_available(state: &AppState, store: SourceApp, page: &mut [Message]) -> Result<(), CmdError> {
     state.with_media(store, |reader| {
         let Some(reader) = reader else { return Ok(()) };

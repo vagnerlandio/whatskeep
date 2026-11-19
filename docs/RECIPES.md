@@ -56,7 +56,7 @@ It shows up in `unknownTypes` in the import report.
 
 1. Rust: `crates/wa-export/src/format.rs` / `lib.rs`. Incompatible change → `FORMAT = 2`; `bundle.ts` rejects `format !== 1`, update that check.
 2. JS mirror: `packages/export-shell/src/crypto.ts`, `bundle.ts`, `loader.ts`.
-3. Tests: `crates/wa-export/tests/export.rs` (password isolation, no plaintext, tamper detection) and `pnpm test:e2e` (builds packages through the ignored test `gerar_pacotes_para_o_navegador` and opens them in Chromium/WebKit).
+3. Tests: `crates/wa-export/tests/export.rs` (password isolation, no plaintext, tamper detection) and `pnpm test:e2e` (builds packages through the ignored test `generate_browser_packages` and opens them in Chromium/WebKit).
 4. Export CSP: `with_csp` in `wa-export/src/lib.rs`. New inline scripts are allowed by hash automatically; do **not** add `'self'` or a network `connect-src`.
 
 ## Viewer UI changes

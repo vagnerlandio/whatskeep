@@ -1,10 +1,10 @@
-//! Autenticação do Google Play Services (o que o Android faz ao adicionar
-//! uma conta), reimplementada a partir do gpsoauth.
+//! Google Play Services authentication (what Android does when adding an
+//! account), reimplemented from gpsoauth.
 //!
 //! ```text
-//! cookie oauth_token (login no EmbeddedSetup)
-//!   └─exchange_token──► master token (aas_et/…)   acesso amplo à conta: só em memória
-//!         └─access_token(app, client_sig)──► token OAuth de 1 h, escopo drive.appdata
+//! oauth_token cookie (login on EmbeddedSetup)
+//!   └─exchange_token──► master token (aas_et/…)   broad account access: memory only
+//!         └─access_token(app, client_sig)──► 1 h OAuth token, drive.appdata scope
 //! ```
 
 use std::fmt;
@@ -14,7 +14,7 @@ use zeroize::Zeroizing;
 
 use crate::{DriveApp, Error, Endpoints, http};
 
-/// Assinatura do Google Play Services (usada na troca do cookie).
+/// Google Play Services signature (used in the cookie exchange).
 const GMS_CLIENT_SIG: &str = "38918a453d07199354f8b19af05ec6562ced5788";
 const DRIVE_SCOPE: &str = "oauth2:https://www.googleapis.com/auth/drive.appdata";
 const GMS_VERSION: &str = "240913000";
@@ -41,11 +41,11 @@ macro_rules! secret_string {
     };
 }
 
-secret_string!(OauthCookie, "Cookie `oauth_token` do login no EmbeddedSetup (uso único, curta duração).");
-secret_string!(MasterToken, "Token mestre da conta (`aas_et/…`). Equivale a acesso amplo à conta Google.");
-secret_string!(AccessToken, "Token OAuth de 1 hora, só com o escopo `drive.appdata` do app.");
+secret_string!(OauthCookie, "`oauth_token` cookie from the EmbeddedSetup login (single use, short-lived).");
+secret_string!(MasterToken, "Account master token (`aas_et/…`). Amounts to broad access to the Google account.");
+secret_string!(AccessToken, "1-hour OAuth token, only with the app's `drive.appdata` scope.");
 
-/// Id de dispositivo Android aleatório (16 hex), novo a cada login.
+/// Random Android device id (16 hex), new on every login.
 pub fn random_android_id() -> Result<String, Error> {
     let mut b = [0u8; 8];
     getrandom(&mut b)?;
@@ -59,7 +59,7 @@ fn getrandom(buf: &mut [u8]) -> Result<(), Error> {
         .map_err(|_| Error::Tls("sem fonte de números aleatórios".into()))
 }
 
-/// Troca o cookie do login pelo token mestre.
+/// Exchanges the login cookie for the master token.
 pub fn exchange_token(
     ep: &Endpoints,
     email: &str,
@@ -92,7 +92,7 @@ pub fn exchange_token(
     Ok(MasterToken::new(token))
 }
 
-/// Pede um token de acesso ao Drive em nome do app do WhatsApp.
+/// Requests a Drive access token on behalf of the WhatsApp app.
 pub fn access_token(
     ep: &Endpoints,
     master: &MasterToken,
@@ -121,8 +121,8 @@ pub fn access_token(
     Ok(AccessToken::new(token))
 }
 
-/// Resposta `chave=valor` por linha. Os valores podem conter tokens, então o
-/// vetor inteiro é zerado no drop.
+/// `key=value` response, one per line. Values may contain tokens, so the
+/// whole vector is zeroed on drop.
 struct AuthResponse(Vec<(String, Zeroizing<String>)>);
 
 fn post_auth(ep: &Endpoints, body: &str) -> Result<AuthResponse, Error> {
@@ -143,7 +143,7 @@ fn post_auth(ep: &Endpoints, body: &str) -> Result<AuthResponse, Error> {
         Ok(r) => r,
         Err(e) => {
             let err: Error = e.into();
-            tracing::warn!(target: "wa_gdrive::http", ms = started.elapsed().as_millis() as u64, "✗ POST {} falhou: {}", ep.auth, err);
+            tracing::warn!(target: "wa_gdrive::http", ms = started.elapsed().as_millis() as u64, "✗ POST {} failed: {}", ep.auth, err);
             return Err(err);
         }
     };
@@ -168,16 +168,16 @@ fn parse_auth_response(text: &str) -> AuthResponse {
     )
 }
 
-/// Remove a chave da resposta. O valor original (zerável) é zerado no drop;
-/// a cópia devolvida vai direto para um tipo que também zera.
+/// Removes the key from the response. The original (zeroizable) value is
+/// zeroed on drop; the returned copy goes straight into a type that also zeroes.
 fn take(resp: &mut AuthResponse, key: &str) -> Option<String> {
     let i = resp.0.iter().position(|(k, _)| k == key)?;
     let (_, v) = resp.0.swap_remove(i);
     Some(v.as_str().to_owned())
 }
 
-/// Converte o erro do Google numa mensagem útil. Só repassa campos
-/// conhecidos e sem segredo (`Error`, `ErrorDetail`, `Url` não entra).
+/// Turns Google's error into a useful message. Only passes on known,
+/// secret-free fields (`Error`, `ErrorDetail`; `Url` is left out).
 fn auth_error(resp: &AuthResponse) -> Error {
     let get = |k: &str| resp.0.iter().find(|(key, _)| key == k).map(|(_, v)| v.as_str().to_owned());
     match get("Error").as_deref() {
@@ -193,7 +193,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resposta_de_autenticacao() {
+    fn auth_response() {
         let mut r = parse_auth_response("SID=x\nToken=aas_et/abc=def\nservices=mail\n");
         assert_eq!(take(&mut r, "Token").as_deref(), Some("aas_et/abc=def"));
         assert_eq!(take(&mut r, "Token"), None);
@@ -202,8 +202,8 @@ mod tests {
     }
 
     #[test]
-    fn debug_nao_vaza() {
-        let t = MasterToken::new("aas_et/segredo".into());
+    fn debug_does_not_leak() {
+        let t = MasterToken::new("aas_et/secret".into());
         assert_eq!(format!("{t:?}"), "MasterToken(<redacted>)");
     }
 

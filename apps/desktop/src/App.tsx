@@ -12,10 +12,10 @@ import "@wa/viewer/base.css";
 import "@wa/viewer/viewer.css";
 import "./App.css";
 
-/** Intervalo mínimo entre avisos de atividade ao backend (autolock). */
+/** Minimum interval between activity pings to the backend (autolock). */
 const TOUCH_EVERY_MS = 15_000;
 
-/** Carrega o idioma salvo (ou o do sistema) antes de desenhar qualquer tela. */
+/** Loads the saved language (or the system one) before drawing any screen. */
 export default function App() {
   const [lang, setLangState] = useState<Lang | null>(null);
   useEffect(() => {
@@ -39,7 +39,7 @@ export default function App() {
 function AppScreens() {
   const t = useAppT();
   const [status, setStatus] = useState<VaultStatus | null>(null);
-  // Travado por inatividade: o texto sai do dicionário na hora de mostrar.
+  // Locked due to inactivity: the text comes from the dictionary when displayed.
   const [lockedIdle, setLockedIdle] = useState(false);
 
   const refresh = useCallback(async () => setStatus(await api.status()), []);
@@ -53,7 +53,7 @@ function AppScreens() {
     return () => void unlisten.then((fn) => fn());
   }, [refresh]);
 
-  // Mantém o cofre aberto enquanto o usuário interage com a janela.
+  // Keeps the vault open while the user interacts with the window.
   const unlocked = status?.state === "unlocked";
   useEffect(() => {
     if (!unlocked) return;
@@ -118,7 +118,7 @@ function Frame({ children, onLock }: { children: ReactNode; onLock?: () => void 
 function Unlocked({ onLock }: { onLock: () => void }) {
   const errorText = useErrorText();
   const [stores, setStores] = useState<StoreInfo[] | null>(null);
-  // Guarda o erro bruto: o texto acompanha a troca de idioma.
+  // Stores the raw error: the text follows language changes.
   const [error, setError] = useState<{ e: unknown } | null>(null);
   const [importing, setImporting] = useState(false);
 

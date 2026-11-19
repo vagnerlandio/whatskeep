@@ -1,9 +1,9 @@
-// Textos do export HTML (português e inglês). O inglês tem o tipo do
-// português, então o TypeScript acusa qualquer texto faltando.
+// HTML export texts (Portuguese and English). The English one has the
+// Portuguese one's type, so TypeScript flags any missing text.
 import { Lang, makeT } from "@wa/viewer";
 
 const pt = {
-  // Tela de senha
+  // Password screen
   title: "WhatsKeep",
   tagline: "Suas conversas do WhatsApp, seguras e acessíveis.",
   moreTitle: "Outra senha",
@@ -16,7 +16,7 @@ const pt = {
   wrongPassword: "Senha incorreta.",
   noNewChats: "Essa senha não liberou nenhuma conversa nova.",
 
-  // Visualizador
+  // Viewer
   viewerTitle: "Histórico",
   unlockMore: "Liberar mais conversas com outra senha",
   pickFolderTitle: "Selecionar a pasta do histórico (fotos e vídeos)",
@@ -27,11 +27,11 @@ const pt = {
   emptyNote: (n: number) =>
     `${n} conversas liberadas. Nada sai deste computador: a página não acessa a internet.`,
 
-  // Dicas de mídia (mostradas pelo visualizador)
+  // Media hints (shown by the viewer)
   hintPickFolder: "Para ver fotos e vídeos, selecione a pasta deste histórico (ícone de pasta na barra lateral).",
   hintTooLarge: "Arquivo grande demais para abrir no navegador.",
 
-  // Erros
+  // Errors
   cantRead:
     "Não foi possível ler os dados do histórico. Abra o index.html de dentro da pasta exportada (com a pasta data ao lado).",
   errors: {
@@ -91,8 +91,8 @@ export const shellMessages: Record<Lang, ShellMessages> = { "pt-BR": pt, en };
 
 export const useShellT = makeT(shellMessages);
 
-/** Erro com código estável: o texto é traduzido na hora de exibir. A mensagem
- * já sai no idioma pedido (para quem só lê `.message`, como o visualizador). */
+/** Error with a stable code: the text is translated when displayed. The message
+ * already comes out in the requested language (for those that only read `.message`, like the viewer). */
 export class ShellError extends Error {
   constructor(
     readonly code: ErrorCode,
@@ -102,13 +102,13 @@ export class ShellError extends Error {
     super(shellMessages[lang].errors[code](detail));
   }
 
-  /** O mesmo erro, com a mensagem em outro idioma. */
+  /** The same error, with the message in another language. */
   in(lang: Lang): ShellError {
     return new ShellError(this.code, this.detail, lang);
   }
 }
 
-/** Texto de um erro no idioma atual. */
+/** Text of an error in the current language. */
 export function errorText(err: unknown, lang: Lang): string {
   if (err instanceof ShellError) return shellMessages[lang].errors[err.code](err.detail);
   return err instanceof Error ? err.message : String(err);

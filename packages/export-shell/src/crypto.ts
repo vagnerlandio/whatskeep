@@ -1,4 +1,4 @@
-// Leitura do formato do export (espelho de crates/wa-export/src/format.rs).
+// Reading of the export format (mirror of crates/wa-export/src/format.rs).
 import { argon2id } from "hash-wasm";
 import { ShellError } from "./messages";
 
@@ -15,7 +15,7 @@ export function b64(s: string): Uint8Array<ArrayBuffer> {
 
 export type Kdf = { alg: string; m: number; t: number; p: number; salt: string };
 
-/** Senha → chave do slot (Argon2id em WASM, ~1 s com os parâmetros padrão). */
+/** Password → slot key (Argon2id in WASM, ~1 s with the default parameters). */
 export async function passwordKey(password: string, kdf: Kdf): Promise<CryptoKey> {
   if (kdf.alg !== "argon2id") throw new ShellError("unknown_kdf");
   const raw = await argon2id({
@@ -53,7 +53,7 @@ export async function hkdf(ikm: Uint8Array<ArrayBuffer>, salt: Uint8Array<ArrayB
   return new Uint8Array(bits);
 }
 
-/** `[u32 LE tamanho][gzip][padding]` → JSON. */
+/** `[u32 LE length][gzip][padding]` → JSON. */
 export async function unpackChunk(plain: Uint8Array<ArrayBuffer>): Promise<unknown> {
   const len = new DataView(plain.buffer, plain.byteOffset).getUint32(0, true);
   const gz = plain.subarray(4, 4 + len);
@@ -68,7 +68,7 @@ export function streamLen(size: number): number {
   return size + segs * TAG;
 }
 
-/** Decifra uma mídia STREAM (segmentos de 1 MiB) lida de um pacote. */
+/** Decrypts a STREAM media file (1 MiB segments) read from a bundle. */
 export async function openStream(
   key: CryptoKey,
   prefix: Uint8Array<ArrayBuffer>,

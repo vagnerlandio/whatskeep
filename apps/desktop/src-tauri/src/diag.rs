@@ -1,19 +1,19 @@
-//! Log de diagnóstico, para acompanhar testes com backups reais.
+//! Diagnostics log, for following tests with real backups.
 //!
-//! * Ligado sempre no build de desenvolvimento e, no release, só com a
-//!   variável `WA_LOG` (ex.: `WA_LOG=debug`). Vai para o stderr: nada é
-//!   gravado em disco pelo app.
-//! * **Nunca** registre texto de mensagem, telefone, JID, nome de contato,
-//!   senha, chave, token, cookie, URL com caminho de backup ou nome de
-//!   arquivo de mídia. Só fases, tempos, tamanhos, contagens, códigos de erro
-//!   e nomes de tabelas/colunas do WhatsApp.
+//! * Always on in development builds and, in release, only with the
+//!   `WA_LOG` variable (e.g. `WA_LOG=debug`). Goes to stderr: the app writes
+//!   nothing to disk.
+//! * **Never** log message text, phone numbers, JIDs, contact names,
+//!   passwords, keys, tokens, cookies, URLs with a backup path or media file
+//!   names. Only phases, timings, sizes, counts, error codes and WhatsApp
+//!   table/column names.
 
 use std::collections::BTreeMap;
 use std::time::Instant;
 
 use tracing::{info, warn};
 
-/// Filtro padrão: o app e os crates em `debug`, o resto em `info`.
+/// Default filter: the app and its crates at `debug`, everything else at `info`.
 const DEFAULT_FILTER: &str = "info,wa_historico_lib=debug,wa_import=debug,wa_gdrive=debug";
 
 pub fn init() {
@@ -31,16 +31,16 @@ pub fn init() {
 
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |p| {
-        // Local e mensagem do panic: mensagens de panic do código do app não
-        // carregam dados do usuário.
+        // Panic location and message: panic messages in the app's code do not
+        // carry user data.
         tracing::error!(target: "wa_historico_lib::panic", "PANIC {p}");
         default_hook(p);
     }));
-    info!(version = env!("CARGO_PKG_VERSION"), debug = cfg!(debug_assertions), "diagnóstico ligado");
+    info!(version = env!("CARGO_PKG_VERSION"), debug = cfg!(debug_assertions), "diagnostics enabled");
 }
 
-/// Mede uma etapa: `let _t = diag::timer("descriptografar");` registra a
-/// duração quando sai de escopo.
+/// Times a step: `let _t = diag::timer("decrypt");` logs the duration when
+/// it goes out of scope.
 pub struct Timer {
     what: &'static str,
     start: Instant,
@@ -58,12 +58,12 @@ impl Timer {
 
 impl Drop for Timer {
     fn drop(&mut self) {
-        tracing::debug!(etapa = self.what, ms = self.ms(), "etapa concluída");
+        tracing::debug!(step = self.what, ms = self.ms(), "step done");
     }
 }
 
-/// Conta falhas por motivo. As primeiras de cada motivo saem no log na hora
-/// (com detalhe); no fim, `report` resume tudo numa linha.
+/// Counts failures by reason. The first ones of each reason are logged right
+/// away (with detail); at the end, `report` sums everything up in one line.
 pub struct Tally {
     what: &'static str,
     counts: BTreeMap<String, u64>,
@@ -76,25 +76,25 @@ impl Tally {
         Self { what, counts: BTreeMap::new() }
     }
 
-    /// `reason` é uma categoria curta e estável; `detail`, a mensagem de erro
-    /// (já sem dados do usuário).
+    /// `reason` is a short, stable category; `detail` is the error message
+    /// (already free of user data).
     pub fn add(&mut self, reason: &str, detail: impl std::fmt::Display) {
         let n = self.counts.entry(reason.to_owned()).or_default();
         *n += 1;
         if *n <= DETAILED_PER_REASON {
-            warn!(contexto = self.what, motivo = reason, "falha: {detail}");
+            warn!(context = self.what, reason = reason, "failure: {detail}");
         }
     }
 
     pub fn report(&self) {
         if !self.counts.is_empty() {
-            warn!(contexto = self.what, falhas = ?self.counts, "resumo das falhas");
+            warn!(context = self.what, failures = ?self.counts, "failure summary");
         }
     }
 }
 
-/// Erros do frontend (exceções JS, falhas de renderização). O texto é
-/// truncado e não deve conter dados de mensagens.
+/// Frontend errors (JS exceptions, rendering failures). The text is
+/// truncated and must not contain message data.
 #[tauri::command]
 pub fn ui_log(level: String, message: String) {
     let msg: String = message.chars().take(1000).collect();
@@ -105,7 +105,7 @@ pub fn ui_log(level: String, message: String) {
     }
 }
 
-/// Tamanho legível, para o log.
+/// Human-readable size, for the log.
 pub fn mb(bytes: u64) -> String {
     format!("{:.1} MB", bytes as f64 / 1_048_576.0)
 }

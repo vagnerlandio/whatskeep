@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permissões mínimas da janela principal. Sem devtools, sem consultas de janela, sem emitir eventos. Cada comando do app é liberado aqui um a um.",
+  "description": "Minimal permissions for the main window. No devtools, no window queries, no event emitting. Each app command is allowed here one by one.",
   "windows": [
     "main"
   ],

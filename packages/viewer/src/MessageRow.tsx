@@ -6,12 +6,12 @@ import { Icon } from "./icons";
 import { useLang } from "./i18n";
 import { useViewerT } from "./messages";
 
-/** Textos maiores que isso começam recolhidos ("Ler mais"), como no WhatsApp. */
+/** Texts longer than this start collapsed ("Read more"), like in WhatsApp. */
 const COLLAPSE_AT = 1500;
 
 type Props = {
   message: Message;
-  /** Mensagem anterior na lista (para separador de dia e agrupamento). */
+  /** Previous message in the list (for the day separator and grouping). */
   prev: Message | undefined;
   isGroup: boolean;
   highlighted: boolean;
@@ -19,7 +19,7 @@ type Props = {
 };
 
 function MessageRow({ message: m, prev, isGroup, highlighted, onJump }: Props) {
-  // Hooks aqui dentro: o memo não impede re-renderizar ao trocar o idioma.
+  // Hooks in here: memo doesn't prevent re-rendering when the language changes.
   const t = useViewerT();
   const { lang } = useLang();
   const newDay = !prev || new Date(prev.sentAt).toDateString() !== new Date(m.sentAt).toDateString();
@@ -60,7 +60,7 @@ function Bubble({
   onJump,
 }: {
   m: Message;
-  /** Primeira de uma sequência do mesmo autor: leva o "rabinho". */
+  /** First of a run from the same author: gets the "tail". */
   first: boolean;
   showSender: boolean;
   highlighted: boolean;

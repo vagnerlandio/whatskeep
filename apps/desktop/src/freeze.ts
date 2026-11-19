@@ -1,9 +1,9 @@
-// Proteção contra poluição de protótipo (o que o `freezePrototype` do Tauri
-// faz), mas só na janela principal. O `freezePrototype` global do Tauri vale
-// para TODAS as janelas, inclusive a de login do Google, e quebra o
-// JavaScript do Google ("Attempted to assign to readonly property"): o botão
-// "Avançar" do login para de funcionar. Este módulo é o primeiro import de
-// main.tsx, então roda antes de qualquer outro código do app.
+// Protection against prototype pollution (what Tauri's `freezePrototype`
+// does), but only in the main window. Tauri's global `freezePrototype` applies
+// to ALL windows, including the Google login one, and breaks Google's
+// JavaScript ("Attempted to assign to readonly property"): the login's "Next"
+// ("Avançar") button stops working. This module is the first import of
+// main.tsx, so it runs before any other app code.
 Object.freeze(Object.prototype);
 
 export {};

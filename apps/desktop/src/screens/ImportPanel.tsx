@@ -28,7 +28,7 @@ const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 
 type Props = { stores: StoreInfo[]; onImported: () => void };
 
-/** Importação de um arquivo de backup copiado do celular. */
+/** Import of a backup file copied from the phone. */
 export default function ImportPanel({ stores, onImported }: Props) {
   const [step, setStep] = useState<Step>({ kind: "pick" });
   const [source, setSource] = useState<SourceApp>("whatsapp");
@@ -72,7 +72,7 @@ export default function ImportPanel({ stores, onImported }: Props) {
     if (step.kind !== "configure") return;
     const input = toKeyInput(key);
     const configured = step;
-    setKey((k) => ({ ...k, hex: "" })); // a chave não fica no estado do React depois de enviada
+    setKey((k) => ({ ...k, hex: "" })); // the key doesn't stay in React state after being sent
     setStep({ kind: "running", phase: "reading" });
     const unlisten = await listen<{ phase: ImportPhase }>("import-progress", (e) =>
       setStep((s) => (s.kind === "running" ? { kind: "running", phase: e.payload.phase } : s)),

@@ -1,6 +1,6 @@
-/* Visualizador no estilo do WhatsApp Desktop. Regras de desempenho:
- * nada de sombras/filtros caros nas bolhas, `contain` nas linhas, e espaço
- * de mídia reservado pelas dimensões gravadas. */
+/* Viewer in the WhatsApp Desktop style. Performance rules:
+ * no expensive shadows/filters on the bubbles, `contain` on the rows, and media
+ * space reserved from the stored dimensions. */
 :root {
   --rail-bg: #f0f2f5;
   --rail-icon: #54656f;
@@ -71,7 +71,7 @@
   overflow: hidden;
 }
 
-/* ---------------------------------------------------------------- navegação */
+/* ---------------------------------------------------------------- navigation */
 
 .rail {
   width: 64px;
@@ -130,7 +130,7 @@
   text-align: center;
 }
 
-/* ---------------------------------------------------------------- barra lateral */
+/* ---------------------------------------------------------------- sidebar */
 
 .sidebar {
   width: clamp(300px, 32%, 420px);
@@ -505,7 +505,7 @@ button.link {
   border-radius: 0;
 }
 
-/* ---------------------------------------------------------------- conversa */
+/* ---------------------------------------------------------------- chat */
 
 .main-pane {
   flex: 1;
@@ -592,7 +592,7 @@ button.link {
   color: var(--text-muted);
 }
 
-/* O <input type=date> fica invisível por cima do ícone e abre o seletor nativo. */
+/* The <input type=date> sits invisible over the icon and opens the native picker. */
 .date-input {
   position: absolute;
   inset: 0;
@@ -734,7 +734,7 @@ button.link {
   background: var(--bubble-out);
 }
 
-/* "Rabinho" da primeira bolha de cada sequência. */
+/* "Tail" of the first bubble in each run. */
 .bubble.tail.in {
   border-top-left-radius: 0;
 }
@@ -800,7 +800,7 @@ button.link {
   margin: 2px 0;
 }
 
-/* Espaço para a hora no fim da última linha, como no WhatsApp. */
+/* Room for the time at the end of the last line, like in WhatsApp. */
 .text::after,
 .transcription::after {
   content: "";
@@ -864,7 +864,7 @@ button.link {
   overflow: hidden;
 }
 
-/* Barra colorida à esquerda, como no WhatsApp. */
+/* Colored bar on the left, like in WhatsApp. */
 .quote::before {
   content: "";
   position: absolute;
@@ -1068,7 +1068,7 @@ button.back {
   align-self: flex-start;
 }
 
-/* ---------------------------------------------------------------- mídia */
+/* ---------------------------------------------------------------- media */
 
 .visual.clickable {
   cursor: zoom-in;

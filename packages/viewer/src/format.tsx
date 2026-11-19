@@ -1,8 +1,8 @@
-// Formatação de texto e datas do visualizador.
+// Text and date formatting for the viewer.
 //
-// SEGURANÇA: o texto das mensagens vem de terceiros. Tudo aqui gera nós
-// React de texto. Nunca use dangerouslySetInnerHTML, innerHTML nem href
-// montado a partir de conteúdo de mensagem.
+// SECURITY: message text comes from third parties. Everything here produces
+// React text nodes. Never use dangerouslySetInnerHTML, innerHTML or an href
+// built from message content.
 import { Fragment, ReactNode } from "react";
 import { useViewer } from "./context";
 import { Icon, IconName } from "./icons";
@@ -10,9 +10,9 @@ import type { Chat, MessageKind, Person } from "./types";
 import { useLang, type Lang } from "./i18n";
 import { VIEWER_MESSAGES } from "./messages";
 
-// ---------------------------------------------------------------- pessoas
+// ---------------------------------------------------------------- people
 
-/** `5511912345678` → `+55 11 91234-5678`. Outros países: `+<dígitos>`. */
+/** `5511912345678` → `+55 11 91234-5678`. Other countries: `+<digits>`. */
 export function formatPhone(phone: string): string {
   const br = /^55(\d{2})(\d{4,5})(\d{4})$/.exec(phone);
   if (br) return `+55 ${br[1]} ${br[2]}-${br[3]}`;
@@ -23,7 +23,7 @@ export function personLabel(p: Person | null, lang: Lang = "pt-BR"): string {
   if (!p) return VIEWER_MESSAGES[lang].unknownPerson;
   if (p.name) return p.name;
   if (p.phone) return formatPhone(p.phone);
-  // LID sem telefone conhecido: o WhatsApp mostra "~" antes de quem não está na agenda.
+  // LID with no known phone: WhatsApp shows "~" before people not in the address book.
   return `~${p.jid.split("@")[0]}`;
 }
 
@@ -46,12 +46,12 @@ export function senderColor(jid: string): string {
   return SENDER_COLORS[hash(jid) % SENDER_COLORS.length];
 }
 
-/** Matiz estável por JID para o avatar (fundo claro, ícone/letra no mesmo tom). */
+/** Stable hue per JID for the avatar (light background, icon/letter in the same tone). */
 export const avatarHue = (jid: string) => [190, 25, 340, 210, 150, 280, 45, 0, 170, 260][hash(jid) % 10];
 
-// ---------------------------------------------------------------- datas
+// ---------------------------------------------------------------- dates
 
-// Formatadores por idioma, criados uma vez cada.
+// Formatters per language, each created once.
 const fmtCache = new Map<string, Intl.DateTimeFormat>();
 function fmt(lang: Lang, key: string, opts: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
   const k = `${lang}|${key}`;
@@ -74,14 +74,14 @@ function startOfDay(ms: number): number {
 
 const DAY = 86_400_000;
 
-/** Chave de dia local, para separar mensagens por data. */
+/** Local day key, to separate messages by date. */
 export const dayKey = (ms: number) => startOfDay(ms);
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 const TODAY: Record<Lang, [string, string]> = { "pt-BR": ["Hoje", "Ontem"], en: ["Today", "Yesterday"] };
 
-/** Separador de dia na conversa: "Hoje", "Ontem", dia da semana ou data por extenso. */
+/** Day separator in the chat: "Today", "Yesterday", weekday or the long date. */
 export function formatDay(ms: number, lang: Lang = "pt-BR"): string {
   const diff = Math.round((startOfDay(Date.now()) - startOfDay(ms)) / DAY);
   if (diff === 0) return TODAY[lang][0];
@@ -90,7 +90,7 @@ export function formatDay(ms: number, lang: Lang = "pt-BR"): string {
   return fmt(lang, "long", { day: "numeric", month: "long", year: "numeric" }).format(ms);
 }
 
-/** Hora da lista de conversas: hora (hoje), "Ontem", dia da semana ou data curta. */
+/** Time in the chat list: time (today), "Yesterday", weekday or short date. */
 export function formatListTime(ms: number, lang: Lang = "pt-BR"): string {
   const diff = Math.round((startOfDay(Date.now()) - startOfDay(ms)) / DAY);
   if (diff === 0) return formatTime(ms, lang);
@@ -102,7 +102,7 @@ export function formatListTime(ms: number, lang: Lang = "pt-BR"): string {
 export const formatDate = (ms: number, lang: Lang = "pt-BR") =>
   fmt(lang, "date", { day: "2-digit", month: "2-digit", year: "numeric" }).format(ms);
 
-/** Data e hora (ex.: "importado em"). */
+/** Date and time (e.g. "imported on"). */
 export const formatDateTime = (ms: number, lang: Lang = "pt-BR") =>
   fmt(lang, "datetime", { dateStyle: "short", timeStyle: "short" }).format(ms);
 
@@ -115,15 +115,15 @@ export function formatDuration(s: number | null): string {
     : `${m}:${String(sec).padStart(2, "0")}`;
 }
 
-// ---------------------------------------------------------------- prévias
+// ---------------------------------------------------------------- previews
 
-/** Rótulo de cada tipo de mensagem na prévia, por idioma. */
+/** Label of each message kind in the preview, per language. */
 export const KIND_PREVIEW: Record<Lang, Partial<Record<MessageKind, string>>> = {
   "pt-BR": VIEWER_MESSAGES["pt-BR"].kinds,
   en: VIEWER_MESSAGES.en.kinds,
 };
 
-/** Ícone de cada tipo na prévia da lista de conversas, como no WhatsApp. */
+/** Icon of each kind in the chat list preview, like in WhatsApp. */
 export const KIND_ICON: Partial<Record<MessageKind, IconName>> = {
   image: "camera",
   video: "video",
@@ -145,7 +145,7 @@ export function previewText(kind: MessageKind, text: string | null, lang: Lang =
   return text ? oneLine(text) : (label ?? "");
 }
 
-/** Prévia com o ícone do tipo (foto, áudio...) antes do texto. */
+/** Preview with the kind's icon (photo, audio...) before the text. */
 export function Preview({ kind, text }: { kind: MessageKind; text: string | null }) {
   const { lang } = useLang();
   const icon = KIND_ICON[kind];
@@ -159,7 +159,7 @@ export function Preview({ kind, text }: { kind: MessageKind; text: string | null
 
 const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
 
-// ---------------------------------------------------------------- marcação do WhatsApp
+// ---------------------------------------------------------------- WhatsApp markup
 
 type Span =
   | string
@@ -167,8 +167,8 @@ type Span =
   | { tag: "pre"; text: string }
   | { tag: "link"; url: string };
 
-// *negrito*, _itálico_, ~tachado~: o marcador precisa estar fora de uma palavra
-// e o conteúdo não pode começar nem terminar com espaço (regra do WhatsApp).
+// *bold*, _italic_, ~strikethrough~: the marker must be outside a word
+// and the content can't start or end with a space (WhatsApp's rule).
 const INLINE = /(?<![\p{L}\p{N}])([*_~])(?=\S)([^\n]*?\S)\1(?![\p{L}\p{N}])|`([^`\n]+)`/u;
 const TAGS = { "*": "b", _: "i", "~": "s" } as const;
 
@@ -190,7 +190,7 @@ function parseInline(text: string, depth = 0): Span[] {
   return out;
 }
 
-// Só http(s). A pontuação final (ponto, vírgula, parêntese) fica de fora do link.
+// http(s) only. Trailing punctuation (period, comma, parenthesis) is left out of the link.
 const URL_RE = /\bhttps?:\/\/[^\s<>"'`]+/gi;
 
 function withLinks(text: string): Span[] {
@@ -219,7 +219,7 @@ export function parseWaText(text: string): Span[] {
   return out;
 }
 
-/** Link de mensagem: nunca vira <a href>. Clicar pede confirmação (veja ChatPane). */
+/** Message link: never becomes <a href>. Clicking asks for confirmation (see ChatPane). */
 function LinkSpan({ url }: { url: string }) {
   const { openLink } = useViewer();
   return (
@@ -249,15 +249,15 @@ function renderSpans(spans: Span[]): ReactNode {
   });
 }
 
-/** Texto de mensagem com a formatação do WhatsApp, sempre como texto puro. */
+/** Message text with WhatsApp formatting, always as plain text. */
 export function WaText({ text }: { text: string }) {
   return <>{renderSpans(parseWaText(text))}</>;
 }
 
-/** Snippet da busca: trechos entre \u0001 e \u0002 viram <mark>. */
+/** Search snippet: excerpts between \u0001 and \u0002 become <mark>. */
 export function Highlight({ text }: { text: string }) {
   const parts = text.split(/\u0001|\u0002/);
-  // Os marcadores alternam: índices ímpares são os trechos destacados.
+  // The markers alternate: odd indices are the highlighted excerpts.
   return (
     <>
       {parts.map((p, i) => (i % 2 === 1 ? <mark key={i}>{p}</mark> : <Fragment key={i}>{p}</Fragment>))}

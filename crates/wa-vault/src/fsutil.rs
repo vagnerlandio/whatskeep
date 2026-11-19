@@ -1,4 +1,4 @@
-//! Arquivos e pastas do cofre só com permissão do dono (0600/0700 no Unix).
+//! Vault files and folders with owner-only permissions (0600/0700 on Unix).
 
 use std::fs::{self, File, OpenOptions};
 use std::io;
@@ -33,16 +33,16 @@ pub(crate) fn set_private(_path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// Pede ao Spotlight (macOS) para não indexar a pasta. Os bancos já são
-/// cifrados, mas assim nem os nomes de arquivo entram no índice.
+/// Asks Spotlight (macOS) not to index the folder. The databases are already
+/// encrypted, but this way not even the file names enter the index.
 pub(crate) fn mark_no_index(dir: &Path) -> io::Result<()> {
     create_private(&dir.join(".metadata_never_index")).map(drop)
 }
 
-/// Tira a pasta dos backups do Time Machine (macOS). É a mesma marca que o
-/// `tmutil addexclusion` grava: o atributo estendido
-/// `com.apple.metadata:com_apple_backup_excludeItem` com o plist binário da
-/// string "com.apple.backupd". Acompanha a pasta se ela for movida.
+/// Excludes the folder from Time Machine backups (macOS). It is the same mark
+/// `tmutil addexclusion` writes: the extended attribute
+/// `com.apple.metadata:com_apple_backup_excludeItem` with the binary plist of the
+/// string "com.apple.backupd". It follows the folder if it is moved.
 #[cfg(target_os = "macos")]
 pub(crate) fn exclude_from_backup(path: &Path) -> io::Result<()> {
     use std::ffi::CString;
@@ -51,7 +51,7 @@ pub(crate) fn exclude_from_backup(path: &Path) -> io::Result<()> {
     const NAME: &[u8] = b"com.apple.metadata:com_apple_backup_excludeItem\0";
     let value = backupd_bplist();
     let p = CString::new(path.as_os_str().as_bytes()).map_err(io::Error::other)?;
-    // SAFETY: ponteiros válidos durante a chamada; tamanhos corretos.
+    // SAFETY: pointers are valid for the duration of the call; sizes are correct.
     let r = unsafe { libc::setxattr(p.as_ptr(), NAME.as_ptr().cast(), value.as_ptr().cast(), value.len(), 0, 0) };
     if r == 0 { Ok(()) } else { Err(io::Error::last_os_error()) }
 }
@@ -61,19 +61,19 @@ pub(crate) fn exclude_from_backup(_path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// Plist binário com uma única string ASCII "com.apple.backupd".
+/// Binary plist with a single ASCII string "com.apple.backupd".
 #[cfg(target_os = "macos")]
 fn backupd_bplist() -> Vec<u8> {
     let s = b"com.apple.backupd";
     let mut v = b"bplist00".to_vec();
-    v.extend_from_slice(&[0x5F, 0x10, s.len() as u8]); // string ASCII, tamanho em int de 1 byte
+    v.extend_from_slice(&[0x5F, 0x10, s.len() as u8]); // ASCII string, length as a 1-byte int
     v.extend_from_slice(s);
     let table = v.len() as u64;
-    v.push(8); // tabela de offsets: o objeto 0 começa no byte 8
+    v.push(8); // offset table: object 0 starts at byte 8
     v.extend_from_slice(&[0; 6]);
-    v.extend_from_slice(&[1, 1]); // offsets e referências de 1 byte
-    v.extend_from_slice(&1u64.to_be_bytes()); // 1 objeto
-    v.extend_from_slice(&0u64.to_be_bytes()); // raiz = objeto 0
+    v.extend_from_slice(&[1, 1]); // 1-byte offsets and references
+    v.extend_from_slice(&1u64.to_be_bytes()); // 1 object
+    v.extend_from_slice(&0u64.to_be_bytes()); // root = object 0
     v.extend_from_slice(&table.to_be_bytes());
     v
 }

@@ -10,14 +10,14 @@ import { useViewerT } from "./messages";
 
 type Props = {
   source: DataSource;
-  /** Título da barra lateral (ex.: "WhatsApp"). */
+  /** Sidebar title (e.g. "WhatsApp"). */
   title: ReactNode;
-  /** Botões ao lado do título. */
+  /** Buttons next to the title. */
   actions?: ReactNode;
-  /** Botões extras da barra de navegação à esquerda, no topo e no rodapé. */
+  /** Extra buttons on the left navigation rail, at the top and the bottom. */
   railTop?: ReactNode;
   railBottom?: ReactNode;
-  /** Aviso acima da lista de conversas (ex.: "selecione a pasta das mídias"). */
+  /** Notice above the chat list (e.g. "select the media folder"). */
   banner?: ReactNode;
   emptyTitle: string;
   emptyNote?: string;
@@ -25,8 +25,8 @@ type Props = {
 
 type Filter = "all" | "groups";
 
-/** Barra de navegação + lista de conversas (e busca) + conversa aberta, no
- * layout do WhatsApp Desktop. Troque o `key` para reiniciar ao trocar de fonte. */
+/** Navigation rail + chat list (and search) + open chat, in the
+ * WhatsApp Desktop layout. Change the `key` to reset when switching sources. */
 export default function Viewer({ source, title, actions, railTop, railBottom, banner, emptyTitle, emptyNote }: Props) {
   const [chats, setChats] = useState<Chat[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -65,7 +65,7 @@ export default function Viewer({ source, title, actions, railTop, railBottom, ba
 
   function openHit(hit: SearchHit) {
     const chat = chatsById.get(hit.chatId);
-    // Objeto novo a cada clique: reabre na mensagem mesmo que seja a mesma.
+    // A new object on every click: reopens at the message even if it's the same one.
     if (chat) openChat(chat, { type: "message", id: hit.messageId });
   }
 
@@ -185,7 +185,7 @@ export default function Viewer({ source, title, actions, railTop, railBottom, ba
   );
 }
 
-/** Botão da barra de navegação à esquerda. */
+/** Button on the left navigation rail. */
 export function RailButton({
   icon,
   title,

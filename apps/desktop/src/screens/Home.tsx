@@ -8,7 +8,7 @@ import ImportPanel from "./ImportPanel";
 
 type Props = { stores: StoreInfo[]; onImported: () => void; onClose?: () => void };
 
-/** Importação e lista dos históricos no cofre. Tela inicial quando o cofre está vazio. */
+/** Import and list of the histories in the vault. Start screen when the vault is empty. */
 export default function Home({ stores, onImported, onClose }: Props) {
   const t = useAppT();
   const { lang } = useLang();

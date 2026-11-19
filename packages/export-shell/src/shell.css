@@ -10,7 +10,7 @@
   align-items: flex-start;
 }
 
-/* Seletor de idioma na tela de senha (antes de abrir o histórico). */
+/* Language selector on the password screen (before opening the history). */
 .unlock-lang {
   align-self: flex-end;
   margin-bottom: -8px;

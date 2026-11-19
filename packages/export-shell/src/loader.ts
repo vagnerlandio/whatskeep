@@ -1,5 +1,5 @@
-// Carrega os arquivos do pacote. Em file:// o navegador bloqueia fetch(), mas
-// permite <script src>: cada arquivo de dados chama uma função global.
+// Loads the bundle's files. Under file:// the browser blocks fetch(), but
+// allows <script src>: each data file calls a global function.
 import { ShellError } from "./messages";
 
 declare global {
@@ -39,7 +39,7 @@ export async function loadManifest(): Promise<unknown> {
   return m;
 }
 
-/** Conteúdo (base64) de um pedaço. O id vem do slot decifrado. */
+/** Content (base64) of a chunk. The id comes from the decrypted slot. */
 export async function loadChunk(id: string): Promise<string> {
   if (!/^[0-9a-f]{16}$/.test(id)) throw new ShellError("bad_chunk_id");
   const got = new Promise<string>((resolve) => pending.set(id, resolve));

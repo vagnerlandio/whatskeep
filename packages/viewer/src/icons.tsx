@@ -1,5 +1,5 @@
-// Ícones SVG do Lucide (ISC), embutidos no bundle: nada é buscado na rede.
-// Use sempre estes em vez de emojis, que mudam de aparência em cada sistema.
+// Lucide SVG icons (ISC), embedded in the bundle: nothing is fetched from the network.
+// Always use these instead of emojis, which look different on every system.
 import {
   Archive,
   ArrowLeft,
@@ -77,7 +77,7 @@ export const icons = {
 
 export type IconName = keyof typeof icons;
 
-/** Ícone de traço em `currentColor`. `fill` preenche formas fechadas (estrela, play). */
+/** Stroke icon in `currentColor`. `fill` fills closed shapes (star, play). */
 export function Icon({
   name,
   size = 24,

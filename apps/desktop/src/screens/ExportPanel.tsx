@@ -27,7 +27,7 @@ type PasswordMode = "one" | "perChat";
 
 const strong = (p: string) => [...p].length >= MIN_PASSWORD_CHARS;
 
-/** Gera o histórico em HTML offline, cifrado por senha. */
+/** Generates the offline HTML history, encrypted with a password. */
 export default function ExportPanel({ stores }: { stores: StoreInfo[] }) {
   const t = useAppT();
   const { lang } = useLang();
@@ -82,7 +82,7 @@ export default function ExportPanel({ stores }: { stores: StoreInfo[] }) {
       mode === "one"
         ? [{ password, chats: selected.map((c) => c.id) }]
         : selected.map((c) => ({ password: perChat[c.id], chats: [c.id] }));
-    // Senhas não ficam no estado do React depois de enviadas.
+    // Passwords don't stay in React state after being sent.
     setPassword("");
     setConfirm("");
     setPerChat({});
@@ -96,7 +96,7 @@ export default function ExportPanel({ stores }: { stores: StoreInfo[] }) {
       setStep({ kind: "done", summary: r.summary, path: r.path });
     } catch (e) {
       const { code } = errorOf(e);
-      setDest(null); // a pasta é recriada/escolhida de novo
+      setDest(null); // the folder is recreated/picked again
       setStep({ kind: "form", error: code === "cancelled" ? undefined : { e } });
     } finally {
       unlisten();

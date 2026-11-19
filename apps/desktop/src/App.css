@@ -1,4 +1,4 @@
-/* Estilos só do app. A base (tokens, botões, cartões) vem de @wa/viewer/base.css. */
+/* App-only styles. The base (tokens, buttons, cards) comes from @wa/viewer/base.css. */
 
 .pick-list {
   display: flex;

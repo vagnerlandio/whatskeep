@@ -1,9 +1,9 @@
-//! Importação de mídias para o cofre: da pasta copiada do celular ou do
-//! Google Drive.
+//! Media import into the vault: from the folder copied from the phone or
+//! from Google Drive.
 //!
-//! Só entram arquivos que alguma mensagem do histórico usa (pelo caminho no
-//! celular). Mensagens apagadas não contam. Fotos de status, papéis de parede
-//! e outros arquivos da pasta ficam de fora.
+//! Only files used by some message in the history get in (by their path on
+//! the phone). Deleted messages do not count. Status photos, wallpapers and
+//! other files in the folder are left out.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -23,7 +23,7 @@ use crate::state::AppState;
 
 const EVENT_MEDIA: &str = "media-progress";
 
-/// O que o histórico espera, indexado pelo caminho normalizado (`Media/...`).
+/// What the history expects, indexed by normalized path (`Media/...`).
 pub(crate) struct Plan {
     wanted: HashMap<String, MediaRef>,
 }
@@ -43,12 +43,12 @@ impl Plan {
             *by_folder.entry(media_folder(k)).or_default() += 1;
         }
         tracing::info!(
-            referencias = total,
-            sem_caminho = without_path,
-            com_file_hash = with_hash,
-            caminhos_unicos = wanted.len(),
-            por_pasta = ?by_folder,
-            "mídias que o histórico usa"
+            references = total,
+            without_path = without_path,
+            with_file_hash = with_hash,
+            unique_paths = wanted.len(),
+            by_folder = ?by_folder,
+            "media used by the history"
         );
         Ok(Self { wanted })
     }
@@ -65,19 +65,20 @@ impl Plan {
 #[derive(Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MediaSummary {
-    /// Arquivos do histórico encontrados na origem.
+    /// History files found in the source.
     pub matched: u64,
     pub added: u64,
-    /// Já estavam no cofre.
+    /// Were already in the vault.
     pub already: u64,
-    /// Na origem, mas sem mensagem que os use.
+    /// In the source, but with no message using them.
     pub unmatched: u64,
-    /// Falharam (leitura, integridade). Os demais continuam.
+    /// Failed (read, integrity). The others carry on.
     pub failed: u64,
     pub bytes: u64,
-    /// Mídias do histórico (com caminho conhecido).
+    /// Media in the history (with a known path).
     pub expected: u64,
-    /// Por que parou antes do fim, se parou.
+    /// Why it stopped before the end, if it did. The frontend matches these
+    /// (Portuguese) strings by exact value.
     pub stopped: Option<String>,
 }
 
@@ -91,7 +92,7 @@ struct MediaProgress {
     added: u64,
 }
 
-/// Emite progresso no máximo a cada 150 ms.
+/// Emits progress at most every 150 ms.
 pub(crate) struct Progress<'a> {
     app: &'a AppHandle,
     last: Instant,
@@ -122,7 +123,7 @@ impl<'a> Progress<'a> {
     }
 }
 
-/// Grava um conteúdo no cofre, contando o resultado no resumo.
+/// Stores content in the vault, counting the outcome in the summary.
 pub(crate) fn store_one(
     writer: &MediaWriter,
     summary: &mut MediaSummary,
@@ -135,25 +136,25 @@ pub(crate) fn store_one(
         Ok((_, Put::Added)) => summary.added += 1,
         Ok((_, Put::AlreadyStored)) => summary.already += 1,
         Err(e) => {
-            tally.add("gravar no cofre", format!("{e} (tipo {})", want.kind));
+            tally.add("store in vault", format!("{e} (kind {})", want.kind));
             summary.failed += 1
         }
     }
 }
 
-/// Subpasta de `Media/` (ex.: `WhatsApp Images`), para contagens no log.
+/// Subfolder of `Media/` (e.g. `WhatsApp Images`), for counts in the log.
 fn media_folder(normalized: &str) -> &str {
-    normalized.strip_prefix("Media/").and_then(|r| r.split('/').next()).unwrap_or("(outro)")
+    normalized.strip_prefix("Media/").and_then(|r| r.split('/').next()).unwrap_or("(other)")
 }
 
 pub(crate) fn already_stored(writer: &MediaWriter, want: &MediaRef) -> bool {
     writer.find(want.file_hash.as_deref(), want.file_path.as_deref()).ok().flatten().is_some()
 }
 
-// ---------------------------------------------------------------- pasta local
+// ---------------------------------------------------------------- local folder
 
-/// Arquivos regulares sob `root`, sem seguir links simbólicos e sem entrar em
-/// pastas ocultas (`.Statuses`, `.Shared`...).
+/// Regular files under `root`, without following symlinks and without going
+/// into hidden folders (`.Statuses`, `.Shared`...).
 fn walk(root: &Path, out: &mut Vec<PathBuf>, cancel: &dyn Fn() -> bool) {
     let Ok(entries) = std::fs::read_dir(root) else { return };
     for e in entries.flatten() {
@@ -172,14 +173,14 @@ fn walk(root: &Path, out: &mut Vec<PathBuf>, cancel: &dyn Fn() -> bool) {
     }
 }
 
-/// Pede a pasta do WhatsApp copiada do celular e importa as mídias dela.
+/// Asks for the WhatsApp folder copied from the phone and imports its media.
 #[tauri::command]
 pub async fn import_media_folder(app: AppHandle, source_app: String) -> Result<Option<MediaSummary>, CmdError> {
     use tauri_plugin_dialog::DialogExt;
 
     let target = self::source_app(&source_app)?;
     blocking("import_media_folder", move || {
-        // O seletor nativo roda no backend: o webview não escolhe caminhos.
+        // The native picker runs in the backend: the webview does not choose paths.
         let Some(folder) = app
             .dialog()
             .file()
@@ -205,11 +206,11 @@ fn import_folder(app: &AppHandle, target: SourceApp, root: &Path) -> Result<Medi
     let cancelled = || state.media_cancel.load(Ordering::SeqCst);
 
     let mut files = Vec::new();
-    let t = crate::diag::timer("listar a pasta de mídias");
+    let t = crate::diag::timer("list the media folder");
     walk(root, &mut files, &cancelled);
     drop(t);
     let mut summary = MediaSummary { expected: plan.len() as u64, ..Default::default() };
-    let mut tally = crate::diag::Tally::new("mídias da pasta");
+    let mut tally = crate::diag::Tally::new("folder media");
     let mut todo = Vec::new();
     let mut unmatched_by_folder: std::collections::BTreeMap<String, u64> = Default::default();
     let mut outside_media = 0u64;
@@ -228,15 +229,15 @@ fn import_folder(app: &AppHandle, target: SourceApp, root: &Path) -> Result<Medi
     }
     summary.matched = todo.len() as u64;
     tracing::info!(
-        arquivos_na_pasta = files.len(),
-        esperadas = plan.len(),
-        casadas = summary.matched,
-        fora_de_media = outside_media,
-        sem_mensagem_por_pasta = ?unmatched_by_folder,
-        "pasta de mídias analisada"
+        files_in_folder = files.len(),
+        expected = plan.len(),
+        matched = summary.matched,
+        outside_media = outside_media,
+        unmatched_by_folder = ?unmatched_by_folder,
+        "media folder scanned"
     );
     if !files.is_empty() && outside_media == files.len() as u64 {
-        tracing::warn!("nenhum arquivo está sob uma pasta Media/: provavelmente a pasta escolhida não é a do WhatsApp");
+        tracing::warn!("no file is under a Media/ folder: the chosen folder is probably not the WhatsApp one");
     }
     let total_bytes = todo.iter().filter_map(|(p, _)| p.metadata().ok()).map(|m| m.len()).sum();
     let mut progress = Progress::new(app, todo.len() as u64, total_bytes);
@@ -251,12 +252,12 @@ fn import_folder(app: &AppHandle, target: SourceApp, root: &Path) -> Result<Medi
             summary.already += 1;
         } else {
             match std::fs::File::open(&path) {
-                // Arquivo local: o conteúdo é o que o usuário tem. Não exige o
-                // hash do WhatsApp (o arquivo pode ter sido recomprimido) e
-                // fica achável pelo caminho.
+                // Local file: the content is whatever the user has. Does not
+                // require WhatsApp's hash (the file may have been recompressed)
+                // and stays findable by path.
                 Ok(f) => store_one(&writer, &mut summary, &mut tally, want, std::io::BufReader::new(f), None),
                 Err(e) => {
-                    tally.add("abrir arquivo", e);
+                    tally.add("open file", e);
                     summary.failed += 1
                 }
             }
@@ -267,25 +268,25 @@ fn import_folder(app: &AppHandle, target: SourceApp, root: &Path) -> Result<Medi
     progress.report(&summary, true);
     tally.report();
     tracing::info!(
-        adicionadas = summary.added,
-        ja_no_cofre = summary.already,
-        falharam = summary.failed,
-        interrompido = ?summary.stopped,
-        "pasta de mídias: fim"
+        added = summary.added,
+        already_in_vault = summary.already,
+        failed = summary.failed,
+        stopped = ?summary.stopped,
+        "media folder: done"
     );
     Ok(summary)
 }
 
-/// Interrompe a importação de mídias em andamento (o que já entrou fica).
+/// Stops the media import in progress (what is already in stays).
 #[tauri::command]
 pub fn media_cancel(app: AppHandle) {
     app.state::<AppState>().media_cancel.store(true, Ordering::SeqCst);
 }
 
-// ---------------------------------------------------------------- exportar
+// ---------------------------------------------------------------- export
 
-/// Salva uma mídia decifrada onde o usuário escolher (ação explícita: o
-/// arquivo sai do cofre em claro).
+/// Saves a decrypted media file wherever the user chooses (an explicit
+/// action: the file leaves the vault in plaintext).
 #[tauri::command]
 pub async fn save_media(app: AppHandle, store: String, message_id: i64) -> Result<bool, CmdError> {
     use tauri_plugin_dialog::DialogExt;
@@ -325,8 +326,8 @@ pub async fn save_media(app: AppHandle, store: String, message_id: i64) -> Resul
     .await
 }
 
-/// Nome sugerido: o nome original do documento, ou o do arquivo no celular.
-/// Sem separadores de pasta (o nome vem do backup, não é confiável).
+/// Suggested name: the document's original name, or the file's name on the
+/// phone. No folder separators (the name comes from the backup, untrusted).
 fn suggested_name(r: &MediaRef) -> String {
     let raw = r
         .file_name
@@ -357,8 +358,8 @@ mod tests {
     }
 
     #[test]
-    fn nome_sugerido_seguro() {
-        assert_eq!(suggested_name(&r(Some("contrato.pdf"), None)), "contrato.pdf");
+    fn safe_suggested_name() {
+        assert_eq!(suggested_name(&r(Some("contract.pdf"), None)), "contract.pdf");
         assert_eq!(suggested_name(&r(Some("../../etc/passwd"), None)), "_.._etc_passwd");
         assert_eq!(suggested_name(&r(None, Some("Media/WhatsApp Documents/a b.pdf"))), "a b.pdf");
         assert_eq!(suggested_name(&r(Some("..."), None)), "midia-7");

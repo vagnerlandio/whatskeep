@@ -6,7 +6,7 @@ use wa_import::SourceApp;
 use wa_vault::{Error, KdfParams, Vault};
 
 const FAST: KdfParams = KdfParams::MINIMUM;
-const PW: &str = "senha forte 123";
+const PW: &str = "strong password 123";
 
 fn msgstore() -> Connection {
     let conn = Connection::open_in_memory().unwrap();
@@ -32,48 +32,48 @@ fn contains(hay: &[u8], needle: &[u8]) -> bool {
 }
 
 #[test]
-fn cria_destrava_e_recusa_senha_errada() {
+fn creates_unlocks_and_rejects_wrong_password() {
     let dir = tempfile::tempdir().unwrap();
     assert!(!Vault::exists(dir.path()));
     drop(Vault::create(dir.path(), PW, FAST).unwrap());
     assert!(Vault::exists(dir.path()));
 
     Vault::unlock(dir.path(), PW).unwrap();
-    assert!(matches!(Vault::unlock(dir.path(), "senha errada!"), Err(Error::WrongPassword)));
+    assert!(matches!(Vault::unlock(dir.path(), "wrong password!"), Err(Error::WrongPassword)));
     assert!(matches!(Vault::create(dir.path(), PW, FAST), Err(Error::AlreadyExists)));
 }
 
 #[test]
-fn senha_curta_e_recusada() {
+fn short_password_is_rejected() {
     let dir = tempfile::tempdir().unwrap();
     assert!(matches!(Vault::create(dir.path(), "1234567", FAST), Err(Error::WeakPassword)));
-    // Conta caracteres, não bytes.
+    // Counts characters, not bytes.
     assert!(matches!(Vault::create(dir.path(), "çãéíóúâ", FAST), Err(Error::WeakPassword)));
     Vault::create(dir.path(), "çãéíóúâê", FAST).unwrap();
 }
 
 #[test]
-fn sem_cofre_retorna_not_found() {
+fn missing_vault_returns_not_found() {
     let dir = tempfile::tempdir().unwrap();
     assert!(matches!(Vault::unlock(dir.path(), PW), Err(Error::NotFound)));
 }
 
 #[test]
-fn cabecalho_adulterado_nao_abre() {
+fn tampered_header_does_not_open() {
     let dir = tempfile::tempdir().unwrap();
     drop(Vault::create(dir.path(), PW, KdfParams { m_kib: 16 * 1024, t: 2, p: 1 }).unwrap());
     let path = dir.path().join("vault.json");
     let original = fs::read_to_string(&path).unwrap();
 
-    // Baixar o custo do KDF muda o AAD: a tag GCM não confere.
+    // Lowering the KDF cost changes the AAD: the GCM tag does not match.
     fs::write(&path, original.replace("\"t\": 2", "\"t\": 1")).unwrap();
     assert!(matches!(Vault::unlock(dir.path(), PW), Err(Error::WrongPassword)));
 
-    // Parâmetros absurdos são recusados antes de rodar o Argon2id.
+    // Absurd parameters are rejected before running Argon2id.
     fs::write(&path, original.replace("\"m_kib\": 16384", "\"m_kib\": 99999999")).unwrap();
     assert!(matches!(Vault::unlock(dir.path(), PW), Err(Error::Corrupt(_))));
 
-    fs::write(&path, "não é json").unwrap();
+    fs::write(&path, "not json").unwrap();
     assert!(matches!(Vault::unlock(dir.path(), PW), Err(Error::Corrupt(_))));
 
     fs::write(&path, &original).unwrap();
@@ -81,7 +81,7 @@ fn cabecalho_adulterado_nao_abre() {
 }
 
 #[test]
-fn importa_e_le_depois_de_travar_e_destravar() {
+fn imports_and_reads_after_lock_and_unlock() {
     let dir = tempfile::tempdir().unwrap();
     let vault = Vault::create(dir.path(), PW, FAST).unwrap();
     assert!(vault.stores().unwrap().is_empty());
@@ -91,7 +91,7 @@ fn importa_e_le_depois_de_travar_e_destravar() {
     let report = store.import(&msgstore()).unwrap();
     assert!(report.messages > 0);
     drop(store);
-    drop(vault); // trava
+    drop(vault); // locks
 
     let vault = Vault::unlock(dir.path(), PW).unwrap();
     let stores = vault.stores().unwrap();
@@ -110,7 +110,7 @@ fn importa_e_le_depois_de_travar_e_destravar() {
 }
 
 #[test]
-fn nada_em_claro_no_disco() {
+fn no_plaintext_on_disk() {
     let dir = tempfile::tempdir().unwrap();
     let vault = Vault::create(dir.path(), PW, FAST).unwrap();
     vault.store(SourceApp::WhatsApp).unwrap().import(&msgstore()).unwrap();
@@ -129,14 +129,14 @@ fn nada_em_claro_no_disco() {
             b"CREATE TABLE",
             PW.as_bytes(),
         ] {
-            assert!(!contains(bytes, needle), "{path} contém {:?}", String::from_utf8_lossy(needle));
+            assert!(!contains(bytes, needle), "{path} contains {:?}", String::from_utf8_lossy(needle));
         }
     }
 }
 
 #[cfg(unix)]
 #[test]
-fn permissoes_restritas() {
+fn restricted_permissions() {
     use std::os::unix::fs::PermissionsExt;
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join("vault");
@@ -152,12 +152,12 @@ fn permissoes_restritas() {
 }
 
 #[test]
-fn bancos_tem_chaves_diferentes() {
+fn databases_have_different_keys() {
     let dir = tempfile::tempdir().unwrap();
     let vault = Vault::create(dir.path(), PW, FAST).unwrap();
     vault.store(SourceApp::WhatsApp).unwrap().import(&msgstore()).unwrap();
 
-    // O banco do Business não abre com a chave do WhatsApp.
+    // The Business database does not open with the WhatsApp key.
     let stores = dir.path().join("stores");
     fs::copy(stores.join("whatsapp.db"), stores.join("business.db")).unwrap();
     assert!(matches!(
@@ -165,7 +165,7 @@ fn bancos_tem_chaves_diferentes() {
         Err(Error::StoreUnreadable)
     ));
 
-    // Nem em outro cofre com a mesma senha (DEK e id diferentes).
+    // Nor in another vault with the same password (different DEK and id).
     let other = tempfile::tempdir().unwrap();
     let vault2 = Vault::create(other.path(), PW, FAST).unwrap();
     fs::copy(stores.join("whatsapp.db"), other.path().join("stores/whatsapp.db")).unwrap();
@@ -176,7 +176,7 @@ fn bancos_tem_chaves_diferentes() {
 }
 
 #[test]
-fn reimportar_substitui() {
+fn reimport_replaces() {
     let dir = tempfile::tempdir().unwrap();
     let vault = Vault::create(dir.path(), PW, FAST).unwrap();
     let store = vault.store(SourceApp::WhatsApp).unwrap();
@@ -187,7 +187,7 @@ fn reimportar_substitui() {
 }
 
 #[test]
-fn importacao_com_falha_preserva_o_banco_anterior() {
+fn failed_import_keeps_previous_database() {
     let dir = tempfile::tempdir().unwrap();
     let vault = Vault::create(dir.path(), PW, FAST).unwrap();
     let store = vault.store(SourceApp::WhatsApp).unwrap();
@@ -207,37 +207,37 @@ fn importacao_com_falha_preserva_o_banco_anterior() {
 }
 
 #[test]
-fn temporarios_antigos_sao_limpos_ao_destravar() {
+fn stale_temp_files_are_cleaned_on_unlock() {
     let dir = tempfile::tempdir().unwrap();
     drop(Vault::create(dir.path(), PW, FAST).unwrap());
     let stale = dir.path().join("stores/whatsapp.db.tmp-0011aabbccdd");
-    fs::write(&stale, b"lixo cifrado").unwrap();
+    fs::write(&stale, b"encrypted garbage").unwrap();
     Vault::unlock(dir.path(), PW).unwrap();
     assert!(!stale.exists());
 }
 
 #[test]
-fn troca_de_senha() {
+fn password_change() {
     let dir = tempfile::tempdir().unwrap();
     let mut vault = Vault::create(dir.path(), PW, FAST).unwrap();
     vault.store(SourceApp::WhatsApp).unwrap().import(&msgstore()).unwrap();
 
     assert!(matches!(
-        vault.change_password("chute qualquer", "nova senha 456", FAST),
+        vault.change_password("random guess", "new password 456", FAST),
         Err(Error::WrongPassword)
     ));
-    assert!(matches!(vault.change_password(PW, "curta", FAST), Err(Error::WeakPassword)));
-    vault.change_password(PW, "nova senha 456", FAST).unwrap();
+    assert!(matches!(vault.change_password(PW, "short", FAST), Err(Error::WeakPassword)));
+    vault.change_password(PW, "new password 456", FAST).unwrap();
     drop(vault);
 
     assert!(matches!(Vault::unlock(dir.path(), PW), Err(Error::WrongPassword)));
-    let vault = Vault::unlock(dir.path(), "nova senha 456").unwrap();
-    // Mesma DEK: os bancos continuam abrindo sem recifrar.
+    let vault = Vault::unlock(dir.path(), "new password 456").unwrap();
+    // Same DEK: the databases keep opening without re-encryption.
     assert_eq!(vault.stores().unwrap().len(), 1);
 }
 
 #[test]
-fn debug_nao_vaza_chave() {
+fn debug_does_not_leak_key() {
     let dir = tempfile::tempdir().unwrap();
     let vault = Vault::create(dir.path(), PW, FAST).unwrap();
     let dbg = format!("{vault:?} {:?}", vault.store(SourceApp::WhatsApp).unwrap());
@@ -245,21 +245,21 @@ fn debug_nao_vaza_chave() {
     assert!(!dbg.contains("key: ["));
 }
 
-/// Mede o Argon2id com os parâmetros padrão:
+/// Measures Argon2id with the default parameters:
 /// `cargo test -p wa-vault --release -- --ignored --nocapture`
 #[test]
 #[ignore]
-fn tempo_do_kdf_padrao() {
+fn default_kdf_timing() {
     let dir = tempfile::tempdir().unwrap();
     drop(Vault::create(dir.path(), PW, KdfParams::DEFAULT).unwrap());
     let t = std::time::Instant::now();
     Vault::unlock(dir.path(), PW).unwrap();
-    println!("unlock com KdfParams::DEFAULT: {:?}", t.elapsed());
+    println!("unlock with KdfParams::DEFAULT: {:?}", t.elapsed());
 }
 
 #[cfg(target_os = "macos")]
 #[test]
-fn fora_do_time_machine() {
+fn excluded_from_time_machine() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join("vault");
     drop(Vault::create(&root, PW, FAST).unwrap());

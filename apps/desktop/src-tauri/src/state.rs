@@ -1,4 +1,4 @@
-//! Estado do cofre no processo e bloqueio automático por inatividade.
+//! In-process vault state and automatic lock on inactivity.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -13,28 +13,28 @@ use wa_vault::{MediaReader, Vault};
 
 use crate::error::CmdError;
 
-/// Tempo sem interação até travar o cofre.
+/// Time without interaction until the vault locks.
 pub const AUTOLOCK_AFTER: Duration = Duration::from_secs(5 * 60);
 const AUTOLOCK_CHECK_EVERY: Duration = Duration::from_secs(5);
 
 pub const EVENT_LOCKED: &str = "vault-locked";
 
-/// Ordem de lock, para não haver deadlock: `conns`, `media`, `vault`.
+/// Lock order, to avoid deadlocks: `conns`, `media`, `vault`.
 pub struct AppState {
     pub vault_dir: PathBuf,
-    /// Conexões só-leitura do visualizador, abertas sob demanda e fechadas ao travar.
+    /// The viewer's read-only connections, opened on demand and closed on lock.
     conns: Mutex<HashMap<SourceApp, Connection>>,
-    /// Índices de mídia só-leitura (idem).
+    /// Read-only media indexes (same).
     media: Mutex<HashMap<SourceApp, MediaReader>>,
-    /// Pedido de cancelamento da importação de mídias em andamento.
+    /// Cancellation request for the media import in progress.
     pub media_cancel: AtomicBool,
     vault: Mutex<Option<Vault>>,
     last_activity: Mutex<Instant>,
-    /// Importações em andamento. O autolock espera elas terminarem.
+    /// Imports in progress. The autolock waits for them to finish.
     busy: AtomicUsize,
-    /// Senhas erradas seguidas (para atrasar tentativas pela UI).
+    /// Consecutive wrong passwords (to slow down attempts through the UI).
     failed_unlocks: AtomicUsize,
-    /// Sessão do Google Drive (só tokens de acesso, nunca o token mestre).
+    /// Google Drive session (access tokens only, never the master token).
     pub drive: crate::gdrive::DriveState,
     pub export: crate::export::ExportState,
 }
@@ -63,8 +63,8 @@ impl AppState {
         *self.last_activity.lock().unwrap_or_else(|e| e.into_inner()) = Instant::now();
     }
 
-    /// Trava: fecha as conexões (o SQLCipher zera o cache de páginas) e a
-    /// DEK é zerada no drop do `Vault`.
+    /// Locks: closes the connections (SQLCipher zeroes the page cache) and the
+    /// DEK is zeroed when the `Vault` is dropped.
     pub fn lock(&self) -> bool {
         self.media_cancel.store(true, Ordering::SeqCst);
         self.export.cancel.store(true, Ordering::SeqCst);
@@ -78,7 +78,7 @@ impl AppState {
         self.media.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// Roda `f` com o índice de mídias de `app` (`None` se ainda não há mídias).
+    /// Runs `f` with the media index of `app` (`None` if there is no media yet).
     pub fn with_media<T>(
         &self,
         app: SourceApp,
@@ -92,7 +92,7 @@ impl AppState {
                 return Err(CmdError::locked());
             };
             if let std::collections::hash_map::Entry::Vacant(slot) = readers.entry(app) {
-                // Só guarda quando existe: o índice pode ser criado depois.
+                // Only cached when it exists: the index may be created later.
                 if let Some(r) = vault.media(app)?.reader()? {
                     slot.insert(r);
                 }
@@ -105,7 +105,7 @@ impl AppState {
         self.conns.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// Roda `f` na conexão só-leitura do banco de `app`, abrindo-a se preciso.
+    /// Runs `f` on the read-only connection to the database of `app`, opening it if needed.
     pub fn with_store<T>(
         &self,
         app: SourceApp,
@@ -129,21 +129,21 @@ impl AppState {
         f(&conns[&app])
     }
 
-    /// Fecha a conexão de um banco (antes e depois de reimportá-lo).
+    /// Closes a database's connection (before and after reimporting it).
     pub fn forget_store(&self, app: SourceApp) {
         self.conns().remove(&app);
     }
 
-    /// Marca uma operação longa. O autolock não dispara enquanto o guard existir.
+    /// Marks a long operation. The autolock does not fire while the guard exists.
     pub fn busy(&self) -> BusyGuard<'_> {
         self.busy.fetch_add(1, Ordering::SeqCst);
         BusyGuard(self)
     }
 
-    /// Espera antes de testar a senha: nada nas 3 primeiras tentativas, depois
-    /// 1, 2, 4... até 30 s. Somado ao Argon2id, chutar senhas pela UI fica
-    /// inviável. (Quem copiar o vault.json ainda pode atacar offline: por isso
-    /// o Argon2id caro e a recomendação de uma senha longa.)
+    /// Wait before checking the password: nothing on the first 3 attempts, then
+    /// 1, 2, 4... up to 30 s. Together with Argon2id, guessing passwords through
+    /// the UI becomes infeasible. (Whoever copies vault.json can still attack
+    /// offline: hence the expensive Argon2id and the advice to use a long password.)
     pub fn unlock_delay(&self) -> Duration {
         let n = self.failed_unlocks.load(Ordering::SeqCst);
         if n < 3 { Duration::ZERO } else { Duration::from_secs((1u64 << (n - 3).min(5)).min(30)) }
@@ -171,7 +171,7 @@ impl Drop for BusyGuard<'_> {
     }
 }
 
-/// Thread que trava o cofre depois de [`AUTOLOCK_AFTER`] sem interação e avisa a UI.
+/// Thread that locks the vault after [`AUTOLOCK_AFTER`] without interaction and notifies the UI.
 pub fn spawn_autolock(app: AppHandle) {
     std::thread::Builder::new()
         .name("autolock".into())
@@ -179,18 +179,18 @@ pub fn spawn_autolock(app: AppHandle) {
             std::thread::sleep(AUTOLOCK_CHECK_EVERY);
             let state = app.state::<AppState>();
             if state.busy.load(Ordering::SeqCst) == 0 && state.idle_for() >= AUTOLOCK_AFTER && state.vault().is_some() {
-                tracing::info!(inativo_s = state.idle_for().as_secs(), "cofre travado por inatividade");
+                tracing::info!(idle_s = state.idle_for().as_secs(), "vault locked due to inactivity");
                 lock_all(&app);
                 let _ = app.emit(EVENT_LOCKED, "inactivity");
             }
-            // Tokens de acesso valem 1 hora: a sessão do Drive some antes disso.
+            // Access tokens are valid for 1 hour: the Drive session goes away before that.
             state.drive.expire();
         })
-        .expect("falha ao iniciar a thread de autolock");
+        .expect("failed to start the autolock thread");
 }
 
-/// Trava o cofre e encerra tudo o que depende dele: conexões, sessão do
-/// Google Drive (tokens zerados) e a janela de login, se aberta.
+/// Locks the vault and shuts down everything that depends on it: connections,
+/// the Google Drive session (tokens zeroed) and the login window, if open.
 pub fn lock_all(app: &AppHandle) {
     crate::gdrive::shutdown(app);
     app.state::<AppState>().lock();
@@ -201,8 +201,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn atraso_cresce_com_as_senhas_erradas() {
-        let s = AppState::new(PathBuf::from("/nao/existe"));
+    fn delay_grows_with_wrong_passwords() {
+        let s = AppState::new(PathBuf::from("/does/not/exist"));
         let delays: Vec<u64> = (0..10)
             .map(|_| {
                 let d = s.unlock_delay().as_secs();

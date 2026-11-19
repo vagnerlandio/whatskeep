@@ -1,116 +1,179 @@
 # WhatsKeep
 
-**Suas conversas do WhatsApp, seguras e acessíveis.** · *Your WhatsApp conversations, safe and accessible.*
+**Your WhatsApp conversations, safe and accessible.**
 
-App desktop (Tauri v2 + React) que baixa o backup do WhatsApp/WhatsApp Business (Google Drive ou cópia local do celular), descriptografa **localmente** e mostra o histórico com visual do WhatsApp.
+*Versão em português no [final deste arquivo](#português).*
 
-## Estrutura
+Desktop app (Tauri v2 + React) that imports WhatsApp and WhatsApp Business backups — from Google Drive or from a copy taken from the phone — decrypts them **locally**, keeps them in an encrypted vault and shows the history with a WhatsApp-like interface. It can also produce an encrypted offline HTML export. The interface is available in English and Portuguese.
 
-Guia para agentes de IA e novos colaboradores: [AGENTS.md](AGENTS.md) (com [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) e [docs/RECIPES.md](docs/RECIPES.md)).
+## What it can open
+
+| Backup | What you need | Supported |
+|---|---|---|
+| End-to-end encrypted with a 64-digit key (`.crypt15`) | the 64 digits or the `encrypted_backup.key` file | ✅ |
+| Not end-to-end encrypted (`.crypt14`) | the phone's `key` file (requires root) | ✅ |
+| End-to-end encrypted with a password only | the key lives in WhatsApp's HSM | ❌ impossible outside WhatsApp |
+
+**No root?** Turn on the end-to-end encrypted backup with a 64-digit key and make a new backup. In WhatsApp: *Settings → Chats → Chat backup → End-to-end encrypted backup → Turn on → Use 64-digit encryption key instead*. Write the key down somewhere safe; WhatsApp Business has its own key.
+
+## Using it
+
+1. **Create the vault** with a password (at least 8 characters; a long phrase is best). There is no password recovery.
+2. **Import** the history:
+   - **From Google Drive:** enter the account e-mail, sign in in the Google window that opens (the e-mail is already filled in), pick the backup and enter the key. Optionally download photos, videos and audio as well.
+   - **From a file:** choose `msgstore.db.crypt15` (or `.crypt14`) copied from the phone (`Android/media/com.whatsapp/WhatsApp/Databases`) and enter the key.
+3. **Media from the phone (optional):** import the `WhatsApp` folder copied from the phone; only files used by the imported messages are kept.
+4. **Browse and search** your chats. The vault locks itself after 5 minutes without use.
+5. **Export (optional):** create a folder that opens offline in any browser, protected by a password — all chats, some chats, or one password per chat.
+
+Switch the language in the top bar or in the side bar (Português / English).
+
+## Development
+
+```sh
+pnpm install
+pnpm dev               # run the app in development mode
+pnpm dev:log           # same, saving the diagnostics log to logs/
+cargo test --workspace # Rust tests
+pnpm test:e2e          # opens real exports in Chromium and WebKit (file://)
+pnpm lint:security     # forbidden patterns in the frontend
+```
+
+Guide for AI agents and new contributors: [AGENTS.md](AGENTS.md), with [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/RECIPES.md](docs/RECIPES.md). Threat model, protections and limitations: [SECURITY.md](SECURITY.md).
 
 ```
-apps/desktop/        App Tauri (React em src/, Rust em src-tauri/)
-crates/wa-crypt/     Descriptografia crypt14/crypt15, sem I/O e sem dependência do Tauri
-crates/wa-import/    Importa o msgstore (schemas novo e legado) para o schema do app, com busca FTS5
-crates/wa-vault/     Cofre: SQLCipher por app de origem, chave protegida por Argon2id; consultas do visualizador
-crates/wa-gdrive/    Login do Google Play Services e download do backup do Google Drive (não oficial)
-crates/wa-export/    Gera o export HTML cifrado (formato v1)
-packages/viewer/     Visualizador estilo WhatsApp compartilhado (recebe um DataSource)
-packages/export-shell/  index.html do export: decifra no navegador (WebCrypto + Argon2id em WASM)
+apps/desktop/           Tauri app (React in src/, Rust in src-tauri/)
+crates/wa-crypt/        crypt14/crypt15 and .mcrypt1 decryption, no I/O, no Tauri
+crates/wa-import/       msgstore (modern and legacy schemas) → the app's schema, with FTS5 search
+crates/wa-vault/        Vault: SQLCipher per source app, Argon2id-protected key; viewer queries
+crates/wa-gdrive/       Google Play Services sign-in and Google Drive backup download (unofficial)
+crates/wa-export/       Encrypted HTML export (format v1)
+packages/viewer/        Shared WhatsApp-style viewer (takes a DataSource)
+packages/export-shell/  The export's index.html: decrypts in the browser (WebCrypto + Argon2id in WASM)
 ```
 
-## Rodar
+## Security rules
+
+- All cryptography runs in Rust. Keys and plaintext stay in `Zeroizing` buffers and never reach the webview.
+- No plaintext is ever written to disk: the history goes into an encrypted vault (SQLCipher + Argon2id).
+- The Google token exists only in memory and is discarded after the download.
+- Messages are untrusted content: no `dangerouslySetInnerHTML`, no link previews, strict CSP (see `tauri.conf.json`).
+- Never commit real backups or keys. `.gitignore` blocks them; only the synthetic fixtures in `crates/*/tests/fixtures/` are allowed.
+
+## Vault
+
+Located at `~/Library/Application Support/com.local.wahistorico/vault/` (macOS; elsewhere, the app's data folder). The bundle identifier keeps its original name on purpose: changing it would move the data folder.
+
+```
+vault.json            Argon2id (256 MiB, t=3, p=4) + data key (DEK) wrapped with AES-256-GCM
+stores/whatsapp.db    SQLCipher, key = HKDF(DEK, vault id, "wa-vault store v1:whatsapp")
+stores/business.db    SQLCipher, key = HKDF(DEK, vault id, "wa-vault store v1:business")
+stores/<app>-media.db media index (SQLCipher): sha256 → file, phone path → sha256
+stores/<app>-media/   one encrypted file per media item (random name)
+```
+
+Media: AES-256-GCM in 1 MiB segments (STREAM scheme: nonce = prefix ‖ counter ‖ last flag; AAD = file id), so ranges can be read (video seeking) without decrypting everything. The index lives outside the message database, so re-importing the msgstore keeps the media. Media are linked to messages by WhatsApp's `file_hash` or by path (`Media/...`).
+
+- The password only unwraps the DEK; changing it does not re-encrypt the databases. **There is no recovery**: without the password, you have to import again.
+- The Argon2id parameters are part of the AAD: editing `vault.json` to weaken the KDF makes opening fail.
+- Importing replaces that app's database atomically (new database in an encrypted temp file, then `rename`). A failure halfway keeps the previous one.
+- The vault locks after 5 minutes without interaction (and with the "Lock" button); the DEK is zeroed in memory.
+- Folders 0700, files 0600, `.metadata_never_index` for Spotlight, excluded from Time Machine.
+
+## Google Drive (unofficial)
+
+Same path as the WhatsApp app on Android, like [wabdd](https://github.com/giacomoferretti/whatsapp-backup-downloader-decryptor) and [whapa](https://github.com/B16f00t/whapa):
+
+1. An **incognito** Tauri window with `accounts.google.com/EmbeddedSetup` (e-mail prefilled). No IPC permissions; it can only navigate Google domains.
+2. The backend reads the `oauth_token` cookie and destroys the window.
+3. Cookie → master token (`android.clients.google.com/auth`) → 1-hour access tokens for `com.whatsapp` and `com.whatsapp.w4b`. The master token is zeroed right after.
+4. `backup.googleapis.com/v1/clients/wa/backups` → `Databases/msgstore.db.crypt15`, downloaded into memory with an MD5 check, decrypted and imported.
+
+Access tokens are dropped when the download ends, on cancel, when the vault locks, or after 50 minutes. The HTTP client offers no ALPN and does not follow redirects (Google rejects the sign-in with ALPN; see gpsoauth).
+
+Validated with a real account (2026-11):
+- signing in through the embedded WebKit works (with Tauri's `freezePrototype` off and a Safari user agent in the login window);
+- WhatsApp Business accepts the same signature (`client_sig`), and both apps' tokens see the same backup listing;
+- current metadata reports encryption in `encryptedBackupMetadata` (the old `encryptedBackupEnabled` field is gone);
+- Google issues the token with the scopes already granted to WhatsApp (`drive.appdata`, `drive.file`, `userinfo.email`, `userinfo.profile`, `openid`), not only `drive.appdata`.
+
+Media (optional): in non-E2E backups they come in plain form (`Media/...`, MD5 checked). In E2E backups they come as `<hash>.mcrypt1`, with the real name in encrypted metadata (HMAC + AES-CBC) and the content in AES-GCM with a per-file key (`wa_crypt::mcrypt1`). Whether the file carries the GCM tag is undocumented: the app tries with the tag and, if it does not verify, only accepts the content when its SHA-256 matches the msgstore's `file_hash`. Not yet validated with a real backup.
+
+## HTML export
+
+A folder that opens offline in any browser:
+
+```
+index.html            viewer (a single file), CSP without network
+data/manifest.js      Argon2id (64 MiB, t=3) + one encrypted slot per password
+data/<id>.js          encrypted chunks (AES-GCM, per-chat key via HKDF), size rounded to 64 KiB
+media/pack-NNN.bin    encrypted media (1 MiB STREAM, per-media key) — or media/<id> in plain form, if chosen
+```
+
+- All chats, some chats, or one password per chat. A password neither opens nor lists another password's chats, and search only covers unlocked chats. Chats left out are not included at all.
+- Random file names; no phone number, text or path in plain form (tested).
+- On `file://` browsers block `fetch`, so data is loaded as `<script src>`. Encrypted media: the user selects the folder once (`<input webkitdirectory>`) and files are read with `File.slice`.
+- CSP: `connect-src 'none'`, scripts only from the package (inline by hash). **No `'self'`**: in WebKit (Safari), `'self'` on a `file://` page allows any remote URL; `file:` does not.
+- Locks itself after 15 minutes without use (reloads the page and forgets the keys).
+
+## Test fixtures
+
+Generated with an independent implementation ([wa-crypt-tools](https://github.com/ElDavoo/wa-crypt-tools) 0.1.0), using random keys and a fictitious SQLite database:
+
+```sh
+waencrypt --type 15 "$(cat key15.hex)" plain.db msgstore.db.crypt15
+wacreatekey --hex "$(cat key15.hex)"          # → encrypted_backup.key
+wacreatekey -c14 --hex <random hex>           # → key
+waencrypt --type 14 key plain.db msgstore.db.crypt14
+```
+
+---
+
+## Português
+
+**Suas conversas do WhatsApp, seguras e acessíveis.**
+
+App desktop (Tauri v2 + React) que importa backups do WhatsApp e do WhatsApp Business — do Google Drive ou de uma cópia tirada do celular —, descriptografa **localmente**, guarda num cofre cifrado e mostra o histórico com visual do WhatsApp. Também gera um export HTML offline cifrado. A interface está em português e inglês.
+
+### O que dá para abrir
+
+| Backup | O que é preciso | Suportado |
+|---|---|---|
+| Criptografia de ponta a ponta com chave de 64 dígitos (`.crypt15`) | os 64 dígitos ou o arquivo `encrypted_backup.key` | ✅ |
+| Sem criptografia de ponta a ponta (`.crypt14`) | o arquivo `key` do celular (exige root) | ✅ |
+| Criptografia de ponta a ponta só com senha | a chave fica no HSM do WhatsApp | ❌ impossível fora do WhatsApp |
+
+**Sem root?** Ative o backup com criptografia de ponta a ponta usando a chave de 64 dígitos e faça um backup novo. No WhatsApp: *Configurações → Conversas → Backup de conversas → Backup criptografado de ponta a ponta → Ativar → Usar chave de criptografia de 64 dígitos*. Anote a chave num lugar seguro; o WhatsApp Business tem uma chave própria.
+
+### Como usar
+
+1. **Crie o cofre** com uma senha (mínimo de 8 caracteres; uma frase longa é o ideal). Não existe recuperação de senha.
+2. **Importe** o histórico:
+   - **Pelo Google Drive:** digite o e-mail da conta, entre na janela do Google que abrir (o e-mail já vem preenchido), escolha o backup e informe a chave. Se quiser, baixe também fotos, vídeos e áudios.
+   - **Por arquivo:** escolha o `msgstore.db.crypt15` (ou `.crypt14`) copiado do celular (`Android/media/com.whatsapp/WhatsApp/Databases`) e informe a chave.
+3. **Mídias do celular (opcional):** importe a pasta `WhatsApp` copiada do celular; só entram os arquivos usados pelas mensagens importadas.
+4. **Navegue e pesquise** nas conversas. O cofre trava sozinho após 5 minutos sem uso.
+5. **Exporte (opcional):** gere uma pasta que abre offline em qualquer navegador, protegida por senha — todas as conversas, só algumas ou uma senha por conversa.
+
+O idioma se troca na barra superior ou na barra lateral (Português / English).
+
+### Desenvolvimento
 
 ```sh
 pnpm install
 pnpm dev               # abre o app em modo desenvolvimento
+pnpm dev:log           # idem, gravando o log de diagnóstico em logs/
 cargo test --workspace # testes Rust
 pnpm test:e2e          # abre exports reais no Chromium e no WebKit (file://)
 pnpm lint:security     # padrões proibidos no frontend
 ```
 
-Modelo de ameaças, proteções e limitações: [SECURITY.md](SECURITY.md).
+### Segurança, em resumo
 
-## Que backups dá para abrir
+- Toda a criptografia roda em Rust; chaves e texto puro nunca chegam à interface.
+- Nada em claro é gravado em disco: o histórico fica num cofre cifrado (SQLCipher + Argon2id).
+- O acesso ao Google existe só na memória e é descartado depois do download.
+- Mensagens são tratadas como conteúdo não confiável: sem HTML, sem pré-visualização de links, links só abrem após confirmação.
+- Nunca versione backups ou chaves reais.
 
-| Backup | O que é preciso | Suportado |
-|---|---|---|
-| E2E com chave de 64 dígitos (`.crypt15`) | os 64 dígitos ou o `encrypted_backup.key` | ✅ |
-| Sem E2E (`.crypt14`) | arquivo `key` do celular (exige root) | ✅ |
-| E2E protegido só por senha | a chave fica no HSM do WhatsApp | ❌ impossível fora do app |
-
-## Regras de segurança
-
-- Toda a criptografia roda em Rust. Chaves e texto puro ficam em buffers `Zeroizing` e nunca chegam ao webview.
-- Nenhum texto puro é gravado em disco de forma persistente: o histórico vai para um cofre cifrado (SQLCipher + Argon2id).
-- O token Google existe só em memória e é descartado depois do download.
-- Mensagens são conteúdo não confiável: proibido `dangerouslySetInnerHTML`, sem pré-visualização de links, CSP estrita (veja `tauri.conf.json`).
-- Nunca versione backups ou chaves reais. O `.gitignore` bloqueia esses arquivos; só passam os fixtures sintéticos de `crates/*/tests/fixtures/`.
-
-## Cofre
-
-Fica em `~/Library/Application Support/com.local.wahistorico/vault/` (macOS; nos outros sistemas, a pasta de dados do app):
-
-```
-vault.json            Argon2id (256 MiB, t=3, p=4) + chave de dados (DEK) embrulhada com AES-256-GCM
-stores/whatsapp.db    SQLCipher, chave = HKDF(DEK, id do cofre, "wa-vault store v1:whatsapp")
-stores/business.db    SQLCipher, chave = HKDF(DEK, id do cofre, "wa-vault store v1:business")
-stores/<app>-media.db índice das mídias (SQLCipher): sha256 → arquivo, caminho no celular → sha256
-stores/<app>-media/   um arquivo cifrado por mídia (nome aleatório)
-```
-
-Mídias: AES-256-GCM em segmentos de 1 MiB (esquema STREAM: nonce = prefixo ‖ contador ‖ último; AAD = id do arquivo), o que permite ler trechos (seek de vídeo) sem decifrar tudo. O índice fica fora do banco de mensagens, então reimportar o msgstore não perde as mídias. A ligação com as mensagens é pelo `file_hash` do WhatsApp ou pelo caminho (`Media/...`).
-
-- A senha só desembrulha a DEK. Trocar a senha não recifra os bancos. **Não há recuperação**: sem a senha, é preciso importar de novo.
-- Os parâmetros do Argon2id entram no AAD: editar o `vault.json` para baratear o KDF faz a abertura falhar.
-- Importar substitui o banco daquele app de forma atômica (banco novo num temporário cifrado, depois `rename`). Uma falha no meio mantém o anterior.
-- O cofre trava após 5 minutos sem interação (e no botão "Travar"); a DEK é zerada da memória.
-- Pastas 0700, arquivos 0600, `.metadata_never_index` para o Spotlight.
-
-## Google Drive (não oficial)
-
-Mesmo caminho do app do WhatsApp no Android, como o [wabdd](https://github.com/giacomoferretti/whatsapp-backup-downloader-decryptor) e o [whapa](https://github.com/B16f00t/whapa):
-
-1. Janela **anônima** do Tauri com `accounts.google.com/EmbeddedSetup`. Sem permissões de IPC; só navega por domínios do Google.
-2. O backend lê o cookie `oauth_token` e destrói a janela.
-3. Cookie → token mestre (`android.clients.google.com/auth`) → tokens `drive.appdata` de 1 h para `com.whatsapp` e `com.whatsapp.w4b`. O token mestre é zerado logo em seguida.
-4. `backup.googleapis.com/v1/clients/wa/backups` → `Databases/msgstore.db.crypt15`, baixado para a memória com conferência de MD5, decifrado e importado.
-
-Os tokens de acesso somem ao fim do download, ao cancelar, ao travar o cofre ou após 50 minutos. O cliente HTTP não oferece ALPN e não segue redirecionamentos (o Google recusa o login com ALPN; ver gpsoauth).
-
-Validado com uma conta real (2026-11):
-- o login pelo WebKit embutido funciona (com o `freezePrototype` do Tauri desligado e user agent do Safari na janela de login);
-- o WhatsApp Business aceita a mesma assinatura (`client_sig`), e os tokens dos dois apps enxergam a mesma listagem de backups;
-- os metadados atuais trazem a criptografia em `encryptedBackupMetadata` (o campo antigo `encryptedBackupEnabled` não vem mais).
-
-Backups **sem** E2E usam a chave do arquivo `key` do celular (só com root). Sem root, ative o backup E2E com a chave de 64 dígitos e faça um backup novo.
-
-Mídias (opcional): em backups sem E2E vêm em claro (`Media/...`, MD5 conferido). Em backups E2E vêm como `<hash>.mcrypt1`, com o nome real em metadados cifrados (HMAC + AES-CBC) e o conteúdo em AES-GCM com chave por arquivo (`wa_crypt::mcrypt1`). Não está documentado se o arquivo traz a tag GCM: o app tenta com a tag e, se não conferir, só aceita o conteúdo se o SHA-256 bater com o `file_hash` do msgstore. Formato ainda não validado com um backup real.
-
-## Export HTML
-
-Pasta que abre offline em qualquer navegador:
-
-```
-index.html            visualizador (um arquivo só), CSP sem rede
-data/manifest.js      Argon2id (64 MiB, t=3) + um slot cifrado por senha
-data/<id>.js          pedaços cifrados (AES-GCM, chave por conversa via HKDF), tamanho arredondado a 64 KiB
-media/pack-NNN.bin    mídias cifradas (STREAM 1 MiB, chave por mídia) — ou media/<id> em claro, se escolhido
-```
-
-- Todas as conversas, só algumas, ou uma senha por conversa. Uma senha não abre nem lista as conversas de outra, e a busca só cobre as destravadas. Conversas fora do export não entram em nada.
-- Nomes de arquivo aleatórios; nenhum telefone, texto ou caminho em claro (testado).
-- Em `file://` o navegador bloqueia `fetch`, então os dados são carregados como `<script src>`. Mídias cifradas: o usuário seleciona a pasta uma vez (`<input webkitdirectory>`) e os arquivos são lidos com `File.slice`.
-- CSP: `connect-src 'none'`, scripts só do pacote (inline por hash). **Sem `'self'`**: no WebKit (Safari), `'self'` numa página `file://` libera qualquer URL remota; `file:` não.
-- Trava sozinho após 15 minutos sem uso (recarrega a página e esquece as chaves).
-
-## Fixtures de teste
-
-Gerados com uma implementação independente ([wa-crypt-tools](https://github.com/ElDavoo/wa-crypt-tools) 0.1.0), usando chaves aleatórias e um SQLite fictício:
-
-```sh
-waencrypt --type 15 "$(cat key15.hex)" plain.db msgstore.db.crypt15
-wacreatekey --hex "$(cat key15.hex)"          # → encrypted_backup.key
-wacreatekey -c14 --hex <hex aleatório>        # → key
-waencrypt --type 14 key plain.db msgstore.db.crypt14
-```
+Os detalhes técnicos (formato do cofre, fluxo do Google Drive, formato do export, fixtures de teste) estão nas seções em inglês acima e no [SECURITY.md](SECURITY.md).

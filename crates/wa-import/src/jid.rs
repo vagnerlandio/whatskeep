@@ -5,14 +5,14 @@ use rusqlite::Connection;
 use crate::source::SourceInfo;
 use crate::Error;
 
-/// Tipo de conversa, derivado do servidor do JID.
+/// Chat type, derived from the JID's server.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ChatKind {
     Direct,
     Group,
     Broadcast,
     Channel,
-    /// `status@broadcast` (stories). Não é importado.
+    /// `status@broadcast` (stories). Not imported.
     Status,
 }
 
@@ -40,16 +40,16 @@ pub(crate) fn chat_kind(jid: &str) -> ChatKind {
     }
 }
 
-/// Número de telefone (só dígitos) de um JID de usuário, se houver.
-/// LIDs (`@lid`) não são telefones.
+/// Phone number (digits only) of a user JID, if any.
+/// LIDs (`@lid`) are not phone numbers.
 pub(crate) fn phone_of(jid: &str) -> Option<&str> {
     let (user, server) = jid.split_once('@')?;
-    // JIDs de dispositivo vêm como "5511...:12@s.whatsapp.net"
+    // Device JIDs come as "5511...:12@s.whatsapp.net"
     let user = user.split(':').next()?;
     (server == "s.whatsapp.net" && !user.is_empty() && user.bytes().all(|b| b.is_ascii_digit())).then_some(user)
 }
 
-/// Tabela `jid` do schema novo, com a resolução LID → telefone via `jid_map`.
+/// The modern schema's `jid` table, with LID → phone resolution via `jid_map`.
 pub(crate) struct JidTable {
     raw: HashMap<i64, String>,
     lid_to_jid: HashMap<i64, i64>,
@@ -82,7 +82,7 @@ impl JidTable {
         Ok(Self { raw, lid_to_jid })
     }
 
-    /// JID canônico: o telefone, quando o LID tem mapeamento.
+    /// Canonical JID: the phone number, when the LID has a mapping.
     pub fn resolve(&self, row_id: i64) -> Option<&str> {
         let id = self.lid_to_jid.get(&row_id).copied().unwrap_or(row_id);
         self.raw.get(&id).or_else(|| self.raw.get(&row_id)).map(String::as_str)
@@ -94,7 +94,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tipos_de_conversa() {
+    fn chat_kinds() {
         assert_eq!(chat_kind("5511999999999@s.whatsapp.net"), ChatKind::Direct);
         assert_eq!(chat_kind("123-456@g.us"), ChatKind::Group);
         assert_eq!(chat_kind("status@broadcast"), ChatKind::Status);
@@ -103,7 +103,7 @@ mod tests {
     }
 
     #[test]
-    fn telefone() {
+    fn phone_number() {
         assert_eq!(phone_of("5511999999999@s.whatsapp.net"), Some("5511999999999"));
         assert_eq!(phone_of("5511999999999:3@s.whatsapp.net"), Some("5511999999999"));
         assert_eq!(phone_of("98765432@lid"), None);

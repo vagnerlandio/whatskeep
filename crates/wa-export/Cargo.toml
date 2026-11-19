@@ -1,7 +1,7 @@
 [package]
 name = "wa-export"
 version = "0.1.0"
-description = "Gera o histórico em HTML offline, cifrado por senha (abre em qualquer navegador)"
+description = "Generates the chat history as offline HTML, password-encrypted (opens in any browser)"
 edition.workspace = true
 license.workspace = true
 

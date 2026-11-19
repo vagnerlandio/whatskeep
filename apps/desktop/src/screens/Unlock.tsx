@@ -9,7 +9,7 @@ export default function Unlock({ reason, onUnlocked }: { reason: string | null; 
   const errorText = useErrorText();
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  // Erro bruto (ou senha errada): o texto acompanha a troca de idioma.
+  // Raw error (or wrong password): the text follows language changes.
   const [error, setError] = useState<{ wrong: true } | { e: unknown } | null>(null);
 
   async function submit(e: FormEvent) {

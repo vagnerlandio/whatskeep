@@ -13,35 +13,35 @@ use tauri::Manager;
 
 use state::AppState;
 
-/// Sem core dump: um crash gravaria a memória do processo (chaves, mensagens
-/// decifradas) em disco.
+/// No core dumps: a crash would write the process memory (keys, decrypted
+/// messages) to disk.
 fn disable_core_dumps() {
     #[cfg(unix)]
     {
         let zero = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
-        // SAFETY: estrutura válida, chamada sem efeitos além do limite do processo.
+        // SAFETY: valid struct; the call has no effect beyond the process limit.
         unsafe {
             libc::setrlimit(libc::RLIMIT_CORE, &zero);
         }
     }
 }
 
-/// A janela principal só navega dentro do próprio app. Nada de páginas remotas
-/// com acesso ao IPC, mesmo que algo tente redirecioná-la. (A janela de login
-/// do Google tem a sua própria lista, em gdrive.rs.)
+/// The main window only navigates within the app itself. No remote pages with
+/// IPC access, even if something tries to redirect it. (The Google login
+/// window has its own list, in gdrive.rs.)
 fn main_window_navigation_allowed(url: &tauri::Url) -> bool {
     match url.scheme() {
         "tauri" | "about" => true,
-        // Windows serve o app em http(s)://tauri.localhost.
+        // Windows serves the app at http(s)://tauri.localhost.
         "http" | "https" if url.host_str() == Some("tauri.localhost") => true,
-        // Servidor do Vite, só em desenvolvimento.
+        // Vite dev server, development only.
         "http" if cfg!(debug_assertions) && url.host_str() == Some("localhost") && url.port() == Some(1420) => true,
         _ => false,
     }
 }
 
-/// Contexto do app (config, ACL, assets). Uma expansão só do macro, usada pelo
-/// app e pelos testes de ACL.
+/// App context (config, ACL, assets). A single macro expansion, used by the
+/// app and by the ACL tests.
 fn context<R: tauri::Runtime>() -> tauri::Context<R> {
     tauri::generate_context!()
 }
@@ -61,7 +61,7 @@ pub fn run() {
                     }
                     let ok = main_window_navigation_allowed(url);
                     if !ok {
-                        tracing::warn!(esquema = url.scheme(), host = url.host_str().unwrap_or(""), "navegação da janela principal BLOQUEADA");
+                        tracing::warn!(scheme = url.scheme(), host = url.host_str().unwrap_or(""), "main window navigation BLOCKED");
                     }
                     ok
                 })
@@ -78,7 +78,7 @@ pub fn run() {
             let data_dir = app.path().app_data_dir()?;
             app.manage(settings::Settings::load(&data_dir));
             let vault_dir = data_dir.join("vault");
-            tracing::info!(cofre_existe = wa_vault::Vault::exists(&vault_dir), "app iniciado");
+            tracing::info!(vault_exists = wa_vault::Vault::exists(&vault_dir), "app started");
             app.manage(AppState::new(vault_dir));
             state::spawn_autolock(app.handle().clone());
             Ok(())
@@ -113,7 +113,7 @@ pub fn run() {
             settings::set_language,
         ])
         .run(context())
-        .expect("falha ao iniciar o aplicativo");
+        .expect("failed to start the application");
 }
 
 #[cfg(test)]
@@ -135,12 +135,12 @@ mod tests {
         }
     }
 
-    /// As capabilities reais (capabilities/default.json + manifesto do build.rs):
-    /// só a janela principal, com a origem do app, chama comandos.
+    /// The real capabilities (capabilities/default.json + build.rs manifest):
+    /// only the main window, with the app origin, calls commands.
     #[test]
-    fn acl_so_a_janela_principal_chama_comandos() {
+    fn acl_only_main_window_calls_commands() {
         let app = mock_builder()
-            .manage(crate::state::AppState::new(std::path::PathBuf::from("/nao/existe")))
+            .manage(crate::state::AppState::new(std::path::PathBuf::from("/does/not/exist")))
             .invoke_handler(tauri::generate_handler![crate::commands::vault_status])
             .build(crate::context())
             .unwrap();
@@ -152,22 +152,22 @@ mod tests {
         let body = ok.unwrap().deserialize::<serde_json::Value>().unwrap();
         assert_eq!(body["state"], "none");
 
-        // Janela sem capability (a do login do Google): recusada.
+        // Window without a capability (the Google login one): refused.
         assert!(get_ipc_response(&login, request("vault_status", "tauri://localhost")).is_err());
-        // Página remota dentro da janela principal: recusada.
+        // Remote page inside the main window: refused.
         assert!(get_ipc_response(&main, request("vault_status", "https://evil.example/")).is_err());
-        // Comando que não existe no manifesto: recusado.
+        // Command that is not in the manifest: refused.
         assert!(get_ipc_response(&main, request("plugin:webview|internal_toggle_devtools", "tauri://localhost")).is_err());
     }
 
     #[test]
-    fn navegacao_da_janela_principal() {
+    fn main_window_navigation() {
         let ok = |u: &str| super::main_window_navigation_allowed(&u.parse().unwrap());
         assert!(ok("tauri://localhost/index.html"));
         assert!(ok("http://tauri.localhost/"));
         assert!(ok("about:blank"));
         assert!(!ok("https://evil.example/"));
-        assert!(!ok("file:///Users/x/pagina.html"));
+        assert!(!ok("file:///Users/x/page.html"));
         assert!(!ok("http://localhost:8080/"));
         assert!(!ok("wamedia://localhost/media/whatsapp/1"));
     }

@@ -9,18 +9,18 @@ type Props = {
   onOpenImport: () => void;
 };
 
-/** O visualizador compartilhado sobre o cofre, com os controles do app. */
+/** The shared viewer on top of the vault, with the app's controls. */
 export default function AppViewer({ stores, onLock, onOpenImport }: Props) {
   const t = useAppT();
   const [store, setStore] = useState<SourceApp>(stores[0].sourceApp);
 
-  // Se o banco selecionado sumir (não deveria), volta para o primeiro.
+  // If the selected database disappears (it shouldn't), falls back to the first one.
   useEffect(() => {
     if (!stores.some((s) => s.sourceApp === store)) setStore(stores[0].sourceApp);
   }, [stores, store]);
 
   const stamp = stores.find((s) => s.sourceApp === store)?.importedAtMs ?? 0;
-  // Fonte nova quando troca o app ou reimporta: o visualizador recomeça.
+  // New source when switching app or reimporting: the viewer starts over.
   const source = useMemo(() => tauriSource(store), [store, stamp]);
 
   const other = stores.find((s) => s.sourceApp !== store);

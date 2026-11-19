@@ -44,7 +44,7 @@ type Step =
 
 type Props = { stores: StoreInfo[]; onImported: () => void };
 
-/** Login no Google e download do backup direto do Google Drive. */
+/** Google sign-in and backup download straight from Google Drive. */
 export default function DriveImport({ stores, onImported }: Props) {
   const [step, setStep] = useState<Step>({ kind: "intro" });
   const [email, setEmail] = useState("");
@@ -60,7 +60,7 @@ export default function DriveImport({ stores, onImported }: Props) {
   const errorText = useErrorText();
   const friendlyError = useFriendlyError();
 
-  // Ao sair da tela, os tokens do Google são descartados no backend.
+  // When leaving the screen, the Google tokens are discarded in the backend.
   useEffect(
     () => () => {
       if (sessionOpen.current) void driveApi.cancel();
@@ -132,7 +132,7 @@ export default function DriveImport({ stores, onImported }: Props) {
       onImported();
     } catch (e) {
       const { code } = errorOf(e);
-      // Rede: a sessão continua no backend e dá para tentar de novo. Outros erros encerram a sessão.
+      // Network: the session stays alive in the backend and can be retried. Other errors end the session.
       if (code === "network" || code === "download_corrupt") {
         setStep({ kind: "list", login, error: errorText(e) });
       } else {

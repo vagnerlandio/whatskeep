@@ -3,8 +3,8 @@ import type { Chat } from "./types";
 import { avatarHue, chatTitle } from "./format";
 import { Icon } from "./icons";
 
-/** Sem fotos de perfil (o backup não traz): inicial ou ícone sobre um tom
- * claro, estável por JID, como os avatares padrão do WhatsApp. */
+/** No profile pictures (the backup doesn't include them): an initial or icon over
+ * a light tint, stable per JID, like WhatsApp's default avatars. */
 export default function Avatar({ chat, size = 49 }: { chat: Chat; size?: number }) {
   const title = chatTitle(chat);
   const letter = /^[+~\d]/.test(title) ? null : ([...title.trim()][0]?.toUpperCase() ?? null);

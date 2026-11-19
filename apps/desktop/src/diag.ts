@@ -1,5 +1,5 @@
-// Envia erros do frontend para o log de diagnóstico do backend (stderr do app).
-// Nunca mande texto de mensagens: só mensagens de erro e pilhas.
+// Sends frontend errors to the backend's diagnostics log (the app's stderr).
+// Never send message text: only error messages and stacks.
 import { invoke } from "@tauri-apps/api/core";
 
 type Level = "error" | "warn" | "info";
@@ -7,7 +7,7 @@ type Level = "error" | "warn" | "info";
 let sending = false;
 
 export function uiLog(level: Level, message: string) {
-  // Evita recursão se o próprio invoke falhar e cair no console.error.
+  // Avoids recursion if the invoke itself fails and ends up in console.error.
   if (sending) return;
   sending = true;
   invoke("ui_log", { level, message: message.slice(0, 1000) })
@@ -23,20 +23,20 @@ function describe(e: unknown): string {
   return String(e);
 }
 
-/** Exceções não tratadas, promessas rejeitadas e `console.error` vão para o log. */
+/** Uncaught exceptions, rejected promises and `console.error` go to the log. */
 export function installDiagnostics() {
   window.addEventListener("error", (ev) => {
-    uiLog("error", `erro não tratado: ${describe(ev.error ?? ev.message)} @ ${ev.filename}:${ev.lineno}`);
+    uiLog("error", `uncaught error: ${describe(ev.error ?? ev.message)} @ ${ev.filename}:${ev.lineno}`);
   });
   window.addEventListener("unhandledrejection", (ev) => {
-    uiLog("error", `promessa rejeitada sem tratamento: ${describe(ev.reason)}`);
+    uiLog("error", `unhandled promise rejection: ${describe(ev.reason)}`);
   });
   const original = console.error.bind(console);
   console.error = (...args: unknown[]) => {
     original(...args);
     uiLog("error", `console.error: ${args.map(describe).join(" ")}`);
   };
-  uiLog("info", `frontend carregado (${navigator.userAgent})`);
+  uiLog("info", `frontend loaded (${navigator.userAgent})`);
 }
 
 export { describe };

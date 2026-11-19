@@ -2,8 +2,8 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { viteSingleFile } from "vite-plugin-singlefile";
 
-// Um index.html só, com JS, CSS e o WASM do Argon2id embutidos: o pacote
-// exportado não depende de nenhum arquivo além dos dados.
+// A single index.html, with JS, CSS and the Argon2id WASM inlined: the exported
+// bundle depends on no file other than the data.
 export default defineConfig({
   plugins: [react(), viteSingleFile()],
   build: {

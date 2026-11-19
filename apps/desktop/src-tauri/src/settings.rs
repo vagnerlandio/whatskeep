@@ -1,6 +1,6 @@
-//! Preferências do app que precisam existir antes de destravar o cofre (hoje,
-//! só o idioma). Ficam em `settings.json` na pasta de dados do app, fora do
-//! cofre: não há nada sensível aqui.
+//! App preferences that must exist before the vault is unlocked (today, only
+//! the language). They live in `settings.json` in the app data folder, outside
+//! the vault: there is nothing sensitive here.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -53,8 +53,8 @@ impl Settings {
     }
 }
 
-/// Texto no idioma escolhido (para o que o backend mostra: seletores nativos,
-/// título de janela). Sem escolha salva, português.
+/// Text in the chosen language (for what the backend shows: native pickers,
+/// window title). With no saved choice, Portuguese.
 pub fn tr(app: &AppHandle, pt: &'static str, en: &'static str) -> &'static str {
     match app.state::<Settings>().language() {
         Some(Lang::En) => en,
@@ -62,7 +62,7 @@ pub fn tr(app: &AppHandle, pt: &'static str, en: &'static str) -> &'static str {
     }
 }
 
-/// Idioma salvo, ou `null` (o frontend então usa o do sistema).
+/// Saved language, or `null` (the frontend then uses the system one).
 #[tauri::command]
 pub fn get_language(settings: State<'_, Settings>) -> Option<Lang> {
     settings.language()
@@ -70,7 +70,7 @@ pub fn get_language(settings: State<'_, Settings>) -> Option<Lang> {
 
 #[tauri::command]
 pub fn set_language(settings: State<'_, Settings>, language: Lang) -> Result<(), CmdError> {
-    tracing::info!(idioma = ?language, "idioma alterado");
+    tracing::info!(language = ?language, "language changed");
     settings.set_language(language).map_err(CmdError::from)
 }
 
@@ -79,14 +79,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn salva_e_le_o_idioma() {
+    fn saves_and_reads_the_language() {
         let dir = tempfile::tempdir().unwrap();
         let s = Settings::load(dir.path());
         assert_eq!(s.language(), None);
         s.set_language(Lang::En).unwrap();
         assert_eq!(Settings::load(dir.path()).language(), Some(Lang::En));
-        // Arquivo corrompido: volta ao padrão sem falhar.
-        std::fs::write(dir.path().join(FILE), b"lixo").unwrap();
+        // Corrupted file: falls back to the default without failing.
+        std::fs::write(dir.path().join(FILE), b"garbage").unwrap();
         assert_eq!(Settings::load(dir.path()).language(), None);
     }
 }

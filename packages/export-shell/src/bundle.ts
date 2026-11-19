@@ -1,4 +1,4 @@
-// DataSource do export: tudo é decifrado aqui no navegador, sob demanda.
+// The export's DataSource: everything is decrypted here in the browser, on demand.
 import type { Anchor, Around, Chat, Cursor, DataSource, Lang, Message, SearchHit } from "@wa/viewer";
 import { aesKey, b64, hkdf, Kdf, open, openStream, passwordKey, streamLen, unpackChunk } from "./crypto";
 import { loadChunk } from "./loader";
@@ -29,7 +29,7 @@ type ChatState = {
   loading?: Promise<StoredMessage[]>;
 };
 
-/** Vídeos acima disso não são decifrados para a memória do navegador. */
+/** Videos larger than this aren't decrypted into the browser's memory. */
 const MAX_BLOB = 200 * 1024 * 1024;
 const URL_CACHE = 60;
 
@@ -39,7 +39,7 @@ export class BundleSource implements DataSource {
   private packs = new Map<number, File>();
   private urls = new Map<string, string>();
   readonly mediaMode: Manifest["media"];
-  /** Idioma dos textos que o visualizador lê daqui (dicas e erros). */
+  /** Language of the texts the viewer reads from here (hints and errors). */
   lang: Lang = "pt-BR";
 
   constructor(private manifest: Manifest) {
@@ -48,7 +48,7 @@ export class BundleSource implements DataSource {
     this.mediaMode = manifest.media;
   }
 
-  /** Abre os slots desta senha. Devolve quantas conversas novas foram liberadas. */
+  /** Opens this password's slots. Returns how many new chats were unlocked. */
   async unlock(password: string): Promise<number> {
     const key = await passwordKey(password, this.manifest.kdf);
     let added = 0;
@@ -57,7 +57,7 @@ export class BundleSource implements DataSource {
       try {
         plain = await open(key, b64(slot.n), b64(slot.c), "wa-export slot v1");
       } catch {
-        continue; // senha de outro slot
+        continue; // password for another slot
       }
       const content = JSON.parse(new TextDecoder().decode(plain)) as {
         master: string;
@@ -82,7 +82,7 @@ export class BundleSource implements DataSource {
     return this.packs.size > 0;
   }
 
-  /** Arquivos da pasta escolhida em <input webkitdirectory>. Devolve quantos pacotes achou. */
+  /** Files of the folder picked in <input webkitdirectory>. Returns how many packs it found. */
   setFolder(files: FileList | File[]): number {
     this.packs.clear();
     for (const f of Array.from(files)) {
@@ -163,11 +163,11 @@ export class BundleSource implements DataSource {
         if (before && (m.sentAt > before.sentAt || (m.sentAt === before.sentAt && m.id >= before.id))) continue;
         const t = s.folded[i];
         if (t && terms.every((term) => t.includes(term))) found.push({ m, chatId: id });
-        if (i % 20000 === 0) await new Promise((r) => setTimeout(r)); // não trava a tela
+        if (i % 20000 === 0) await new Promise((r) => setTimeout(r)); // doesn't freeze the screen
       }
     }
     found.sort((a, b) => b.m.sentAt - a.m.sentAt || b.m.id - a.m.id);
-    // O trecho destacado só é montado para a página exibida.
+    // The highlighted excerpt is only built for the displayed page.
     return found.slice(0, limit).map(({ m, chatId }) => ({
       messageId: m.id,
       chatId,
@@ -188,7 +188,7 @@ export class BundleSource implements DataSource {
     const ref = (m as StoredMessage).media?.ref;
     if (!ref) return null;
     if ("f" in ref) {
-      // Modo sem cifra: arquivo ao lado do index.html (nome validado).
+      // Unencrypted mode: file next to index.html (validated name).
       return /^media\/[0-9a-f]{16}$/.test(ref.f) ? ref.f : null;
     }
     const pack = this.packs.get(ref.p);
@@ -227,7 +227,7 @@ export class BundleSource implements DataSource {
     return shellMessages[this.lang].hintTooLarge;
   }
 
-  /** Esquece chaves e mídias decifradas (travar). */
+  /** Forgets keys and decrypted media (lock). */
   dispose() {
     for (const url of this.urls.values()) URL.revokeObjectURL(url);
     this.urls.clear();
@@ -256,13 +256,13 @@ export class BundleSource implements DataSource {
   }
 }
 
-// ---------------------------------------------------------------- utilidades
+// ---------------------------------------------------------------- utilities
 
 function cmp(m: { sentAt: number; id: number }, c: Cursor) {
   return m.sentAt - c.sentAt || m.id - c.id;
 }
 
-/** Primeiro índice com mensagem >= cursor. */
+/** First index with message >= cursor. */
 function lowerBound(all: Message[], c: Cursor) {
   let lo = 0;
   let hi = all.length;
@@ -274,7 +274,7 @@ function lowerBound(all: Message[], c: Cursor) {
   return lo;
 }
 
-/** Primeiro índice com mensagem > cursor. */
+/** First index with message > cursor. */
 function upperBound(all: Message[], c: Cursor) {
   let lo = 0;
   let hi = all.length;
@@ -286,14 +286,14 @@ function upperBound(all: Message[], c: Cursor) {
   return lo;
 }
 
-/** Minúsculas e sem acentos. */
+/** Lowercase and without accents. */
 export function fold(s: string): string {
   return s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 }
 
-/** Trecho em volta do primeiro termo, com cada ocorrência entre \u0001 e \u0002. */
+/** Excerpt around the first term, with each occurrence between \u0001 and \u0002. */
 export function snippet(text: string, terms: string[]): string {
-  // Dobra caractere a caractere, guardando de onde veio cada posição dobrada.
+  // Folds character by character, keeping track of where each folded position came from.
   const chars = Array.from(text);
   let folded = "";
   const origin: number[] = [];
@@ -353,7 +353,7 @@ function normalizeChat(c: Partial<Chat>): Chat {
   };
 }
 
-/** O export omite campos nulos/falsos/vazios; aqui eles voltam aos padrões. */
+/** The export omits null/false/empty fields; here they go back to their defaults. */
 function normalizeMessage(m: Partial<StoredMessage>): StoredMessage {
   return {
     id: m.id!,

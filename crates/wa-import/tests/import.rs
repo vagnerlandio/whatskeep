@@ -25,7 +25,7 @@ fn run(src: &Connection) -> (Connection, ImportReport) {
     (dst, report)
 }
 
-/// Busca uma mensagem pelo key_id original.
+/// Looks up a message by its original key_id.
 fn msg(dst: &Connection, key: &str) -> MsgRow {
     dst.query_row(
         "SELECT m.id, m.kind, m.text, m.from_me, c.jid, m.quoted_message_id, m.starred, m.system_action
@@ -69,10 +69,10 @@ fn search(dst: &Connection, q: &str) -> Vec<String> {
         .unwrap()
 }
 
-// --- Schema novo ------------------------------------------------------------
+// --- Modern schema ---------------------------------------------------------
 
 #[test]
-fn moderno_relatorio() {
+fn modern_report() {
     let (_, report) = run(&source("modern.sql"));
     assert_eq!(
         report,
@@ -91,7 +91,7 @@ fn moderno_relatorio() {
 }
 
 #[test]
-fn moderno_conversas() {
+fn modern_chats() {
     let (dst, _) = run(&source("modern.sql"));
     let chats: Vec<(String, String, Option<String>, bool, i64, i64)> = dst
         .prepare(
@@ -113,19 +113,19 @@ fn moderno_conversas() {
 }
 
 #[test]
-fn moderno_lid_vira_telefone() {
+fn modern_lid_becomes_phone() {
     let (dst, _) = run(&source("modern.sql"));
-    // Bob escreveu com LID, mapeado via jid_map para o telefone.
+    // Bob wrote with a LID, mapped via jid_map to the phone number.
     let bob = msg(&dst, "G1");
     assert_eq!(bob.sender_jid.as_deref(), Some("5511922222222@s.whatsapp.net"));
     let phone: Option<String> = dst
         .query_row("SELECT phone FROM contact WHERE jid = '5511922222222@s.whatsapp.net'", [], |r| r.get(0))
         .unwrap();
     assert_eq!(phone.as_deref(), Some("5511922222222"));
-    // Carol não tem mapeamento: fica o LID, sem telefone.
+    // Carol has no mapping: the LID stays, with no phone number.
     let carol = msg(&dst, "G2");
     assert_eq!(carol.sender_jid.as_deref(), Some("55555@lid"));
-    // O LID do Bob não vira um contato separado.
+    // Bob's LID does not become a separate contact.
     let lid_contacts: i64 = dst
         .query_row("SELECT count(*) FROM contact WHERE jid = '98765@lid'", [], |r| r.get(0))
         .unwrap();
@@ -133,7 +133,7 @@ fn moderno_lid_vira_telefone() {
 }
 
 #[test]
-fn moderno_tipos_e_apagadas() {
+fn modern_types_and_deleted() {
     let (dst, _) = run(&source("modern.sql"));
     assert_eq!(msg(&dst, "A1").kind, "text");
     assert_eq!(msg(&dst, "A3").kind, "image");
@@ -145,7 +145,7 @@ fn moderno_tipos_e_apagadas() {
     let sys = msg(&dst, "G3");
     assert_eq!((sys.kind.as_str(), sys.system_action), ("system", Some(4)));
 
-    // Apagadas por tipo 15 e por edit_version 7: sem texto.
+    // Deleted by type 15 and by edit_version 7: no text.
     for key in ["A5", "A6"] {
         let m = msg(&dst, key);
         assert_eq!(m.kind, "deleted", "{key}");
@@ -156,7 +156,7 @@ fn moderno_tipos_e_apagadas() {
 }
 
 #[test]
-fn moderno_resposta_aponta_para_original() {
+fn modern_reply_points_to_original() {
     let (dst, _) = run(&source("modern.sql"));
     let reply = msg(&dst, "A2");
     assert_eq!(reply.quoted_id, Some(msg(&dst, "A1").id));
@@ -168,7 +168,7 @@ fn moderno_resposta_aponta_para_original() {
 }
 
 #[test]
-fn moderno_midia_miniatura_local_vcard() {
+fn modern_media_thumbnail_location_vcard() {
     let (dst, _) = run(&source("modern.sql"));
     let img = msg(&dst, "A3").id;
     let (path, w, h, size): (String, i64, i64, i64) = dst
@@ -182,7 +182,7 @@ fn moderno_midia_miniatura_local_vcard() {
         .unwrap();
     assert!(thumb.starts_with(&[0xFF, 0xD8, 0xFF]));
 
-    // Mídia sem dimensão (0) vira NULL, para o viewer não reservar 0 px.
+    // Media without dimensions (0) becomes NULL, so the viewer does not reserve 0 px.
     let voice = msg(&dst, "A4").id;
     let (vw, transcription): (Option<i64>, Option<String>) = dst
         .query_row("SELECT width, transcription FROM media WHERE message_id = ?1", [voice], |r| {
@@ -205,7 +205,7 @@ fn moderno_midia_miniatura_local_vcard() {
 }
 
 #[test]
-fn moderno_reacoes() {
+fn modern_reactions() {
     let (dst, _) = run(&source("modern.sql"));
     let rows: Vec<(String, String, bool, Option<String>)> = dst
         .prepare(
@@ -217,7 +217,7 @@ fn moderno_reacoes() {
         .unwrap()
         .collect::<Result<_, _>>()
         .unwrap();
-    // A reação removida (emoji vazio) da Carol não entra.
+    // Carol's removed reaction (empty emoji) is left out.
     assert_eq!(
         rows,
         vec![
@@ -228,18 +228,18 @@ fn moderno_reacoes() {
 }
 
 #[test]
-fn busca_ignora_acentos() {
+fn search_ignores_diacritics() {
     let (dst, _) = run(&source("modern.sql"));
     assert_eq!(search(&dst, "cafe"), vec!["A1"]);
     assert_eq!(search(&dst, "CAFÉ"), vec!["A1"]);
     assert_eq!(search(&dst, "ola"), vec!["G1"]);
-    assert_eq!(search(&dst, "praia"), vec!["A3"]); // legenda de foto
-    assert!(search(&dst, "status").is_empty()); // stories não são importados
+    assert_eq!(search(&dst, "praia"), vec!["A3"]); // photo caption
+    assert!(search(&dst, "status").is_empty()); // stories are not imported
 }
 
 #[test]
-fn moderno_sem_tabelas_opcionais() {
-    // Versões antigas do schema novo não têm jid_map, reações, futuro...
+fn modern_without_optional_tables() {
+    // Old versions of the modern schema have no jid_map, reactions, future...
     let src = Connection::open_in_memory().unwrap();
     src.execute_batch(
         "CREATE TABLE jid (_id INTEGER PRIMARY KEY, user TEXT, server TEXT);
@@ -256,7 +256,7 @@ fn moderno_sem_tabelas_opcionais() {
 }
 
 #[test]
-fn metadados_e_destino_ja_usado() {
+fn metadata_and_destination_already_used() {
     let src = source("modern.sql");
     let mut dst = Connection::open_in_memory().unwrap();
     import(
@@ -278,10 +278,10 @@ fn metadados_e_destino_ja_usado() {
     assert!(matches!(import(&src, &mut dst, &opts()), Err(Error::DestinationNotEmpty)));
 }
 
-// --- Schema legado ----------------------------------------------------------
+// --- Legacy schema ---------------------------------------------------------
 
 #[test]
-fn legado_relatorio() {
+fn legacy_report() {
     let (_, report) = run(&source("legacy.sql"));
     assert_eq!(
         report,
@@ -300,7 +300,7 @@ fn legado_relatorio() {
 }
 
 #[test]
-fn legado_conteudo() {
+fn legacy_content() {
     let (dst, _) = run(&source("legacy.sql"));
     let reply = msg(&dst, "L2");
     assert_eq!(reply.quoted_id, Some(msg(&dst, "L1").id));
@@ -324,37 +324,37 @@ fn legado_conteudo() {
     assert_eq!(search(&dst, "por do sol"), vec!["L4"]);
 }
 
-// --- Entrada ----------------------------------------------------------------
+// --- Input -----------------------------------------------------------------
 
 #[test]
-fn abre_msgstore_da_memoria() {
+fn opens_msgstore_from_memory() {
     let mut src = source("modern.sql");
     let bytes = src.serialize(MAIN_DB).unwrap().to_vec();
     let conn = open_msgstore(&bytes).unwrap();
-    // O SQLCipher devolve o valor do pragma como texto.
+    // SQLCipher returns the pragma value as text.
     let on: String = conn
         .query_row("PRAGMA cipher_memory_security", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(on, "1", "SQLCipher deve zerar a memória liberada");
-    // Somente leitura.
+    assert_eq!(on, "1", "SQLCipher must zero freed memory");
+    // Read-only.
     assert!(conn.execute("DELETE FROM message", []).is_err());
     let (_, report) = run(&conn);
     assert_eq!(report.messages, 12);
 }
 
 #[test]
-fn rejeita_o_que_nao_e_msgstore() {
-    assert!(open_msgstore(b"isto nao e um banco sqlite, so texto qualquer").is_err());
+fn rejects_what_is_not_a_msgstore() {
+    assert!(open_msgstore(b"this is not a sqlite database, just some text").is_err());
     let src = Connection::open_in_memory().unwrap();
-    src.execute_batch("CREATE TABLE notas (texto TEXT);").unwrap();
+    src.execute_batch("CREATE TABLE notes (body TEXT);").unwrap();
     let mut dst = Connection::open_in_memory().unwrap();
     assert!(matches!(import(&src, &mut dst, &opts()), Err(Error::NotMsgstore)));
 }
 
-/// Ponta a ponta: .crypt15 → wa-crypt → memória → importer.
-/// O fixture foi gerado a partir de `modern.sql` com o wa-crypt-tools (waencrypt).
+/// End to end: .crypt15 → wa-crypt → memory → importer.
+/// The fixture was generated from `modern.sql` with wa-crypt-tools (waencrypt).
 #[test]
-fn ponta_a_ponta_crypt15() {
+fn end_to_end_crypt15() {
     let dir = env!("CARGO_MANIFEST_DIR");
     let file = std::fs::read(format!("{dir}/tests/fixtures/msgstore-modern.db.crypt15")).unwrap();
     let hex = std::fs::read_to_string(format!("{dir}/../wa-crypt/tests/fixtures/key15.hex")).unwrap();
@@ -362,16 +362,16 @@ fn ponta_a_ponta_crypt15() {
     let decrypted = wa_crypt::decrypt(&file, &key).unwrap();
     assert_eq!(decrypted.payload, wa_crypt::Payload::Sqlite);
     let src = open_msgstore(&decrypted.data).unwrap();
-    drop(decrypted); // o texto puro fica só dentro do SQLite (zerado ao fechar)
+    drop(decrypted); // the plaintext lives only inside SQLite (zeroed on close)
     let (dst, report) = run(&src);
     assert_eq!(report.messages, 12);
     assert_eq!(search(&dst, "cafe"), vec!["A1"]);
 }
 
-/// `cargo test -p wa-import --release -- --ignored desempenho --nocapture`
+/// `cargo test -p wa-import --release -- --ignored performance --nocapture`
 #[test]
 #[ignore]
-fn desempenho_300k_mensagens() {
+fn performance_300k_messages() {
     let src = source("modern.sql");
     src.execute_batch(
         "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 300000)
@@ -393,7 +393,7 @@ fn desempenho_300k_mensagens() {
     let t = std::time::Instant::now();
     let hits = search(&dst, "numero 123456").len();
     println!(
-        "{} mensagens em {:.2?} ({:.0}/s), {linked} citações ligadas, busca em {:.2?} ({hits} resultado)",
+        "{} messages in {:.2?} ({:.0}/s), {linked} quotes linked, search in {:.2?} ({hits} result)",
         report.messages,
         elapsed,
         report.messages as f64 / elapsed.as_secs_f64(),
@@ -403,11 +403,11 @@ fn desempenho_300k_mensagens() {
 }
 
 #[test]
-fn msgstore_aberto_nao_usa_temporarios_em_disco() {
+fn open_msgstore_uses_no_temp_files_on_disk() {
     let plain = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/msgstore-modern.db.crypt15")).unwrap();
     let key = wa_crypt::BackupKey::from_hex(include_str!("../../wa-crypt/tests/fixtures/key15.hex")).unwrap();
     let db = wa_crypt::decrypt(&plain, &key).unwrap();
     let conn = wa_import::open_msgstore(&db.data).unwrap();
     let v: i64 = conn.query_row("PRAGMA temp_store", [], |r| r.get(0)).unwrap();
-    assert_eq!(v, 2, "temp_store deve ser MEMORY");
+    assert_eq!(v, 2, "temp_store must be MEMORY");
 }

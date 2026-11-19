@@ -1,4 +1,4 @@
-//! Schema novo do msgstore (2021+): `message`, `chat`, `jid`, `message_media`...
+//! Modern msgstore schema (2021+): `message`, `chat`, `jid`, `message_media`...
 
 use std::collections::{HashMap, HashSet};
 
@@ -10,7 +10,7 @@ use crate::source::SourceInfo;
 use crate::store::{NewMedia, NewMessage, Writer};
 use crate::{Error, ImportReport, MessageKind};
 
-/// Alguns bancos guardam números como texto, e o rusqlite não converte sozinho.
+/// Some databases store numbers as text, and rusqlite does not convert them on its own.
 pub(crate) fn int(expr: String) -> String {
     if expr == "NULL" { expr } else { format!("CAST({expr} AS INTEGER)") }
 }
@@ -24,7 +24,7 @@ pub(crate) fn import(src: &Connection, info: &SourceInfo, dst: &Connection, repo
     let jids = JidTable::load(src, info)?;
     let mut w = Writer::new(dst);
 
-    // --- Conversas ---------------------------------------------------------
+    // --- Chats -------------------------------------------------------------
     let mut chats: HashMap<i64, ChatRef> = HashMap::new();
     let mut status_chats: HashSet<i64> = HashSet::new();
     {
@@ -63,7 +63,7 @@ pub(crate) fn import(src: &Connection, info: &SourceInfo, dst: &Connection, repo
         }
     }
 
-    // --- Mensagens ---------------------------------------------------------
+    // --- Messages ----------------------------------------------------------
     let thumb_hash_join = info.has_col("media_hash_thumbnail", "media_hash")
         && info.has_col("message_media", "file_hash")
         && info.has_col("message_media", "message_row_id");
@@ -95,7 +95,7 @@ pub(crate) fn import(src: &Connection, info: &SourceInfo, dst: &Connection, repo
                 {action} AS action
          FROM message m
          {j_media} {j_thumb} {j_hash_thumb} {j_loc} {j_quote} {j_system} {j_future}
-         ORDER BY m.timestamp, m._id", // ordem cronológica: veja `message` em store.rs
+         ORDER BY m.timestamp, m._id", // chronological order: see `message` in store.rs
         sender = info.col("message", "m", "sender_jid_row_id"),
         msg_type = int(info.col("message", "m", "message_type")),
         text = info.col("message", "m", "text_data"),
@@ -120,7 +120,7 @@ pub(crate) fn import(src: &Connection, info: &SourceInfo, dst: &Connection, repo
         q_from_me = info.joined_col("message_quoted", "message_row_id", "mq", "from_me"),
         q_sender = info.joined_col("message_quoted", "message_row_id", "mq", "sender_jid_row_id"),
         action = info.joined_col("message_system", "message_row_id", "ms", "action_type"),
-        // `mm.message_row_id` é selecionado sempre, então o join precisa existir.
+        // `mm.message_row_id` is always selected, so the join must exist.
         j_media = if info.has_col("message_media", "message_row_id") {
             "LEFT JOIN message_media mm ON mm.message_row_id = m._id".to_owned()
         } else {
@@ -196,8 +196,8 @@ pub(crate) fn import(src: &Connection, info: &SourceInfo, dst: &Connection, repo
                 sent_at: r.get::<_, Option<i64>>("ts")?.unwrap_or(0),
                 kind,
                 wa_type,
-                // Mensagens apagadas às vezes mantêm o texto antigo no banco.
-                // Seguimos o WhatsApp e não mostramos.
+                // Deleted messages sometimes keep the old text in the database.
+                // We follow WhatsApp and do not show it.
                 text: if kind == MessageKind::Deleted { None } else { text.as_deref() },
                 starred: r.get::<_, Option<i64>>("starred")?.unwrap_or(0) != 0,
                 edited: r.get::<_, Option<i64>>("edited")?.unwrap_or(0) != 0,
@@ -241,7 +241,7 @@ pub(crate) fn import(src: &Connection, info: &SourceInfo, dst: &Connection, repo
         }
     }
 
-    // --- Contatos compartilhados (vCard) ----------------------------------
+    // --- Shared contacts (vCard) -----------------------------------------
     if info.has_col("message_vcard", "vcard") {
         let mut stmt = src.prepare("SELECT message_row_id, vcard FROM message_vcard ORDER BY _id")?;
         let mut rows = stmt.query([])?;
@@ -254,7 +254,7 @@ pub(crate) fn import(src: &Connection, info: &SourceInfo, dst: &Connection, repo
         }
     }
 
-    // --- Reações -----------------------------------------------------------
+    // --- Reactions ---------------------------------------------------------
     if info.has_col("message_add_on", "parent_message_row_id") && info.has_col("message_add_on_reaction", "reaction") {
         let sql = format!(
             "SELECT a.parent_message_row_id, a.from_me, {sender}, r.reaction, {ts}
@@ -270,7 +270,7 @@ pub(crate) fn import(src: &Connection, info: &SourceInfo, dst: &Connection, repo
             let Some(&message_id) = r.get::<_, Option<i64>>(0)?.and_then(|p| ids.get(&p)) else {
                 continue;
             };
-            // Reação removida fica gravada com emoji vazio.
+            // A removed reaction is stored with an empty emoji.
             let Some(emoji) = r.get::<_, Option<String>>(3)?.filter(|e| !e.is_empty()) else {
                 continue;
             };

@@ -1,9 +1,9 @@
-// Idiomas da interface (português e inglês), compartilhados pelo app e pelo
-// export HTML.
+// UI languages (Portuguese and English), shared by the app and the
+// HTML export.
 //
-// Cada pacote tem os seus dicionários, tipados: o dicionário em inglês é
-// declarado com o tipo do português, então o TypeScript acusa qualquer texto
-// que falte em um dos idiomas. Textos com valores são funções.
+// Each package has its own typed dictionaries: the English dictionary is
+// declared with the Portuguese one's type, so TypeScript flags any text
+// missing from either language. Texts with values are functions.
 //
 //   const pt = { title: "Conversas", count: (n: number) => `${n} conversas` };
 //   const en: typeof pt = { title: "Chats", count: (n) => `${n} chats` };
@@ -24,7 +24,7 @@ export function isLang(v: unknown): v is Lang {
   return v === "pt-BR" || v === "en";
 }
 
-/** Idioma do sistema/navegador: português se começar com "pt", senão inglês. */
+/** System/browser language: Portuguese if it starts with "pt", otherwise English. */
 export function detectLang(): Lang {
   const langs = typeof navigator === "undefined" ? [] : (navigator.languages ?? [navigator.language]);
   return langs.some((l) => l?.toLowerCase().startsWith("pt")) ? "pt-BR" : "en";
@@ -34,8 +34,8 @@ type LangState = { lang: Lang; setLang: (l: Lang) => void };
 
 const LangContext = createContext<LangState>({ lang: "pt-BR", setLang: () => {} });
 
-/** Fornece o idioma atual. Quem guarda a escolha é quem usa (o app salva no
- * backend; o export HTML só lembra durante a sessão). */
+/** Provides the current language. Persisting the choice is up to the caller (the app
+ * saves it in the backend; the HTML export only remembers it for the session). */
 export function LangProvider({ lang, setLang, children }: LangState & { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.lang = lang;
@@ -46,8 +46,8 @@ export function LangProvider({ lang, setLang, children }: LangState & { children
 
 export const useLang = () => useContext(LangContext);
 
-/** Cria o hook de traduções de um dicionário. Componentes que o usam
- * re-renderizam ao trocar o idioma (inclusive os `memo`). */
+/** Creates the translation hook for a dictionary. Components that use it
+ * re-render when the language changes (including `memo` ones). */
 export function makeT<M>(dict: Record<Lang, M>): () => M {
   return function useT() {
     return dict[useLang().lang];
@@ -55,17 +55,17 @@ export function makeT<M>(dict: Record<Lang, M>): () => M {
 }
 
 const LANG_DETAIL: Record<Lang, { short: string; region: string }> = {
-  // Linha secundária: o nome na outra língua, para quem não lê a primeira.
+  // Secondary line: the name in the other language, for those who can't read the first.
   "pt-BR": { short: "PT", region: "Portuguese (Brazil)" },
   en: { short: "EN", region: "Inglês" },
 };
 
-/** Seletor de idioma: botão com o idioma atual e um menu com as opções.
+/** Language selector: a button with the current language and a menu with the options.
  *
- * * `pill` (padrão): botão com ícone, nome e seta; herda a cor do texto ao
- *   redor, então serve tanto na barra verde quanto num cartão branco.
- * * `rail`: só o ícone (com a sigla), para a barra de navegação; o menu abre
- *   ao lado. */
+ * * `pill` (default): button with icon, name and chevron; inherits the surrounding
+ *   text color, so it works both on the green bar and on a white card.
+ * * `rail`: icon only (with the code), for the navigation rail; the menu opens
+ *   to the side. */
 export function LanguageSelect({ variant = "pill", className }: { variant?: "pill" | "rail"; className?: string }) {
   const { lang, setLang } = useLang();
   const [open, setOpen] = useState(false);

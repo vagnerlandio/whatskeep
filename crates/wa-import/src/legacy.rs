@@ -1,8 +1,8 @@
-//! Schema legado do msgstore: `messages` com `key_remote_jid` em texto.
+//! Legacy msgstore schema: `messages` with `key_remote_jid` as text.
 //!
-//! Limitação conhecida: nos bancos mais antigos, o caminho do arquivo de mídia
-//! fica num objeto Java serializado (`thumb_image`), que não é lido. Nesses
-//! casos a mídia é importada sem `file_path`, com nome, tipo e miniatura.
+//! Known limitation: in the oldest databases, the media file path lives
+//! in a serialized Java object (`thumb_image`), which is not read. In those
+//! cases the media is imported without `file_path`, with name, type and thumbnail.
 
 use std::collections::HashMap;
 
@@ -20,7 +20,7 @@ const JPEG_MAGIC: &[u8] = &[0xFF, 0xD8, 0xFF];
 pub(crate) fn import(src: &Connection, info: &SourceInfo, dst: &Connection, report: &mut ImportReport) -> Result<(), Error> {
     let mut w = Writer::new(dst);
 
-    // --- Conversas ---------------------------------------------------------
+    // --- Chats -------------------------------------------------------------
     let mut chats: HashMap<String, (i64, ChatKind)> = HashMap::new();
     let chat_sql = if info.has_col("chat_list", "key_remote_jid") {
         format!(
@@ -57,7 +57,7 @@ pub(crate) fn import(src: &Connection, info: &SourceInfo, dst: &Connection, repo
         }
     }
 
-    // --- Mensagens ---------------------------------------------------------
+    // --- Messages ----------------------------------------------------------
     let c = |col: &str| info.col("messages", "m", col);
     let thumbs_table = info.has_col("message_thumbnails", "key_id") && info.has_col("message_thumbnails", "key_remote_jid");
     let sql = format!(
@@ -72,8 +72,8 @@ pub(crate) fn import(src: &Connection, info: &SourceInfo, dst: &Connection, repo
          FROM messages m
          {j_quote} {j_system} {j_media} {j_thumbs}
          WHERE m.key_remote_jid IS NOT NULL AND m.key_remote_jid <> '-1'
-         ORDER BY m.timestamp, m._id", // ordem cronológica: veja `message` em store.rs
-        // `media_wa_type` é TEXT no schema legado.
+         ORDER BY m.timestamp, m._id", // chronological order: see `message` in store.rs
+        // `media_wa_type` is TEXT in the legacy schema.
         status = int(c("status")),
         data = c("data"),
         ts = c("timestamp"),
@@ -152,8 +152,8 @@ pub(crate) fn import(src: &Connection, info: &SourceInfo, dst: &Connection, repo
             let data: Option<String> = r.get("data")?;
             let caption: Option<String> = r.get("caption")?;
             let file_name: Option<String> = r.get("file_name")?;
-            // No legado, contatos compartilhados trazem o vCard em `data`
-            // e o nome em `media_name`.
+            // In the legacy schema, shared contacts carry the vCard in `data`
+            // and the name in `media_name`.
             let vcard = (kind == MessageKind::Contact)
                 .then(|| data.as_deref().filter(|d| d.starts_with("BEGIN:VCARD")))
                 .flatten();
@@ -211,7 +211,7 @@ pub(crate) fn import(src: &Connection, info: &SourceInfo, dst: &Connection, repo
                 )?;
                 report.media += 1;
             }
-            // Bancos antigos guardam a miniatura JPEG direto em `raw_data`.
+            // Old databases store the JPEG thumbnail directly in `raw_data`.
             let raw: Option<Vec<u8>> = r.get("raw_data")?;
             let thumb = raw
                 .filter(|b| b.starts_with(JPEG_MAGIC))
@@ -233,7 +233,7 @@ pub(crate) fn import(src: &Connection, info: &SourceInfo, dst: &Connection, repo
             let (Some(&id), Some(card)) = (ids.get(&r.get::<_, i64>(0)?), r.get::<_, Option<String>>(1)?) else {
                 continue;
             };
-            // Evita duplicar o vCard que já veio de `data`.
+            // Avoid duplicating the vCard that already came from `data`.
             let dup: bool = dst.query_row(
                 "SELECT EXISTS(SELECT 1 FROM vcard WHERE message_id = ?1 AND data = ?2)",
                 rusqlite::params![id, card],
@@ -248,7 +248,7 @@ pub(crate) fn import(src: &Connection, info: &SourceInfo, dst: &Connection, repo
     Ok(())
 }
 
-/// Coluna de um LEFT JOIN que só existe se a tabela existir e a condição valer.
+/// Column of a LEFT JOIN that only exists if the table exists and the condition holds.
 fn guarded(info: &SourceInfo, table: &str, join_col: &str, alias: &str, col: &str, cond: bool) -> String {
     if cond {
         info.joined_col(table, join_col, alias, col)

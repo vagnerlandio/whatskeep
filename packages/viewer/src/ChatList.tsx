@@ -49,7 +49,7 @@ const ChatItem = memo(function ChatItem({
   selected: boolean;
   onSelect: (c: Chat) => void;
 }) {
-  // Hooks aqui dentro: o memo não impede re-renderizar ao trocar o idioma.
+  // Hooks in here: memo doesn't prevent re-rendering when the language changes.
   const t = useViewerT();
   const { lang } = useLang();
   const last = chat.last;

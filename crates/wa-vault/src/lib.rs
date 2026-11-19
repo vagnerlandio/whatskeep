@@ -1,17 +1,17 @@
-//! Cofre cifrado onde o histórico importado fica guardado.
+//! Encrypted vault where the imported history is kept.
 //!
 //! ```text
 //! <dir>/
-//!   vault.json                parâmetros do Argon2id + DEK embrulhada (AES-256-GCM)
-//!   .metadata_never_index     Spotlight não indexa
-//!   stores/whatsapp.db        SQLCipher, chave = HKDF(DEK, id do cofre, "wa-vault store v1:whatsapp")
-//!   stores/business.db        SQLCipher, chave = HKDF(DEK, id do cofre, "wa-vault store v1:business")
+//!   vault.json                Argon2id parameters + wrapped DEK (AES-256-GCM)
+//!   .metadata_never_index     Spotlight does not index it
+//!   stores/whatsapp.db        SQLCipher, key = HKDF(DEK, vault id, "wa-vault store v1:whatsapp")
+//!   stores/business.db        SQLCipher, key = HKDF(DEK, vault id, "wa-vault store v1:business")
 //! ```
 //!
-//! * A senha do app só serve para desembrulhar a DEK. Sem ela, nada no disco
-//!   é legível, e não existe recuperação.
-//! * O [`Vault`] só existe destravado: travar é descartá-lo, e a DEK é zerada no drop.
-//! * Pastas ficam com permissão 0700 e arquivos com 0600 (Unix).
+//! * The app password only serves to unwrap the DEK. Without it, nothing on disk
+//!   is readable, and there is no recovery.
+//! * A [`Vault`] only exists unlocked: locking means dropping it, and the DEK is zeroed on drop.
+//! * Folders get 0700 permissions and files 0600 (Unix).
 
 mod fsutil;
 mod header;
@@ -33,7 +33,7 @@ pub use store::{StoreHandle, StoreInfo};
 
 use header::Header;
 
-/// Chave simétrica de 256 bits, zerada no drop.
+/// 256-bit symmetric key, zeroed on drop.
 pub(crate) type Key = Zeroizing<[u8; 32]>;
 
 const HEADER_FILE: &str = "vault.json";
@@ -68,7 +68,7 @@ pub enum Error {
     Import(#[from] wa_import::Error),
 }
 
-/// Cofre destravado. Travar é dar `drop`.
+/// Unlocked vault. Locking means `drop`ping it.
 pub struct Vault {
     dir: PathBuf,
     header: Header,
@@ -86,10 +86,10 @@ impl Vault {
         dir.join(HEADER_FILE).is_file()
     }
 
-    /// Cria um cofre novo e já o devolve destravado.
+    /// Creates a new vault and returns it already unlocked.
     ///
-    /// Recusa se já houver cabeçalho ou bancos na pasta: bancos sem o
-    /// cabeçalho original são ilegíveis, mas apagá-los é decisão do usuário.
+    /// Refuses if the folder already has a header or databases: databases without
+    /// the original header are unreadable, but deleting them is the user's decision.
     pub fn create(dir: &Path, password: &str, params: KdfParams) -> Result<Self, Error> {
         check_password(password)?;
         let stores = dir.join(STORES_DIR);
@@ -101,11 +101,11 @@ impl Vault {
         fsutil::create_private_dir(dir)?;
         fsutil::create_private_dir(&stores)?;
         fsutil::mark_no_index(dir)?;
-        // Os dados já são cifrados; fora do Time Machine, nem a versão cifrada
-        // fica espalhada em discos de backup.
+        // The data is already encrypted; kept out of Time Machine, not even the
+        // encrypted version ends up scattered across backup disks.
         let _ = fsutil::exclude_from_backup(dir);
 
-        // Direto no buffer zerável, sem cópia intermediária na pilha.
+        // Straight into the zeroizable buffer, with no intermediate copy on the stack.
         let mut dek = Key::default();
         getrandom::fill(dek.as_mut()).map_err(|_| Error::Random)?;
         let header = Header::create(password, params, &dek)?;
@@ -113,7 +113,7 @@ impl Vault {
         Ok(Self { dir: dir.to_owned(), header, dek })
     }
 
-    /// Destrava com a senha. Custa um Argon2id (~0,5 s com os parâmetros padrão num Mac recente).
+    /// Unlocks with the password. Costs one Argon2id (~0.5 s with the default parameters on a recent Mac).
     pub fn unlock(dir: &Path, password: &str) -> Result<Self, Error> {
         let path = dir.join(HEADER_FILE);
         if !path.is_file() {
@@ -123,13 +123,13 @@ impl Vault {
         let dek = header.unwrap_key(password)?;
         let vault = Self { dir: dir.to_owned(), header, dek };
         vault.cleanup_partial_imports();
-        // Idempotente: cobre cofres criados antes desta proteção.
+        // Idempotent: covers vaults created before this protection existed.
         let _ = fsutil::exclude_from_backup(dir);
         Ok(vault)
     }
 
-    /// Troca a senha. Pede a senha atual de novo para que alguém diante de um
-    /// app destravado não consiga trocá-la.
+    /// Changes the password. Asks for the current password again so that someone in
+    /// front of an unlocked app cannot change it.
     pub fn change_password(&mut self, current: &str, new: &str, params: KdfParams) -> Result<(), Error> {
         check_password(new)?;
         let check = self.header.unwrap_key(current)?;
@@ -142,7 +142,7 @@ impl Vault {
         Ok(())
     }
 
-    /// Parâmetros do Argon2id em uso.
+    /// Argon2id parameters in use.
     pub fn kdf_params(&self) -> KdfParams {
         self.header.params()
     }
@@ -152,23 +152,23 @@ impl Vault {
         let mut key = Key::default();
         Hkdf::<Sha256>::new(Some(&vault_id), self.dek.as_ref())
             .expand(format!("wa-vault store v1:{}", app.as_str()).as_bytes(), key.as_mut())
-            .expect("32 bytes cabem no HKDF-SHA256");
+            .expect("32 bytes fit in HKDF-SHA256");
         Ok(StoreHandle::new(app, &self.dir.join(STORES_DIR), key))
     }
 
-    /// Mídias de um app: blobs cifrados + índice, com chaves próprias.
+    /// An app's media: encrypted blobs + index, with their own keys.
     pub fn media(&self, app: SourceApp) -> Result<MediaHandle, Error> {
         let derive = |label: &str| -> Result<Key, Error> {
             let mut key = Key::default();
             Hkdf::<Sha256>::new(Some(&self.header.vault_id()?), self.dek.as_ref())
                 .expand(format!("wa-vault {label} v1:{}", app.as_str()).as_bytes(), key.as_mut())
-                .expect("32 bytes cabem no HKDF-SHA256");
+                .expect("32 bytes fit in HKDF-SHA256");
             Ok(key)
         };
         Ok(MediaHandle::new(&self.dir.join(STORES_DIR), app.as_str(), derive("media")?, derive("media-index")?))
     }
 
-    /// Bancos já importados, com contagens.
+    /// Databases already imported, with counts.
     pub fn stores(&self) -> Result<Vec<StoreInfo>, Error> {
         let mut out = Vec::new();
         for app in SourceApp::ALL {
@@ -179,8 +179,8 @@ impl Vault {
         Ok(out)
     }
 
-    /// Apaga temporários de importações interrompidas (queda de energia,
-    /// app fechado no meio). Eles são cifrados, mas ocupam espaço.
+    /// Deletes temporary files from interrupted imports (power loss,
+    /// app closed midway). They are encrypted, but take up space.
     fn cleanup_partial_imports(&self) {
         let Ok(entries) = fs::read_dir(self.dir.join(STORES_DIR)) else { return };
         for entry in entries.flatten() {

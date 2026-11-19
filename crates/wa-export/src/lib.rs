@@ -1,19 +1,19 @@
-//! Exporta conversas do cofre para uma pasta que abre offline em qualquer
-//! navegador, protegida por senha. Formato em [`format`].
+//! Exports chats from the vault into a password-protected folder that opens
+//! offline in any browser. Format in [`format`].
 //!
 //! ```text
-//! <destino>/
-//!   index.html            visualizador (um arquivo só) com CSP sem rede
-//!   data/manifest.js      parâmetros do Argon2id + slots cifrados (um por senha)
-//!   data/<id>.js          pedaços cifrados de mensagens (ids aleatórios)
-//!   media/pack-000.bin    mídias cifradas (modo "cifradas")
-//!   media/<id>            mídias em claro (modo "sem cifra")
+//! <destination>/
+//!   index.html            viewer (a single file) with a no-network CSP
+//!   data/manifest.js      Argon2id parameters + encrypted slots (one per password)
+//!   data/<id>.js          encrypted message chunks (random ids)
+//!   media/pack-000.bin    encrypted media ("encrypted" mode)
+//!   media/<id>            plaintext media ("plain" mode)
 //! ```
 //!
-//! * Uma senha libera só as conversas do seu slot. Conversas fora do export
-//!   não entram em nada (nem mensagens, nem mídia, nem índice).
-//! * Não há índice de busca gravado: a busca roda no navegador, só nas
-//!   conversas destravadas.
+//! * A password unlocks only the chats in its slot. Chats outside the export
+//!   go nowhere (no messages, no media, no index).
+//! * No search index is written: search runs in the browser, only over the
+//!   unlocked chats.
 
 pub mod format;
 
@@ -33,11 +33,11 @@ use zeroize::Zeroizing;
 
 use format::{Kdf, Key, Sealed, b64, random, random_id};
 
-/// Mensagens por página lida do banco.
+/// Messages per page read from the database.
 const PAGE: u32 = 500;
-/// JSON acumulado antes de fechar um pedaço (~2 MiB antes do gzip).
+/// JSON accumulated before closing a chunk (~2 MiB before gzip).
 const CHUNK_TARGET: usize = 2 << 20;
-/// Tamanho máximo de um pacote de mídia.
+/// Maximum size of a media pack.
 const PACK_MAX: u64 = 1 << 30;
 pub const MIN_PASSWORD_CHARS: usize = 8;
 
@@ -68,11 +68,11 @@ pub enum Error {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum MediaMode {
-    /// Só as miniaturas (dentro das mensagens cifradas).
+    /// Thumbnails only (inside the encrypted messages).
     None,
-    /// Mídias cifradas com a chave da conversa (padrão).
+    /// Media encrypted with the chat key (default).
     Encrypted,
-    /// Mídias em claro, com nomes aleatórios.
+    /// Plaintext media, with random names.
     Plain,
 }
 
@@ -86,7 +86,7 @@ impl MediaMode {
     }
 }
 
-/// Conversas liberadas por uma senha.
+/// Chats unlocked by one password.
 pub struct Group {
     pub password: Zeroizing<String>,
     pub chats: Vec<i64>,
@@ -115,7 +115,7 @@ pub struct Summary {
     pub messages: u64,
     pub media_files: u64,
     pub media_bytes: u64,
-    /// Mídias citadas nas mensagens, mas que não estão no cofre.
+    /// Media referenced by messages but not present in the vault.
     pub media_missing: u64,
     pub slots: u64,
 }
@@ -128,17 +128,17 @@ pub struct SlotContent {
 
 #[derive(Serialize, Deserialize)]
 pub struct ChatEntry {
-    /// Id aleatório usado na derivação da chave da conversa.
+    /// Random id used to derive the chat key.
     pub key_id: String,
-    /// A conversa no formato do visualizador.
+    /// The chat in the viewer's format.
     pub chat: Value,
     pub chunks: Vec<String>,
 }
 
-/// Escreve o pacote em `dest` (vazia ou inexistente).
+/// Writes the package into `dest` (empty or nonexistent).
 ///
-/// `shell_html` é o `index.html` do visualizador (`packages/export-shell`),
-/// que recebe aqui a CSP com os hashes dos seus scripts.
+/// `shell_html` is the viewer's `index.html` (`packages/export-shell`), which
+/// gets the CSP with the hashes of its scripts here.
 pub fn export(
     conn: &Connection,
     media: Option<&MediaReader>,
@@ -155,7 +155,7 @@ pub fn export(
         fs::create_dir_all(dest.join("media"))?;
     }
     if opts.media == MediaMode::Plain {
-        // Spotlight (macOS) não indexa as mídias em claro.
+        // Keeps Spotlight (macOS) from indexing the plaintext media.
         File::create(dest.join(".metadata_never_index"))?;
     }
 
@@ -277,7 +277,7 @@ impl Writer<'_> {
         let mut chunks = Vec::new();
         let mut buf: Vec<Value> = Vec::new();
         let mut buf_size = 0usize;
-        // Mesma mídia em várias mensagens da conversa: grava uma vez.
+        // Same media in several messages of the chat: written once.
         let mut stored: HashMap<String, Value> = HashMap::new();
         let mut cursor: Option<Cursor> = None;
 
@@ -348,7 +348,7 @@ impl Writer<'_> {
         Ok(id)
     }
 
-    /// Copia a mídia do cofre para o pacote e devolve a referência gravada na mensagem.
+    /// Copies the media from the vault into the package and returns the reference stored in the message.
     fn media_ref(
         &mut self,
         media: &query::Media,
@@ -383,7 +383,7 @@ impl Writer<'_> {
                     let path = self.dest.join("media").join(format!("pack-{:03}.bin", self.pack_index));
                     self.pack = Some((BufWriter::new(File::create(path)?), 0));
                 }
-                let (file, offset) = self.pack.as_mut().expect("aberto acima");
+                let (file, offset) = self.pack.as_mut().expect("opened above");
                 let media_id = random_id()?;
                 let prefix: [u8; 7] = random()?;
                 let key = format::media_key(chat_key, &self.salt, &media_id);
@@ -416,7 +416,7 @@ impl Writer<'_> {
     }
 }
 
-/// Remove campos `null`, `false` e listas vazias (o visualizador assume os padrões).
+/// Removes `null`, `false` and empty-list fields (the viewer assumes the defaults).
 fn strip_nulls(v: &mut Value) {
     if let Value::Object(map) = v {
         map.retain(|_, x| !matches!(x, Value::Null | Value::Bool(false)) && !matches!(x, Value::Array(a) if a.is_empty()));
@@ -426,8 +426,8 @@ fn strip_nulls(v: &mut Value) {
     }
 }
 
-/// Insere no `<head>` uma CSP que só permite os scripts do próprio pacote
-/// (os inline pelo hash), proíbe qualquer conexão de rede e formulários.
+/// Inserts into `<head>` a CSP that only allows the package's own scripts
+/// (inline ones by hash) and forbids any network connection and forms.
 pub fn with_csp(html: &str) -> String {
     use base64::Engine;
     let mut hashes = Vec::new();
@@ -448,9 +448,9 @@ pub fn with_csp(html: &str) -> String {
         }
         rest = &rest[tag_end + close..];
     }
-    // Sem 'self': no WebKit (Safari), 'self' numa página file:// casa com
-    // QUALQUER URL, inclusive https remoto. `file:` libera só arquivos locais
-    // (os dados ao lado do index.html) nos dois motores.
+    // No 'self': in WebKit (Safari), 'self' on a file:// page matches ANY
+    // URL, including remote https. `file:` allows only local files (the data
+    // next to index.html) in both engines.
     let csp = format!(
         "default-src 'none'; script-src file: 'wasm-unsafe-eval' {}; style-src 'unsafe-inline'; \
          img-src file: blob: data:; media-src file: blob:; connect-src 'none'; \

@@ -1,7 +1,7 @@
-//! Schema normalizado do app: o que o viewer lê, independente da versão do WhatsApp.
+//! The app's normalized schema: what the viewer reads, regardless of the WhatsApp version.
 //!
-//! Datas em milissegundos desde a época Unix (UTC). Texto e legenda ficam em
-//! `message.text`, indexado pelo FTS5 sem diferenciar acentos.
+//! Dates in milliseconds since the Unix epoch (UTC). Text and caption live in
+//! `message.text`, indexed by FTS5 ignoring diacritics.
 
 use std::collections::HashMap;
 
@@ -18,8 +18,8 @@ CREATE TABLE IF NOT EXISTS meta (
     value TEXT NOT NULL
 ) WITHOUT ROWID;
 
--- Pessoas e grupos. `jid` é o identificador do WhatsApp, já resolvido de LID
--- para telefone quando possível. `name` fica vazio: o msgstore não traz a agenda.
+-- People and groups. `jid` is the WhatsApp identifier, already resolved from LID
+-- to phone number when possible. `name` stays empty: the msgstore has no address book.
 CREATE TABLE IF NOT EXISTS contact (
     id    INTEGER PRIMARY KEY,
     jid   TEXT NOT NULL UNIQUE,
@@ -31,26 +31,26 @@ CREATE TABLE IF NOT EXISTS chat (
     id              INTEGER PRIMARY KEY,
     contact_id      INTEGER NOT NULL REFERENCES contact(id),
     kind            TEXT NOT NULL,          -- direct | group | broadcast | channel
-    title           TEXT,                   -- nome do grupo/canal
+    title           TEXT,                   -- group/channel name
     archived        INTEGER NOT NULL DEFAULT 0,
     hidden          INTEGER NOT NULL DEFAULT 0,
     message_count   INTEGER NOT NULL DEFAULT 0,
     last_message_at INTEGER
 );
 
--- As mensagens são inseridas em ordem cronológica (sent_at, id da origem), então
--- `id` cresce com `sent_at`. A busca depende disso para varrer o FTS por rowid
--- decrescente e parar no limite, sem ordenar todos os resultados.
+-- Messages are inserted in chronological order (sent_at, source id), so
+-- `id` grows with `sent_at`. Search relies on this to scan the FTS by descending
+-- rowid and stop at the limit, without sorting all results.
 CREATE TABLE IF NOT EXISTS message (
     id                INTEGER PRIMARY KEY,
     chat_id           INTEGER NOT NULL REFERENCES chat(id),
     key_id            TEXT,
     from_me           INTEGER NOT NULL,
-    sender_id         INTEGER REFERENCES contact(id),  -- autor, em grupos
+    sender_id         INTEGER REFERENCES contact(id),  -- author, in groups
     sent_at           INTEGER NOT NULL,
     kind              TEXT NOT NULL,
-    wa_type           INTEGER,                         -- código original (diagnóstico)
-    text              TEXT,                            -- texto ou legenda
+    wa_type           INTEGER,                         -- original code (diagnostics)
+    text              TEXT,                            -- text or caption
     starred           INTEGER NOT NULL DEFAULT 0,
     edited            INTEGER NOT NULL DEFAULT 0,
     system_action     INTEGER,
@@ -65,7 +65,7 @@ CREATE INDEX IF NOT EXISTS message_by_key  ON message(chat_id, key_id);
 
 CREATE TABLE IF NOT EXISTS media (
     message_id    INTEGER PRIMARY KEY REFERENCES message(id),
-    file_path     TEXT,     -- caminho relativo no celular/backup
+    file_path     TEXT,     -- relative path on the phone/backup
     mime          TEXT,
     size          INTEGER,
     width         INTEGER,
@@ -127,7 +127,7 @@ pub(crate) fn has_data(conn: &Connection) -> Result<bool, Error> {
     )?)
 }
 
-/// Passos que dependem de todas as mensagens já gravadas.
+/// Steps that depend on all messages already being written.
 pub(crate) fn finish(conn: &Connection, source_app: &str, source_schema: &str) -> Result<(), Error> {
     conn.execute_batch(
         r#"
@@ -189,7 +189,7 @@ pub(crate) struct NewMedia<'a> {
     pub transcription: Option<&'a str>,
 }
 
-/// Grava no schema do app, com cache de contatos por JID.
+/// Writes to the app's schema, with a per-JID contact cache.
 pub(crate) struct Writer<'c> {
     conn: &'c Connection,
     contacts: HashMap<String, i64>,
@@ -234,7 +234,7 @@ impl<'c> Writer<'c> {
         hidden: bool,
     ) -> Result<i64, Error> {
         let contact_id = self.contact(jid)?;
-        // Em conversas individuais o `subject` costuma vir vazio ou com lixo.
+        // In one-to-one chats the `subject` is usually empty or garbage.
         let title = match kind {
             ChatKind::Direct => None,
             _ => title.filter(|t| !t.trim().is_empty()),

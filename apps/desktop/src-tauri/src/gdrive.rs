@@ -1,18 +1,18 @@
-//! Download do backup direto do Google Drive (fluxo não oficial).
+//! Backup download straight from Google Drive (unofficial flow).
 //!
-//! 1. Uma janela **anônima** (sem cookies persistentes) abre o login
-//!    `EmbeddedSetup` do Google. Ela não tem nenhuma permissão de IPC (as
-//!    capabilities só valem para a janela `main`) e só navega por domínios do
-//!    Google.
-//! 2. O cookie `oauth_token` é lido pelo backend assim que o login termina, e a
-//!    janela é destruída (junto com a sessão do navegador).
-//! 3. O cookie vira token mestre e, na hora, tokens de acesso `drive.appdata`
-//!    (1 h) para o WhatsApp e o Business. O token mestre é zerado em seguida.
-//! 4. Os tokens de acesso ficam só em memória até o download terminar, o
-//!    usuário cancelar, o cofre travar ou passarem 50 minutos.
+//! 1. A **private** window (no persistent cookies) opens Google's
+//!    `EmbeddedSetup` login. It has no IPC permission at all (capabilities
+//!    only apply to the `main` window) and only navigates Google domains.
+//! 2. The backend reads the `oauth_token` cookie as soon as the login
+//!    finishes, and the window is destroyed (along with its browser session).
+//! 3. The cookie becomes the master token and, right away, `drive.appdata`
+//!    access tokens (1 h) for WhatsApp and Business. The master token is
+//!    zeroed right after.
+//! 4. The access tokens stay in memory only until the download finishes, the
+//!    user cancels, the vault locks or 50 minutes pass.
 //!
-//! O backup baixado continua cifrado (crypt14/15) e vai direto da memória para
-//! a descriptografia e a importação: nada é gravado em disco.
+//! The downloaded backup is still encrypted (crypt14/15) and goes straight
+//! from memory to decryption and import: nothing is written to disk.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -36,14 +36,14 @@ const LOGIN_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const SESSION_TTL: Duration = Duration::from_secs(50 * 60);
 const EVENT_DOWNLOAD: &str = "gdrive-progress";
 
-/// Domínios por onde o login do Google passa. Qualquer outra navegação na
-/// janela de login é bloqueada.
+/// Domains the Google login goes through. Any other navigation in the login
+/// window is blocked.
 const ALLOWED_DOMAINS: &[&str] = &["gstatic.com", "googleusercontent.com", "googleapis.com", "youtube.com"];
 
 #[derive(Default)]
 pub struct DriveState {
     session: Mutex<Option<Logged>>,
-    /// Pedido de cancelamento do login ou do download em andamento.
+    /// Cancellation request for the login or download in progress.
     cancel: Arc<AtomicBool>,
 }
 
@@ -56,7 +56,7 @@ struct Logged {
 #[derive(Clone)]
 struct Found {
     backup: Backup,
-    /// Apps cujo token enxerga este backup.
+    /// Apps whose token can see this backup.
     apps: Vec<DriveApp>,
 }
 
@@ -65,7 +65,7 @@ impl DriveState {
         self.session.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// Descarta a sessão (os tokens são zerados no drop).
+    /// Discards the session (the tokens are zeroed on drop).
     pub fn clear(&self) {
         self.session().take();
     }
@@ -78,7 +78,7 @@ impl DriveState {
     }
 }
 
-/// Cancela o que estiver em andamento, descarta os tokens e fecha a janela de login.
+/// Cancels whatever is in progress, discards the tokens and closes the login window.
 pub fn shutdown(app: &AppHandle) {
     let state = app.state::<AppState>();
     state.drive.cancel.store(true, Ordering::SeqCst);
@@ -89,7 +89,7 @@ pub fn shutdown(app: &AppHandle) {
 }
 
 fn allowed_navigation(url: &Url) -> bool {
-    // Quadros vazios que a página do Google cria por script. Não acessam a rede.
+    // Empty frames the Google page creates via script. They do not touch the network.
     if url.scheme() == "about" {
         return matches!(url.path(), "blank" | "srcdoc");
     }
@@ -100,8 +100,8 @@ fn allowed_navigation(url: &Url) -> bool {
     if ALLOWED_DOMAINS.iter().any(|d| host == *d || host.ends_with(&format!(".{d}"))) {
         return true;
     }
-    // google.com, google.de, accounts.google.com.br, google.co.uk. Só esses
-    // formatos de sufixo: algo como `google.us.com` é registrável por qualquer um.
+    // google.com, google.de, accounts.google.com.br, google.co.uk. Only these
+    // suffix shapes: something like `google.us.com` can be registered by anyone.
     let labels: Vec<&str> = host.split('.').collect();
     labels.iter().position(|l| *l == "google").is_some_and(|i| match &labels[i + 1..] {
         ["com"] => true,
@@ -140,8 +140,8 @@ impl From<wa_gdrive::Error> for CmdError {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackupDto {
-    /// Índice na sessão. O nome real do backup (`clients/wa/backups/<telefone>`)
-    /// não volta do webview: o download usa este índice.
+    /// Index in the session. The real backup name (`clients/wa/backups/<phone>`)
+    /// never comes back from the webview: the download uses this index.
     id: usize,
     #[serde(flatten)]
     backup: BackupView,
@@ -166,11 +166,11 @@ struct BackupView {
 #[serde(rename_all = "camelCase")]
 pub struct LoginResult {
     backups: Vec<BackupDto>,
-    /// Apps que o Google recusou (ex.: conta sem WhatsApp Business).
+    /// Apps Google refused (e.g. an account without WhatsApp Business).
     refused: Vec<DriveApp>,
 }
 
-/// Abre a janela de login do Google e espera o usuário entrar.
+/// Opens the Google login window and waits for the user to sign in.
 #[tauri::command]
 pub async fn gdrive_login(app: AppHandle, email: String) -> Result<LoginResult, CmdError> {
     check_email(&email)?;
@@ -183,24 +183,24 @@ pub async fn gdrive_login(app: AppHandle, email: String) -> Result<LoginResult, 
     state.drive.clear();
     state.drive.cancel.store(false, Ordering::SeqCst);
 
-    let mut login_url: Url = wa_gdrive::LOGIN_URL.parse().expect("URL fixa válida");
-    // A página do Google preenche o e-mail com isto: o usuário não digita duas vezes.
+    let mut login_url: Url = wa_gdrive::LOGIN_URL.parse().expect("valid fixed URL");
+    // Google's page prefills the e-mail with this: the user does not type it twice.
     login_url.query_pairs_mut().append_pair("Email", email.trim());
     WebviewWindowBuilder::new(&app, LOGIN_WINDOW, WebviewUrl::External(login_url))
         .title(crate::settings::tr(&app, "Entrar no Google", "Sign in to Google"))
         .inner_size(480.0, 720.0)
         .incognito(true)
-        // O WKWebView se identifica sem o marcador do Safari, e o Google recusa
-        // navegadores embutidos ("este navegador pode não ser seguro").
+        // WKWebView identifies itself without the Safari marker, and Google refuses
+        // embedded browsers ("this browser or app may not be secure").
         .user_agent(LOGIN_USER_AGENT)
         .on_navigation(|url| {
             let ok = allowed_navigation(url);
-            // Só host e caminho (sem query): nada de e-mail ou códigos.
+            // Host and path only (no query): no e-mail or codes.
             let shown = format!("{}{}", url.host_str().unwrap_or(""), wa_gdrive::trace::scrub_digits(url.path()));
             if ok {
-                tracing::debug!("login Google: navegou para {shown}");
+                tracing::debug!("Google login: navigated to {shown}");
             } else {
-                tracing::warn!(esquema = url.scheme(), "login Google: navegação BLOQUEADA para {shown}");
+                tracing::warn!(scheme = url.scheme(), "Google login: navigation BLOCKED to {shown}");
             }
             ok
         })
@@ -208,10 +208,10 @@ pub async fn gdrive_login(app: AppHandle, email: String) -> Result<LoginResult, 
         .map_err(|e| CmdError::new("internal", format!("não foi possível abrir a janela de login: {e}")))?;
 
     let app2 = app.clone();
-    let cookie = crate::commands::blocking("gdrive_login_aguardando_cookie", move || {
-        // O usuário interage com a janela do Google, não com a principal: sem
-        // isto, o autolock trava o cofre (e cancela o login) no meio do caminho.
-        // O próprio login tem limite de tempo (LOGIN_TIMEOUT).
+    let cookie = crate::commands::blocking("gdrive_login_waiting_for_cookie", move || {
+        // The user interacts with the Google window, not the main one: without
+        // this, the autolock would lock the vault (and cancel the login) midway.
+        // The login itself has a time limit (LOGIN_TIMEOUT).
         let state = app2.state::<AppState>();
         let _busy = state.busy();
         wait_for_cookie(&app2)
@@ -220,7 +220,7 @@ pub async fn gdrive_login(app: AppHandle, email: String) -> Result<LoginResult, 
     finish_login(app, email, cookie).await
 }
 
-/// Plano B: o usuário fez login no navegador e colou o cookie `oauth_token`.
+/// Fallback: the user signed in in the browser and pasted the `oauth_token` cookie.
 #[tauri::command]
 pub async fn gdrive_login_manual(app: AppHandle, email: String, oauth_token: String) -> Result<LoginResult, CmdError> {
     let cookie = OauthCookie::new(oauth_token.trim().to_owned());
@@ -234,13 +234,13 @@ pub async fn gdrive_login_manual(app: AppHandle, email: String, oauth_token: Str
     finish_login(app, email, cookie).await
 }
 
-/// Lê os cookies da janela até aparecer o `oauth_token` (ou a janela fechar).
+/// Reads the window's cookies until `oauth_token` shows up (or the window closes).
 fn wait_for_cookie(app: &AppHandle) -> Result<OauthCookie, CmdError> {
-    let accounts: Url = "https://accounts.google.com/".parse().expect("URL fixa válida");
+    let accounts: Url = "https://accounts.google.com/".parse().expect("valid fixed URL");
     let cancel = app.state::<AppState>().drive.cancel.clone();
     let started = Instant::now();
     let mut last_names: Vec<String> = Vec::new();
-    tracing::info!("login Google: janela aberta, aguardando o cookie oauth_token");
+    tracing::info!("Google login: window open, waiting for the oauth_token cookie");
     loop {
         std::thread::sleep(Duration::from_millis(700));
         let Some(window) = app.get_webview_window(LOGIN_WINDOW) else {
@@ -253,22 +253,22 @@ fn wait_for_cookie(app: &AppHandle) -> Result<OauthCookie, CmdError> {
         let cookies = match window.cookies_for_url(accounts.clone()) {
             Ok(c) => c,
             Err(e) => {
-                tracing::debug!("login Google: não foi possível ler cookies: {e}");
+                tracing::debug!("Google login: could not read cookies: {e}");
                 continue;
             }
         };
-        // Só os nomes dos cookies (nunca os valores), quando mudam.
+        // Only the cookie names (never the values), when they change.
         let mut names: Vec<String> = cookies.iter().map(|c| c.name().to_owned()).collect();
         names.sort();
         if names != last_names {
-            tracing::debug!(cookies = ?names, "login Google: cookies de accounts.google.com");
+            tracing::debug!(cookies = ?names, "Google login: accounts.google.com cookies");
             last_names = names;
         }
         if let Some(c) = cookies.iter().find(|c| c.name() == wa_gdrive::LOGIN_COOKIE && !c.value().is_empty()) {
             let cookie = OauthCookie::new(c.value().to_owned());
             drop(cookies);
-            tracing::info!(s = started.elapsed().as_secs(), "login Google: cookie oauth_token capturado");
-            // Fecha a janela: a sessão anônima do navegador some junto.
+            tracing::info!(s = started.elapsed().as_secs(), "Google login: oauth_token cookie captured");
+            // Closes the window: the private browser session goes away with it.
             let _ = window.destroy();
             return Ok(cookie);
         }
@@ -296,28 +296,28 @@ async fn finish_login(app: AppHandle, email: String, cookie: OauthCookie) -> Res
             }
         }
         for e in &errors {
-            tracing::warn!("listar backups falhou: {e}");
+            tracing::warn!("listing backups failed: {e}");
         }
         tracing::info!(
             backups = found.len(),
-            apps_com_token = ?session.tokens.iter().map(|(a, _)| a.package()).collect::<Vec<_>>(),
-            apps_recusados = ?session.refused.iter().map(|(a, e)| format!("{}: {e}", a.package())).collect::<Vec<_>>(),
-            "login Google concluído"
+            apps_with_token = ?session.tokens.iter().map(|(a, _)| a.package()).collect::<Vec<_>>(),
+            apps_refused = ?session.refused.iter().map(|(a, e)| format!("{}: {e}", a.package())).collect::<Vec<_>>(),
+            "Google login done"
         );
         for (i, f) in found.iter().enumerate() {
             let b = &f.backup;
             tracing::info!(
                 id = i,
                 apps = ?f.apps.iter().map(|a| a.package()).collect::<Vec<_>>(),
-                atualizado = ?b.update_time,
-                tamanho = ?b.size_bytes.map(crate::diag::mb),
-                banco = ?b.chat_db_size.map(crate::diag::mb),
-                midias = ?b.media_size.map(crate::diag::mb),
-                mensagens = ?b.messages,
+                updated = ?b.update_time,
+                size = ?b.size_bytes.map(crate::diag::mb),
+                database = ?b.chat_db_size.map(crate::diag::mb),
+                media = ?b.media_size.map(crate::diag::mb),
+                messages = ?b.messages,
                 e2e = ?b.encrypted,
-                enviando = b.uploading,
-                versao_app = ?b.app_version,
-                "backup encontrado"
+                uploading = b.uploading,
+                app_version = ?b.app_version,
+                "backup found"
             );
         }
         if found.is_empty()
@@ -347,7 +347,7 @@ async fn finish_login(app: AppHandle, email: String, cookie: OauthCookie) -> Res
             .collect();
 
         let state = app.state::<AppState>();
-        // O cofre pode ter travado durante o login: aí os tokens nem ficam.
+        // The vault may have locked during the login: then the tokens are not kept at all.
         require_unlocked(&state)?;
         *state.drive.session() = Some(Logged { session, backups: found, at: Instant::now() });
         Ok(LoginResult { backups: dto, refused })
@@ -355,7 +355,7 @@ async fn finish_login(app: AppHandle, email: String, cookie: OauthCookie) -> Res
     .await
 }
 
-/// Descarta os tokens do Google e fecha a janela de login.
+/// Discards the Google tokens and closes the login window.
 #[tauri::command]
 pub fn gdrive_cancel(app: AppHandle) {
     shutdown(&app);
@@ -377,9 +377,9 @@ pub struct DriveResult {
     media: Option<MediaSummary>,
 }
 
-/// Baixa o msgstore do backup escolhido, descriptografa e importa; depois,
-/// se pedido, as mídias. Ao terminar (com sucesso ou não), os tokens do Google
-/// são descartados.
+/// Downloads the chosen backup's msgstore, decrypts and imports it; then, if
+/// requested, the media. When done (successfully or not), the Google tokens
+/// are discarded.
 #[tauri::command]
 pub async fn gdrive_download(
     app: AppHandle,
@@ -392,11 +392,11 @@ pub async fn gdrive_download(
         let state = app.state::<AppState>();
         let _busy = state.busy();
         let target: SourceApp = self::source_app(&source_app)?;
-        // Chave errada ou malformada falha antes de baixar qualquer coisa.
+        // A wrong or malformed key fails before anything is downloaded.
         let key = key.load()?;
         require_unlocked(&state)?;
 
-        // A sessão sai do estado: os tokens morrem no fim deste comando.
+        // The session leaves the state: the tokens die at the end of this command.
         let logged = state
             .drive
             .session()
@@ -427,11 +427,11 @@ pub async fn gdrive_download(
             let db = wa_gdrive::find_msgstore(&files).ok_or_else(|| {
                 CmdError::new("not_msgstore", "este backup não tem o banco de mensagens (msgstore) no Google Drive")
             })?;
-            tracing::info!(arquivo = db.path, tamanho = %crate::diag::mb(db.size_bytes), md5 = db.md5.is_some(), "baixando o banco de mensagens");
+            tracing::info!(file = db.path, size = %crate::diag::mb(db.size_bytes), md5 = db.md5.is_some(), "downloading the message database");
             let mut next_log = 0u64;
             let bytes = api.download(db, &cancel, |downloaded, total| {
                 if total > 0 && downloaded * 10 / total >= next_log {
-                    tracing::debug!(baixado = %crate::diag::mb(downloaded), total = %crate::diag::mb(total), "download {}%", downloaded * 100 / total);
+                    tracing::debug!(downloaded = %crate::diag::mb(downloaded), total = %crate::diag::mb(total), "download {}%", downloaded * 100 / total);
                     next_log = downloaded * 10 / total + 1;
                 }
                 let _ = app.emit(EVENT_DOWNLOAD, DownloadProgress { downloaded, total });
@@ -440,8 +440,8 @@ pub async fn gdrive_download(
         })();
         let (bytes, files) = match downloaded {
             Ok(v) => v,
-            // Falha de rede ou arquivo corrompido: a sessão volta para tentar
-            // de novo sem novo login (ela ainda expira em SESSION_TTL).
+            // Network failure or corrupted file: the session is put back so the
+            // user can retry without logging in again (it still expires at SESSION_TTL).
             Err(e) if matches!(e.code, "network" | "download_corrupt") && state.vault().is_some() => {
                 *state.drive.session() = Some(logged);
                 return Err(e);
@@ -458,18 +458,18 @@ pub async fn gdrive_download(
         } else {
             None
         };
-        drop(logged); // tokens zerados aqui
+        drop(logged); // tokens zeroed here
         Ok(DriveResult { summary, media })
     })
     .await
 }
 
-/// Baixa as mídias que o histórico usa e ainda não estão no cofre.
+/// Downloads the media the history uses that are not in the vault yet.
 ///
-/// * Backup sem E2E: arquivos `Media/...` em claro no Drive (MD5 conferido).
-/// * Backup E2E: `<hash>.mcrypt1`, com o nome real nos metadados cifrados.
-///   Se a tag GCM não conferir, o conteúdo só entra se o SHA-256 bater com o
-///   `file_hash` que o msgstore guarda daquela mídia.
+/// * Backup without E2E: plaintext `Media/...` files on Drive (MD5 checked).
+/// * E2E backup: `<hash>.mcrypt1`, with the real name in the encrypted metadata.
+///   If the GCM tag does not verify, the content only gets in if its SHA-256
+///   matches the `file_hash` the msgstore keeps for that media.
 fn download_media(
     app: &AppHandle,
     state: &AppState,
@@ -484,10 +484,10 @@ fn download_media(
     let writer = handle.writer()?;
     writer.cleanup();
     let mut summary = MediaSummary { expected: plan.len() as u64, ..Default::default() };
-    let mut tally = crate::diag::Tally::new("mídias do Drive");
-    tracing::info!(esperadas = plan.len(), arquivos_no_backup = files.len(), "mídias do Drive: planejando");
+    let mut tally = crate::diag::Tally::new("Drive media");
+    tracing::info!(expected = plan.len(), files_in_backup = files.len(), "Drive media: planning");
 
-    // Decide o que baixar (e o nome real de cada .mcrypt1).
+    // Decides what to download (and the real name of each .mcrypt1).
     let mut todo = Vec::new();
     let mut logged_meta = false;
     for f in files {
@@ -513,17 +513,17 @@ fn download_media(
     }
     summary.matched = todo.len() as u64;
     tracing::info!(
-        casadas = summary.matched,
-        sem_correspondencia = summary.unmatched,
-        tamanho = %crate::diag::mb(todo.iter().map(|(f, _, _)| f.size_bytes).sum()),
+        matched = summary.matched,
+        unmatched = summary.unmatched,
+        size = %crate::diag::mb(todo.iter().map(|(f, _, _)| f.size_bytes).sum()),
         mcrypt1 = todo.iter().filter(|(_, _, h)| h.is_some()).count(),
-        "mídias do Drive: a baixar"
+        "Drive media: to download"
     );
     let total_bytes = todo.iter().map(|(f, _, _)| f.size_bytes).sum();
     let mut progress = crate::media_import::Progress::new(app, todo.len() as u64, total_bytes);
     let api = Api::new(ep, token)?;
     let cancel = state.drive.cancel.clone();
-    // (com tag GCM válida, sem tag mas conferida pelo file_hash)
+    // (with a valid GCM tag, without a tag but checked against file_hash)
     let mut mcrypt_stats = (0u64, 0u64);
 
     for (file, want, hex) in todo {
@@ -542,19 +542,19 @@ fn download_media(
                             mcrypt_stats.0 += 1;
                             store_one(&writer, &mut summary, &mut tally, want, &m.data[..], None)
                         }
-                        // Sem autenticação: só com o hash do WhatsApp para conferir.
+                        // Not authenticated: only with WhatsApp's hash to check against.
                         Ok(m) => match want.file_hash.as_deref() {
                             Some(h) => {
                                 mcrypt_stats.1 += 1;
                                 store_one(&writer, &mut summary, &mut tally, want, &m.data[..], Some(h))
                             }
                             None => {
-                                tally.add("mcrypt1 sem tag e sem file_hash", "não há como conferir o conteúdo");
+                                tally.add("mcrypt1 without tag or file_hash", "no way to verify the content");
                                 summary.failed += 1
                             }
                         },
                         Err(e) => {
-                            tally.add("mcrypt1 não decifrou", e);
+                            tally.add("mcrypt1 did not decrypt", e);
                             summary.failed += 1
                         }
                     },
@@ -568,7 +568,7 @@ fn download_media(
                     break;
                 }
                 Err(e) => {
-                    tally.add("download falhou", e);
+                    tally.add("download failed", e);
                     summary.failed += 1
                 }
             }
@@ -579,20 +579,20 @@ fn download_media(
     progress.report(&summary, true);
     tally.report();
     tracing::info!(
-        adicionadas = summary.added,
-        ja_no_cofre = summary.already,
-        falharam = summary.failed,
-        mcrypt1_com_tag = mcrypt_stats.0,
-        mcrypt1_conferidas_por_hash = mcrypt_stats.1,
-        interrompido = ?summary.stopped,
-        "mídias do Drive: fim"
+        added = summary.added,
+        already_in_vault = summary.already,
+        failed = summary.failed,
+        mcrypt1_with_tag = mcrypt_stats.0,
+        mcrypt1_checked_by_hash = mcrypt_stats.1,
+        stopped = ?summary.stopped,
+        "Drive media: done"
     );
     Ok(summary)
 }
 
-/// Nome real de um `.mcrypt1`, lido dos metadados cifrados. No erro, devolve
-/// (categoria, detalhe) para o diagnóstico. Na primeira vez, registra as
-/// chaves (não os valores) do JSON de metadados, para validar o formato.
+/// Real name of a `.mcrypt1`, read from the encrypted metadata. On error,
+/// returns (category, detail) for diagnostics. The first time, it logs the
+/// keys (not the values) of the metadata JSON, to validate the format.
 fn mcrypt1_name(
     key: &wa_crypt::BackupKey,
     f: &BackupFile,
@@ -601,36 +601,36 @@ fn mcrypt1_name(
     use base64::Engine;
     use base64::engine::general_purpose::STANDARD as B64;
 
-    let meta = f.metadata.as_deref().ok_or(("mcrypt1 sem metadados", String::from("campo metadata vazio")))?;
-    let raw = B64.decode(meta).map_err(|e| ("metadados não são base64", e.to_string()))?;
-    let json = wa_crypt::mcrypt1::decrypt_metadata(key, &raw).map_err(|e| ("metadados não decifraram", format!("{e} ({} bytes)", raw.len())))?;
+    let meta = f.metadata.as_deref().ok_or(("mcrypt1 without metadata", String::from("empty metadata field")))?;
+    let raw = B64.decode(meta).map_err(|e| ("metadata is not base64", e.to_string()))?;
+    let json = wa_crypt::mcrypt1::decrypt_metadata(key, &raw).map_err(|e| ("metadata did not decrypt", format!("{e} ({} bytes)", raw.len())))?;
     let v: serde_json::Value =
-        serde_json::from_slice(&json).map_err(|e| ("metadados decifrados não são JSON", format!("{e} ({} bytes)", json.len())))?;
+        serde_json::from_slice(&json).map_err(|e| ("decrypted metadata is not JSON", format!("{e} ({} bytes)", json.len())))?;
     if !*logged {
         *logged = true;
         let keys: Vec<&String> = v.as_object().map(|o| o.keys().collect()).unwrap_or_default();
         let name = v.get("name").and_then(|n| n.as_str());
         tracing::info!(
-            chaves = ?keys,
-            name_comeca_com_media = ?name.map(|n| n.starts_with("Media/")),
-            "metadados do primeiro .mcrypt1"
+            keys = ?keys,
+            name_starts_with_media = ?name.map(|n| n.starts_with("Media/")),
+            "metadata of the first .mcrypt1"
         );
     }
     v.get("name")
         .and_then(|n| n.as_str())
         .map(str::to_owned)
-        .ok_or(("metadados sem o campo name", String::from("JSON sem name")))
+        .ok_or(("metadata without the name field", String::from("JSON without name")))
 }
 
-/// Resumo da listagem de arquivos do backup: contagens por pasta e extensão.
-/// Só os arquivos de `Databases/` aparecem pelo nome.
+/// Summary of the backup's file listing: counts by folder and extension.
+/// Only the `Databases/` files appear by name.
 fn log_files(files: &[BackupFile]) {
     use std::collections::BTreeMap;
     let mut by_dir: BTreeMap<String, (u64, u64)> = BTreeMap::new();
     let mut by_ext: BTreeMap<String, u64> = BTreeMap::new();
     let mut databases = Vec::new();
     for f in files {
-        let top = f.path.split_once('/').map(|(t, _)| t).unwrap_or("(raiz)").to_owned();
+        let top = f.path.split_once('/').map(|(t, _)| t).unwrap_or("(root)").to_owned();
         let e = by_dir.entry(top).or_default();
         e.0 += 1;
         e.1 += f.size_bytes;
@@ -640,9 +640,9 @@ fn log_files(files: &[BackupFile]) {
             databases.push(format!("{} ({})", f.path, crate::diag::mb(f.size_bytes)));
         }
     }
-    let dirs: Vec<String> = by_dir.iter().map(|(d, (n, b))| format!("{d}: {n} arq, {}", crate::diag::mb(*b))).collect();
-    tracing::info!(total = files.len(), pastas = ?dirs, extensoes = ?by_ext, "arquivos do backup no Drive");
-    tracing::info!(bancos = ?databases, "arquivos em Databases/");
+    let dirs: Vec<String> = by_dir.iter().map(|(d, (n, b))| format!("{d}: {n} files, {}", crate::diag::mb(*b))).collect();
+    tracing::info!(total = files.len(), folders = ?dirs, extensions = ?by_ext, "backup files on Drive");
+    tracing::info!(databases = ?databases, "files in Databases/");
 }
 
 #[cfg(test)]
@@ -650,7 +650,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn navegacao_permitida_na_janela_de_login() {
+    fn allowed_navigation_in_login_window() {
         let ok = |u: &str| allowed_navigation(&u.parse().unwrap());
         assert!(ok("https://accounts.google.com/EmbeddedSetup"));
         assert!(ok("https://accounts.google.com.br/accounts/SetSID"));

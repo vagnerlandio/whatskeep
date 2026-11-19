@@ -1,28 +1,28 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { Anchor, Around, Chat, Cursor, Message, SearchHit } from "./types";
 
-/** Uma URL pronta (`wamedia://…`, `blob:…`, caminho relativo) ou a promessa dela. */
+/** A ready URL (`wamedia://…`, `blob:…`, relative path) or a promise of one. */
 export type UrlResult = string | null | Promise<string | null>;
 
 /**
- * De onde o visualizador tira os dados. O app implementa sobre o cofre (Rust,
- * via IPC); o export HTML, sobre os pedaços cifrados decifrados no navegador.
+ * Where the viewer gets its data from. The app implements it on top of the vault
+ * (Rust, via IPC); the HTML export, on top of the encrypted chunks decrypted in the browser.
  */
 export interface DataSource {
   chats(): Promise<Chat[]>;
-  /** Página em ordem cronológica, antes ou depois do cursor. */
+  /** A page in chronological order, before or after the cursor. */
   messages(chatId: number, direction: "before" | "after", cursor: Cursor | null, limit: number): Promise<Message[]>;
   around(chatId: number, anchor: Anchor, limit: number): Promise<Around>;
-  /** Do mais recente para o mais antigo; `before` continua a partir do último resultado. */
+  /** Newest to oldest; `before` continues from the last result. */
   search(query: string, chatId: number | null, before: Cursor | null, limit: number): Promise<SearchHit[]>;
   thumbUrl(m: Message): UrlResult;
-  /** Arquivo completo. `null` se não estiver acessível agora. */
+  /** Full file. `null` if it isn't accessible right now. */
   mediaUrl(m: Message): UrlResult;
-  /** Salvar uma cópia. Ausente se a fonte não permitir. */
+  /** Save a copy. Absent if the source doesn't allow it. */
   saveMedia?(m: Message): Promise<boolean>;
-  /** Por que `mediaUrl` não está disponível (ex.: falta escolher a pasta). */
+  /** Why `mediaUrl` isn't available (e.g. the folder hasn't been chosen yet). */
   mediaHint?(): string | null;
-  /** Abre um link http(s) fora do visualizador (já confirmado pelo usuário). */
+  /** Opens an http(s) link outside the viewer (already confirmed by the user). */
   openLink?(url: string): Promise<void>;
 }
 
@@ -30,11 +30,11 @@ export const SourceContext = createContext<DataSource | null>(null);
 
 export function useSource(): DataSource {
   const s = useContext(SourceContext);
-  if (!s) throw new Error("DataSource ausente");
+  if (!s) throw new Error("DataSource missing");
   return s;
 }
 
-/** Resolve uma `UrlResult` (síncrona ou não) para uso em `src`. */
+/** Resolves a `UrlResult` (sync or not) for use in `src`. */
 export function useUrl(get: () => UrlResult, deps: unknown[]): string | null {
   const [url, setUrl] = useState<string | null>(() => {
     const r = get();

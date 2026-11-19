@@ -1,7 +1,7 @@
 [package]
 name = "wa-import"
 version = "0.1.0"
-description = "Lê o msgstore.db do WhatsApp (schemas legado e novo) e grava no schema normalizado do app"
+description = "Reads the WhatsApp msgstore.db (legacy and modern schemas) and writes it to the app's normalized schema"
 edition.workspace = true
 license.workspace = true
 

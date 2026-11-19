@@ -1,12 +1,12 @@
-//! `vault.json`: parâmetros do Argon2id e a chave de dados (DEK) embrulhada.
+//! `vault.json`: Argon2id parameters and the wrapped data key (DEK).
 //!
 //! ```text
-//! senha ──Argon2id(salt, m, t, p)──► KEK ──AES-256-GCM(nonce, AAD)──► DEK embrulhada
+//! password ──Argon2id(salt, m, t, p)──► KEK ──AES-256-GCM(nonce, AAD)──► wrapped DEK
 //! ```
 //!
-//! A DEK é aleatória e nunca muda. Trocar a senha só reembrulha a DEK, sem
-//! recifrar os bancos. O AAD amarra o formato, o id do cofre e os parâmetros
-//! do KDF: editar o arquivo para baixar o custo do Argon2id faz a abertura falhar.
+//! The DEK is random and never changes. Changing the password only rewraps the DEK,
+//! without re-encrypting the databases. The AAD binds the format, the vault id and the
+//! KDF parameters: editing the file to lower the Argon2id cost makes unlocking fail.
 
 use std::fs::{self, File};
 use std::io::Write;
@@ -25,26 +25,26 @@ use crate::{Error, Key, random};
 const FORMAT: u32 = 1;
 const ALG: &str = "argon2id-v19";
 
-/// Custo do Argon2id. Fica gravado no cabeçalho, então pode mudar entre versões
-/// do app sem quebrar cofres antigos.
+/// Argon2id cost. It is stored in the header, so it can change between app
+/// versions without breaking old vaults.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct KdfParams {
-    /// Memória em KiB.
+    /// Memory in KiB.
     pub m_kib: u32,
-    /// Iterações.
+    /// Iterations.
     pub t: u32,
-    /// Paralelismo.
+    /// Parallelism.
     pub p: u32,
 }
 
 impl KdfParams {
-    /// 256 MiB, 3 iterações, 4 lanes: ~0,5 s num Mac Apple Silicon, 1–2 s numa máquina modesta.
+    /// 256 MiB, 3 iterations, 4 lanes: ~0.5 s on an Apple Silicon Mac, 1–2 s on a modest machine.
     pub const DEFAULT: Self = Self { m_kib: 256 * 1024, t: 3, p: 4 };
 
-    /// O mínimo aceito. Só para testes: não use num cofre real.
+    /// The minimum accepted. For tests only: do not use it in a real vault.
     pub const MINIMUM: Self = Self { m_kib: 8 * 1024, t: 1, p: 1 };
 
-    /// Limites para um cabeçalho adulterado não travar a máquina (nem baixar o custo).
+    /// Limits so a tampered header cannot freeze the machine (nor lower the cost).
     fn validate(self) -> Result<Self, Error> {
         let ok = (Self::MINIMUM.m_kib..=4 * 1024 * 1024).contains(&self.m_kib)
             && (1..=64).contains(&self.t)
@@ -77,13 +77,13 @@ struct Wrapped {
 }
 
 impl Header {
-    /// Cabeçalho novo, com id de cofre aleatório.
+    /// New header, with a random vault id.
     pub fn create(password: &str, params: KdfParams, dek: &Key) -> Result<Self, Error> {
         let vault_id: [u8; 16] = random()?;
         Self::wrap(B64.encode(vault_id), password, params, dek)
     }
 
-    /// Mesmo cofre (mesmo id e mesma DEK), senha nova e salt novo.
+    /// Same vault (same id and same DEK), new password and new salt.
     pub fn rewrap(&self, password: &str, params: KdfParams, dek: &Key) -> Result<Self, Error> {
         Self::wrap(self.vault_id.clone(), password, params, dek)
     }
@@ -115,8 +115,8 @@ impl Header {
         })
     }
 
-    /// Deriva a KEK da senha e desembrulha a DEK. Senha errada e cabeçalho
-    /// adulterado dão o mesmo erro: a tag GCM não confere.
+    /// Derives the KEK from the password and unwraps the DEK. A wrong password and a
+    /// tampered header give the same error: the GCM tag does not match.
     pub fn unwrap_key(&self, password: &str) -> Result<Key, Error> {
         if self.format != FORMAT || self.kdf.alg != ALG {
             return Err(Error::Unsupported);
@@ -144,7 +144,7 @@ impl Header {
         Ok(dek)
     }
 
-    /// Id aleatório do cofre. Entra como salt do HKDF das chaves dos bancos.
+    /// Random vault id. Used as the HKDF salt for the database keys.
     pub fn vault_id(&self) -> Result<Vec<u8>, Error> {
         decode(&self.vault_id)
     }
@@ -158,10 +158,10 @@ impl Header {
         serde_json::from_slice(&bytes).map_err(|_| Error::Corrupt("vault.json ilegível"))
     }
 
-    /// Grava em arquivo temporário, faz fsync e renomeia: uma queda de energia
-    /// deixa o cabeçalho antigo ou o novo, nunca um pela metade.
+    /// Writes to a temporary file, fsyncs and renames: a power loss leaves
+    /// either the old header or the new one, never a half-written one.
     pub fn write_atomic(&self, path: &Path) -> Result<(), Error> {
-        let json = serde_json::to_vec_pretty(self).expect("cabeçalho serializável");
+        let json = serde_json::to_vec_pretty(self).expect("header is serializable");
         let tmp = path.with_extension("json.tmp");
         {
             let mut f = crate::fsutil::create_private(&tmp)?;
@@ -170,7 +170,7 @@ impl Header {
         }
         fs::rename(&tmp, path)?;
         if let Some(dir) = path.parent() {
-            // fsync do diretório para a renomeação ser durável (no-op no Windows).
+            // fsync the directory so the rename is durable (no-op on Windows).
             let _ = File::open(dir).and_then(|d| d.sync_all());
         }
         Ok(())

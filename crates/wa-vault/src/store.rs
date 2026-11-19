@@ -1,4 +1,4 @@
-//! Um banco SQLCipher por app de origem (`stores/whatsapp.db`, `stores/business.db`).
+//! One SQLCipher database per source app (`stores/whatsapp.db`, `stores/business.db`).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -9,19 +9,19 @@ use zeroize::Zeroizing;
 
 use crate::{Error, Key, fsutil, random};
 
-/// Resumo de um banco importado.
+/// Summary of an imported database.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StoreInfo {
     pub source_app: SourceApp,
-    /// Milissegundos desde 1970.
+    /// Milliseconds since 1970.
     pub imported_at_ms: i64,
     pub source_schema: String,
     pub chats: u64,
     pub messages: u64,
 }
 
-/// Caminho e chave de um banco do cofre. Pode ser clonado para importar fora
-/// do lock do estado do app. A chave é zerada no drop.
+/// Path and key of a vault database. Can be cloned to import outside
+/// the app state lock. The key is zeroed on drop.
 #[derive(Clone)]
 pub struct StoreHandle {
     app: SourceApp,
@@ -51,7 +51,7 @@ impl StoreHandle {
         self.path.is_file()
     }
 
-    /// Abre o banco (leitura e escrita). `None` se ainda não houve importação.
+    /// Opens the database (read-write). `None` if nothing has been imported yet.
     pub fn open(&self) -> Result<Option<Connection>, Error> {
         if !self.exists() {
             return Ok(None);
@@ -59,24 +59,24 @@ impl StoreHandle {
         open_keyed(&self.path, &self.key, OpenFlags::SQLITE_OPEN_READ_WRITE).map(Some)
     }
 
-    /// Abre só para leitura (o visualizador). `None` se ainda não houve importação.
+    /// Opens read-only (the viewer). `None` if nothing has been imported yet.
     pub fn open_read_only(&self) -> Result<Option<Connection>, Error> {
         if !self.exists() {
             return Ok(None);
         }
         let conn = open_keyed(&self.path, &self.key, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
-        // Vocabulário do FTS (tabela virtual em `temp`, na memória) para a
-        // busca por prefixo. Precisa ser criado antes do `query_only`.
+        // FTS vocabulary (virtual table in `temp`, in memory) for prefix
+        // search. Must be created before `query_only`.
         conn.execute_batch(crate::query::VOCAB_DDL)?;
-        // 64 MiB de cache de páginas decifradas (zeradas ao liberar).
+        // 64 MiB cache of decrypted pages (zeroed when freed).
         conn.execute_batch("PRAGMA query_only = ON; PRAGMA cache_size = -65536;")?;
         Ok(Some(conn))
     }
 
-    /// Importa um msgstore para um banco novo e só então substitui o atual.
+    /// Imports a msgstore into a new database and only then replaces the current one.
     ///
-    /// Se algo falhar no meio, o banco anterior continua intacto e o arquivo
-    /// temporário (cifrado) é apagado.
+    /// If something fails midway, the previous database stays intact and the
+    /// (encrypted) temporary file is deleted.
     pub fn import(&self, src: &Connection) -> Result<ImportReport, Error> {
         let suffix: [u8; 6] = random()?;
         let tmp = self.path.with_extension(format!("db.tmp-{}", hex(&suffix).as_str()));
@@ -126,13 +126,13 @@ impl StoreHandle {
     }
 }
 
-/// Abre um banco SQLCipher com chave bruta de 256 bits (sem o PBKDF2 do
-/// SQLCipher: a chave já vem de Argon2id + HKDF).
+/// Opens a SQLCipher database with a raw 256-bit key (without SQLCipher's
+/// PBKDF2: the key already comes from Argon2id + HKDF).
 pub(crate) fn open_keyed(path: &Path, key: &Key, flags: OpenFlags) -> Result<Connection, Error> {
     let conn = Connection::open_with_flags(path, flags | OpenFlags::SQLITE_OPEN_NO_MUTEX)?;
 
-    // `PRAGMA key = "x'<64 hex>'"`. A string é montada num buffer com
-    // capacidade fixa (não realoca) e zerado no drop.
+    // `PRAGMA key = "x'<64 hex>'"`. The string is built in a buffer with
+    // fixed capacity (it does not reallocate), zeroed on drop.
     let mut sql = Zeroizing::new(String::with_capacity(96));
     sql.push_str("PRAGMA key = \"x'");
     sql.push_str(&hex(key.as_ref()));
@@ -140,10 +140,10 @@ pub(crate) fn open_keyed(path: &Path, key: &Key, flags: OpenFlags) -> Result<Con
     conn.execute_batch(&sql)?;
     drop(sql);
 
-    // Memória do SQLite zerada ao liberar, e nada de arquivos temporários em claro.
+    // SQLite memory zeroed when freed, and no plaintext temporary files.
     conn.execute_batch("PRAGMA cipher_memory_security = ON; PRAGMA temp_store = MEMORY;")?;
 
-    // Chave errada só aparece na primeira leitura de página.
+    // A wrong key only shows up on the first page read.
     conn.query_row("SELECT count(*) FROM sqlite_master", [], |_| Ok(()))
         .map_err(|e| match e.sqlite_error_code() {
             Some(rusqlite::ErrorCode::NotADatabase) => Error::StoreUnreadable,

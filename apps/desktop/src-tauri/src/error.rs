@@ -1,7 +1,7 @@
-//! Erro único dos comandos: `{ code, message }` para o frontend.
+//! Single error type for the commands: `{ code, message }` for the frontend.
 //!
-//! O `code` é estável (a UI decide o que fazer com ele). A `message` é para
-//! humanos e nunca contém material de chave nem conteúdo de mensagens.
+//! The `code` is stable (the UI decides what to do with it). The `message` is
+//! for humans and never contains key material or message content.
 
 use serde::Serialize;
 

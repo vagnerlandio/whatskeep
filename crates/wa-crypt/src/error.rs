@@ -1,6 +1,6 @@
 use crate::{CryptVersion, KeyKind};
 
-/// Erros de descriptografia. Nenhuma variante carrega material de chave.
+/// Decryption errors. No variant carries key material.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("chave inválida: {0}")]

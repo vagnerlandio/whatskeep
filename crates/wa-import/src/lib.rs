@@ -1,16 +1,16 @@
-//! Importa o `msgstore.db` do WhatsApp (Android) para o schema normalizado do app.
+//! Imports the WhatsApp (Android) `msgstore.db` into the app's normalized schema.
 //!
-//! * Suporta o schema **novo** (`message`, `chat`, `jid`, `message_media`...)
-//!   e o **legado** (`messages`, `chat_list`...).
-//! * É tolerante a versões: cada coluna e tabela opcional é verificada antes
-//!   de entrar na query. O que não existir vira `NULL`.
-//! * Participantes de grupo identificados por LID (`@lid`) são convertidos
-//!   para o número de telefone via `jid_map`, quando a tabela existe.
-//! * Não faz I/O de arquivo. A origem vem de [`open_msgstore`] (bytes em
-//!   memória) e o destino é qualquer [`rusqlite::Connection`] (o cofre
-//!   SQLCipher, nos testes um banco em memória).
+//! * Supports the **modern** schema (`message`, `chat`, `jid`, `message_media`...)
+//!   and the **legacy** one (`messages`, `chat_list`...).
+//! * It is version-tolerant: every optional column and table is checked before
+//!   it goes into the query. Whatever does not exist becomes `NULL`.
+//! * Group participants identified by LID (`@lid`) are converted
+//!   to the phone number via `jid_map`, when the table exists.
+//! * Does no file I/O. The source comes from [`open_msgstore`] (bytes in
+//!   memory) and the destination is any [`rusqlite::Connection`] (the
+//!   SQLCipher vault; in tests an in-memory database).
 //!
-//! Referência de schema: projeto WhatsApp-Chat-Exporter (KnugiHK).
+//! Schema reference: the WhatsApp-Chat-Exporter project (KnugiHK).
 
 mod jid;
 mod kind;
@@ -36,7 +36,7 @@ pub enum Error {
     Sqlite(#[from] rusqlite::Error),
 }
 
-/// Qual app gerou o backup.
+/// Which app produced the backup.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SourceApp {
     WhatsApp,
@@ -63,7 +63,7 @@ pub struct ImportOptions {
     pub source_app: SourceApp,
 }
 
-/// Resumo da importação, para mostrar ao usuário e para diagnóstico.
+/// Import summary, to show to the user and for diagnostics.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ImportReport {
     pub source_schema: Option<SourceSchema>,
@@ -72,19 +72,19 @@ pub struct ImportReport {
     pub media: u64,
     pub reactions: u64,
     pub vcards: u64,
-    /// Status do WhatsApp (stories). Não são importados.
+    /// WhatsApp status updates (stories). They are not imported.
     pub skipped_status: u64,
-    /// Mensagens cuja conversa não existe no banco (linhas órfãs).
+    /// Messages whose chat does not exist in the database (orphan rows).
     pub skipped_orphans: u64,
-    /// `message_type` desconhecidos → quantidade. Ajuda a mapear tipos novos
-    /// ao testar com backups reais.
+    /// Unknown `message_type` → count. Helps map new types
+    /// when testing with real backups.
     pub unknown_types: BTreeMap<i64, u64>,
 }
 
-/// Importa tudo de `src` (um msgstore) para `dst`, numa única transação.
+/// Imports everything from `src` (a msgstore) into `dst`, in a single transaction.
 ///
-/// Cria o schema em `dst` se necessário. Falha se `dst` já tiver um histórico:
-/// a mesclagem incremental de backups fica para uma fase posterior.
+/// Creates the schema in `dst` if needed. Fails if `dst` already holds a history:
+/// incremental merging of backups is left for a later phase.
 pub fn import(src: &Connection, dst: &mut Connection, opts: &ImportOptions) -> Result<ImportReport, Error> {
     let schema = source::SourceInfo::load(src)?;
     let tx = dst.transaction()?;

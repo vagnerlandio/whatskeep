@@ -11,7 +11,7 @@ export default function CreateVault({ autolockMinutes, onCreated }: Props) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
-  // Erro bruto: o texto acompanha a troca de idioma.
+  // Raw error: the text follows language changes.
   const [error, setError] = useState<{ e: unknown } | null>(null);
 
   const length = [...password].length;
