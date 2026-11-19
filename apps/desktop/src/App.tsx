@@ -94,7 +94,10 @@ function Frame({ children, onLock }: { children: ReactNode; onLock?: () => void 
   return (
     <div className="app">
       <header className="topbar">
-        <span>{t.appName}</span>
+        <span className="brand">
+          <strong>{t.appName}</strong>
+          <small>{t.tagline}</small>
+        </span>
         <span className="topbar-actions">
           <LanguageSelect />
           {onLock && (

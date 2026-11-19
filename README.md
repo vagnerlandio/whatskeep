@@ -1,4 +1,6 @@
-# Histórico WhatsApp
+# WhatsKeep
+
+**Suas conversas do WhatsApp, seguras e acessíveis.** · *Your WhatsApp conversations, safe and accessible.*
 
 App desktop (Tauri v2 + React) que baixa o backup do WhatsApp/WhatsApp Business (Google Drive ou cópia local do celular), descriptografa **localmente** e mostra o histórico com visual do WhatsApp.
 

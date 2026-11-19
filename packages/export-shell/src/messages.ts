@@ -4,7 +4,8 @@ import { Lang, makeT } from "@wa/viewer";
 
 const pt = {
   // Tela de senha
-  title: "Histórico do WhatsApp",
+  title: "WhatsKeep",
+  tagline: "Suas conversas do WhatsApp, seguras e acessíveis.",
   moreTitle: "Outra senha",
   intro: "Este histórico é cifrado. Digite a senha definida na exportação.",
   moreIntro: "Cada senha libera as conversas que foram exportadas com ela.",
@@ -48,7 +49,8 @@ export type ShellMessages = typeof pt;
 export type ErrorCode = keyof ShellMessages["errors"];
 
 const en: ShellMessages = {
-  title: "WhatsApp history",
+  title: "WhatsKeep",
+  tagline: "Your WhatsApp conversations, safe and accessible.",
   moreTitle: "Another password",
   intro: "This history is encrypted. Enter the password set when it was exported.",
   moreIntro: "Each password unlocks the chats that were exported with it.",

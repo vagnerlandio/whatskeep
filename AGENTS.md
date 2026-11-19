@@ -1,5 +1,7 @@
 # Agent guide
 
+**WhatsKeep** — Your WhatsApp conversations, safe and accessible.
+
 Desktop app (**Tauri v2 + React**) that imports WhatsApp / WhatsApp Business backups (Google Drive or a local copy), decrypts them **in Rust**, stores them in an **encrypted vault** and shows the history with a WhatsApp-like UI. It can also produce an **encrypted offline HTML export**.
 
 Read this file before changing anything. For details:

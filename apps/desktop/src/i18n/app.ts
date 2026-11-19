@@ -10,7 +10,8 @@ const plEn = (n: number, one: string, many: string) => `${nEn(n)} ${n === 1 ? on
 
 const pt = {
   // Moldura
-  appName: "Histórico WhatsApp",
+  appName: "WhatsKeep",
+  tagline: "Suas conversas do WhatsApp, seguras e acessíveis.",
   lockTitle: "Travar o cofre",
   lock: "Travar",
   footnote: "Tudo é processado localmente neste computador. Nada é enviado para servidores.",
@@ -98,7 +99,8 @@ const pt = {
 };
 
 const en: typeof pt = {
-  appName: "WhatsApp History",
+  appName: "WhatsKeep",
+  tagline: "Your WhatsApp conversations, safe and accessible.",
   lockTitle: "Lock the vault",
   lock: "Lock",
   footnote: "Everything is processed locally on this computer. Nothing is sent to any server.",

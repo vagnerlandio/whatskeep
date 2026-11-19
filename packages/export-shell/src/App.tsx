@@ -182,6 +182,7 @@ function Unlock({
         <Icon name="lockKeyhole" size={40} strokeWidth={1.5} />
       </div>
       <h1>{more ? t.moreTitle : t.title}</h1>
+      {!more && <p className="tagline">{t.tagline}</p>}
       <p className="muted">
         {more ? t.moreIntro : t.intro}
       </p>
