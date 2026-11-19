@@ -4,7 +4,7 @@
 // React de texto. Nunca use dangerouslySetInnerHTML, innerHTML nem href
 // montado a partir de conteúdo de mensagem.
 import { Fragment, ReactNode } from "react";
-import type { Chat, MessageKind, Person } from "../api";
+import type { Chat, MessageKind, Person } from "./types";
 
 // ---------------------------------------------------------------- pessoas
 

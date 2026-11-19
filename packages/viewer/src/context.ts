@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import type { Message } from "../api";
+import type { Message } from "./types";
 
 /** Estado compartilhado pelas bolhas sem passar por props (as linhas são memo). */
 export type ViewerCtx = {

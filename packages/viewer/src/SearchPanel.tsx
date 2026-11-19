@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Chat, errorOf, SearchHit, SourceApp, viewerApi } from "../api";
+import { useSource } from "./source";
+import { Chat, errorOf, SearchHit } from "./types";
 import { chatTitle, formatListTime, Highlight, personLabel } from "./format";
 
 const PAGE = 50;
 const DEBOUNCE_MS = 200;
 
 type Props = {
-  store: SourceApp;
   query: string;
   /** Busca limitada a uma conversa, ou em todas. */
   scope: Chat | null;
@@ -15,7 +15,8 @@ type Props = {
   onClearScope: () => void;
 };
 
-export default function SearchPanel({ store, query, scope, chatsById, onOpen, onClearScope }: Props) {
+export default function SearchPanel({ query, scope, chatsById, onOpen, onClearScope }: Props) {
+  const source = useSource();
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -28,7 +29,7 @@ export default function SearchPanel({ store, query, scope, chatsById, onOpen, on
     const t = setTimeout(async () => {
       setBusy(true);
       try {
-        const page = await viewerApi.search(store, query, scope?.id ?? null, null, PAGE);
+        const page = await source.search(query, scope?.id ?? null, null, PAGE);
         if (id !== reqId.current) return; // resposta de uma busca antiga
         setHits(page);
         setDone(page.length < PAGE);
@@ -39,7 +40,7 @@ export default function SearchPanel({ store, query, scope, chatsById, onOpen, on
       }
     }, DEBOUNCE_MS);
     return () => clearTimeout(t);
-  }, [store, query, scope?.id]);
+  }, [source, query, scope?.id]);
 
   async function more() {
     const last = hits[hits.length - 1];
@@ -47,7 +48,7 @@ export default function SearchPanel({ store, query, scope, chatsById, onOpen, on
     const id = reqId.current;
     setBusy(true);
     try {
-      const page = await viewerApi.search(store, query, scope?.id ?? null, { sentAt: last.sentAt, id: last.messageId }, PAGE);
+      const page = await source.search(query, scope?.id ?? null, { sentAt: last.sentAt, id: last.messageId }, PAGE);
       if (id !== reqId.current) return;
       setHits((h) => [...h, ...page]);
       setDone(page.length < PAGE);

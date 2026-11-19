@@ -1,0 +1,11 @@
+.folder-banner {
+  margin: 0 12px 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, #ffbc2d 18%, transparent);
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}

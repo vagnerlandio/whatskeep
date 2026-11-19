@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
-import { errorOf, mediaApi, mediaUrl, Message, SourceApp, thumbUrl } from "../api";
-import { formatDuration } from "./format";
+import { MouseEvent, useEffect, useState } from "react";
 import { useViewer } from "./context";
+import { formatDuration } from "./format";
+import { useSource, useUrl } from "./source";
+import { errorOf, Message } from "./types";
 
 const MEDIA_MAX = 330;
 /** Espera depois que a rolagem para antes de decodificar a imagem completa. */
@@ -9,8 +10,9 @@ const FULL_DELAY_MS = 150;
 
 /** Foto/vídeo/GIF/figurinha. O espaço é reservado pelas dimensões gravadas,
  * para a lista não "pular". A miniatura aparece na hora; o arquivo completo
- * (se estiver no cofre) só carrega quando a rolagem para. */
-export function Visual({ store, m }: { store: SourceApp; m: Message }) {
+ * (se disponível) só carrega quando a rolagem para. */
+export function Visual({ m }: { m: Message }) {
+  const source = useSource();
   const { scrolling, openMedia } = useViewer();
   const sticker = m.kind === "sticker";
   const available = !!m.media?.available;
@@ -23,6 +25,9 @@ export function Visual({ store, m }: { store: SourceApp; m: Message }) {
     const t = setTimeout(() => setFull(true), FULL_DELAY_MS);
     return () => clearTimeout(t);
   }, [available, full, scrolling, m.kind]);
+
+  const thumb = useUrl(() => (m.media?.hasThumbnail ? source.thumbUrl(m) : null), [source, m.id]);
+  const fullUrl = useUrl(() => (full ? source.mediaUrl(m) : null), [source, m.id, full]);
 
   let w = sticker ? 140 : 240;
   let h = sticker ? 140 : 180;
@@ -41,16 +46,16 @@ export function Visual({ store, m }: { store: SourceApp; m: Message }) {
       style={{ width: w, height: h }}
       onClick={available ? () => openMedia(m) : undefined}
     >
-      {m.media?.hasThumbnail ? (
-        <img src={thumbUrl(store, m.id)} alt="" loading="lazy" decoding="async" draggable={false} />
+      {thumb ? (
+        <img src={thumb} alt="" loading="lazy" decoding="async" draggable={false} />
       ) : (
         !fullLoaded && <span className="visual-placeholder">{sticker ? "💟" : m.kind === "image" ? "📷" : "🎥"}</span>
       )}
-      {full &&
+      {fullUrl &&
         (animated ? (
           <video
             className={`full ${fullLoaded ? "loaded" : ""}`}
-            src={mediaUrl(store, m.id)}
+            src={fullUrl}
             autoPlay
             loop
             muted
@@ -60,7 +65,7 @@ export function Visual({ store, m }: { store: SourceApp; m: Message }) {
         ) : (
           <img
             className={`full ${fullLoaded ? "loaded" : ""}`}
-            src={mediaUrl(store, m.id)}
+            src={fullUrl}
             alt=""
             decoding="async"
             draggable={false}
@@ -73,12 +78,17 @@ export function Visual({ store, m }: { store: SourceApp; m: Message }) {
   );
 }
 
-export function AudioView({ store, m }: { store: SourceApp; m: Message }) {
+export function AudioView({ m }: { m: Message }) {
+  const source = useSource();
+  const [play, setPlay] = useState(false);
+  // Nada é carregado (nem decifrado) até o usuário pedir.
+  const url = useUrl(() => (play ? source.mediaUrl(m) : null), [source, m.id, play]);
+  const icon = m.kind === "voice" ? "🎤" : "🎵";
   if (!m.media?.available) {
     return (
       <>
         <div className="audio">
-          <span className="audio-icon">{m.kind === "voice" ? "🎤" : "🎵"}</span>
+          <span className="audio-icon">{icon}</span>
           <span className="audio-bar" />
           <span className="small">{formatDuration(m.media?.durationS ?? null)}</span>
         </div>
@@ -88,25 +98,36 @@ export function AudioView({ store, m }: { store: SourceApp; m: Message }) {
   }
   return (
     <div className="audio">
-      <span className="audio-icon">{m.kind === "voice" ? "🎤" : "🎵"}</span>
-      {/* preload="none": nada é decifrado até o usuário apertar play. */}
-      <audio controls preload="none" src={mediaUrl(store, m.id)} />
-      <SaveButton store={store} m={m} compact />
+      <span className="audio-icon">{icon}</span>
+      {play && url ? (
+        <audio controls autoPlay src={url} />
+      ) : (
+        <>
+          <button className="icon-btn small" title="Tocar" onClick={() => setPlay(true)}>
+            ▶
+          </button>
+          <span className="audio-bar" />
+          <span className="small">{play ? (source.mediaHint?.() ?? "Carregando…") : formatDuration(m.media?.durationS ?? null)}</span>
+        </>
+      )}
+      {source.saveMedia && <SaveButton m={m} compact />}
     </div>
   );
 }
 
-export function SaveButton({ store, m, compact }: { store: SourceApp; m: Message; compact?: boolean }) {
+export function SaveButton({ m, compact }: { m: Message; compact?: boolean }) {
+  const source = useSource();
   const [state, setState] = useState<"idle" | "saving" | "saved" | string>("idle");
-  async function save(e: React.MouseEvent) {
+  if (!source.saveMedia) return null;
+  const save = async (e: MouseEvent) => {
     e.stopPropagation();
     setState("saving");
     try {
-      setState((await mediaApi.save(store, m.id)) ? "saved" : "idle");
+      setState((await source.saveMedia!(m)) ? "saved" : "idle");
     } catch (err) {
       setState(errorOf(err).message);
     }
-  }
+  };
   const label = state === "saving" ? "Salvando…" : state === "saved" ? "Salvo ✓" : compact ? "⤓" : "Salvar…";
   return (
     <>
@@ -119,26 +140,37 @@ export function SaveButton({ store, m, compact }: { store: SourceApp; m: Message
 }
 
 /** Mídia em tela cheia. Esc ou clique fora fecha. */
-export function Lightbox({ store, m, onClose }: { store: SourceApp; m: Message; onClose: () => void }) {
+export function Lightbox({ m, onClose }: { m: Message; onClose: () => void }) {
+  const source = useSource();
+  const url = useUrl(() => source.mediaUrl(m), [source, m.id]);
+  const [waited, setWaited] = useState(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const t = setTimeout(() => setWaited(true), 400);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      clearTimeout(t);
+    };
   }, [onClose]);
   const video = m.kind === "video" || m.kind === "gif";
   return (
     <div className="lightbox" onClick={onClose} role="dialog" aria-modal>
       <div className="lightbox-bar" onClick={(e) => e.stopPropagation()}>
-        <SaveButton store={store} m={m} />
+        <SaveButton m={m} />
         <button className="icon-btn" title="Fechar" onClick={onClose}>
           ✕
         </button>
       </div>
       <div className="lightbox-body" onClick={(e) => e.stopPropagation()}>
-        {video ? (
-          <video src={mediaUrl(store, m.id)} controls autoPlay loop={m.kind === "gif"} playsInline />
+        {url ? (
+          video ? (
+            <video src={url} controls autoPlay loop={m.kind === "gif"} playsInline />
+          ) : (
+            <img src={url} alt="" />
+          )
         ) : (
-          <img src={mediaUrl(store, m.id)} alt="" />
+          waited && <p className="lightbox-caption">{source.mediaHint?.() ?? "Carregando…"}</p>
         )}
         {m.text && <p className="lightbox-caption">{m.text}</p>}
       </div>

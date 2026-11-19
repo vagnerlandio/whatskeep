@@ -16,7 +16,7 @@ import {
   SourceApp,
   StoreInfo,
 } from "../api";
-import { formatPhone } from "../viewer/format";
+import { formatPhone } from "@wa/viewer";
 import { ReplaceWarning } from "./ImportPanel";
 import {
   friendlyError,

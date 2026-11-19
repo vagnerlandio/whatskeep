@@ -21,6 +21,7 @@ wa-crypt = { path = "../../../crates/wa-crypt" }
 wa-import = { path = "../../../crates/wa-import" }
 wa-vault = { path = "../../../crates/wa-vault" }
 wa-gdrive = { path = "../../../crates/wa-gdrive" }
+wa-export = { path = "../../../crates/wa-export" }
 tauri-plugin-dialog = "2"
 zeroize = { version = "1", features = ["std"] }
 base64 = "0.22"

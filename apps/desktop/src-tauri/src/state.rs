@@ -34,6 +34,7 @@ pub struct AppState {
     busy: AtomicUsize,
     /// Sessão do Google Drive (só tokens de acesso, nunca o token mestre).
     pub drive: crate::gdrive::DriveState,
+    pub export: crate::export::ExportState,
 }
 
 impl AppState {
@@ -47,6 +48,7 @@ impl AppState {
             last_activity: Mutex::new(Instant::now()),
             busy: AtomicUsize::new(0),
             drive: Default::default(),
+            export: Default::default(),
         }
     }
 
@@ -62,6 +64,7 @@ impl AppState {
     /// DEK é zerada no drop do `Vault`.
     pub fn lock(&self) -> bool {
         self.media_cancel.store(true, Ordering::SeqCst);
+        self.export.cancel.store(true, Ordering::SeqCst);
         let mut conns = self.conns();
         conns.clear();
         self.media_readers().clear();

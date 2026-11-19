@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { Virtuoso } from "react-virtuoso";
-import type { Chat } from "../api";
+import type { Chat } from "./types";
 import Avatar from "./Avatar";
 import { chatTitle, formatListTime, personLabel, previewText } from "./format";
 

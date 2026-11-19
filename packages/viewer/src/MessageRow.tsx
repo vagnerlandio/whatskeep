@@ -1,5 +1,5 @@
 import { memo, useState } from "react";
-import { formatSize, Message, SourceApp } from "../api";
+import { formatSize, Message } from "./types";
 import { formatDay, formatTime, personLabel, senderColor, WaText } from "./format";
 import { AudioView, SaveButton, Visual } from "./MediaView";
 
@@ -7,7 +7,6 @@ import { AudioView, SaveButton, Visual } from "./MediaView";
 const COLLAPSE_AT = 1500;
 
 type Props = {
-  store: SourceApp;
   message: Message;
   /** Mensagem anterior na lista (para separador de dia e agrupamento). */
   prev: Message | undefined;
@@ -16,7 +15,7 @@ type Props = {
   onJump: (messageId: number) => void;
 };
 
-function MessageRow({ store, message: m, prev, isGroup, highlighted, onJump }: Props) {
+function MessageRow({ message: m, prev, isGroup, highlighted, onJump }: Props) {
   const newDay = !prev || new Date(prev.sentAt).toDateString() !== new Date(m.sentAt).toDateString();
   const sameAuthor =
     !newDay && prev && prev.kind !== "system" && prev.fromMe === m.fromMe && prev.sender?.jid === m.sender?.jid;
@@ -33,7 +32,7 @@ function MessageRow({ store, message: m, prev, isGroup, highlighted, onJump }: P
           <span>{m.text ?? "Mensagem do sistema"}</span>
         </div>
       ) : (
-        <Bubble store={store} m={m} showSender={isGroup && !m.fromMe && !sameAuthor} highlighted={highlighted} onJump={onJump} />
+        <Bubble m={m} showSender={isGroup && !m.fromMe && !sameAuthor} highlighted={highlighted} onJump={onJump} />
       )}
     </div>
   );
@@ -42,13 +41,11 @@ function MessageRow({ store, message: m, prev, isGroup, highlighted, onJump }: P
 export default memo(MessageRow);
 
 function Bubble({
-  store,
   m,
   showSender,
   highlighted,
   onJump,
 }: {
-  store: SourceApp;
   m: Message;
   showSender: boolean;
   highlighted: boolean;
@@ -75,7 +72,7 @@ function Bubble({
             <span className="quote-text">{m.quoted.text ?? "Mídia"}</span>
           </button>
         )}
-        <Body store={store} m={m} />
+        <Body m={m} />
         <span className="meta">
           {m.starred && <span title="Favoritada">★</span>}
           {m.edited && <span>Editada</span>}
@@ -96,7 +93,7 @@ function Bubble({
   );
 }
 
-function Body({ store, m }: { store: SourceApp; m: Message }) {
+function Body({ m }: { m: Message }) {
   switch (m.kind) {
     case "deleted":
       return <p className="text muted-italic">🚫 {m.fromMe ? "Você apagou esta mensagem" : "Esta mensagem foi apagada"}</p>;
@@ -106,7 +103,7 @@ function Body({ store, m }: { store: SourceApp; m: Message }) {
     case "sticker":
       return (
         <>
-          <Visual store={store} m={m} />
+          <Visual m={m} />
           {m.text && m.kind !== "sticker" && <Text text={m.text} />}
         </>
       );
@@ -114,7 +111,7 @@ function Body({ store, m }: { store: SourceApp; m: Message }) {
     case "audio":
       return (
         <>
-          <AudioView store={store} m={m} />
+          <AudioView m={m} />
           {m.media?.transcription && <p className="transcription">“{m.media.transcription}”</p>}
         </>
       );
@@ -133,7 +130,7 @@ function Body({ store, m }: { store: SourceApp; m: Message }) {
             </span>
           </div>
           {m.text && <Text text={m.text} />}
-          {m.media?.available ? <SaveButton store={store} m={m} /> : <NotImported />}
+          {m.media?.available ? <SaveButton m={m} /> : <NotImported />}
         </>
       );
     case "contact":

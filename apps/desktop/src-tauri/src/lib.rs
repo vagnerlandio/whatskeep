@@ -1,5 +1,6 @@
 mod commands;
 mod error;
+mod export;
 mod gdrive;
 mod media;
 mod media_import;
@@ -47,6 +48,9 @@ pub fn run() {
             media_import::import_media_folder,
             media_import::media_cancel,
             media_import::save_media,
+            export::export_pick_destination,
+            export::export_html,
+            export::export_cancel,
         ])
         .run(tauri::generate_context!())
         .expect("falha ao iniciar o aplicativo");

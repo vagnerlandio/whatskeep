@@ -843,3 +843,10 @@ button.back {
   text-align: center;
   white-space: pre-wrap;
 }
+
+/* Espaço para a hora no fim da transcrição, como no texto. */
+.transcription::after {
+  content: "";
+  display: inline-block;
+  width: 64px;
+}

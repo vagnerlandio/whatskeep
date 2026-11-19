@@ -1,5 +1,6 @@
 import { formatCount, SOURCE_LABEL, StoreInfo } from "../api";
 import DriveImport from "./DriveImport";
+import ExportPanel from "./ExportPanel";
 import MediaFolderImport from "./MediaFolderImport";
 import ImportPanel from "./ImportPanel";
 
@@ -30,6 +31,7 @@ export default function Home({ stores, onImported, onClose }: Props) {
       </section>
       <DriveImport stores={stores} onImported={onImported} />
       <ImportPanel stores={stores} onImported={onImported} />
+      {stores.length > 0 && <ExportPanel stores={stores} />}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import type { Chat } from "../api";
+import type { Chat } from "./types";
 import { chatTitle, senderColor } from "./format";
 
 /** Sem fotos de perfil (o backup não traz): iniciais ou ícone, cor estável por JID. */

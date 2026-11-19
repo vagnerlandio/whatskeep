@@ -4,9 +4,10 @@ import { api, errorOf, StoreInfo, VaultStatus } from "./api";
 import CreateVault from "./screens/CreateVault";
 import Home from "./screens/Home";
 import Unlock from "./screens/Unlock";
-import Viewer from "./viewer/Viewer";
+import AppViewer from "./screens/AppViewer";
+import "@wa/viewer/base.css";
+import "@wa/viewer/viewer.css";
 import "./App.css";
-import "./viewer/viewer.css";
 
 /** Intervalo mínimo entre avisos de atividade ao backend (autolock). */
 const TOUCH_EVERY_MS = 15_000;
@@ -111,5 +112,5 @@ function Unlocked({ onLock }: { onLock: () => void }) {
       </Frame>
     );
   }
-  return <Viewer stores={stores} onLock={onLock} onOpenImport={() => setImporting(true)} />;
+  return <AppViewer stores={stores} onLock={onLock} onOpenImport={() => setImporting(true)} />;
 }

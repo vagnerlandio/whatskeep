@@ -10,7 +10,9 @@ crates/wa-crypt/     Descriptografia crypt14/crypt15, sem I/O e sem dependência
 crates/wa-import/    Importa o msgstore (schemas novo e legado) para o schema do app, com busca FTS5
 crates/wa-vault/     Cofre: SQLCipher por app de origem, chave protegida por Argon2id; consultas do visualizador
 crates/wa-gdrive/    Login do Google Play Services e download do backup do Google Drive (não oficial)
-packages/            (futuro) viewer compartilhado e shell do export HTML cifrado
+crates/wa-export/    Gera o export HTML cifrado (formato v1)
+packages/viewer/     Visualizador estilo WhatsApp compartilhado (recebe um DataSource)
+packages/export-shell/  index.html do export: decifra no navegador (WebCrypto + Argon2id em WASM)
 ```
 
 ## Rodar
@@ -19,6 +21,7 @@ packages/            (futuro) viewer compartilhado e shell do export HTML cifrad
 pnpm install
 pnpm dev               # abre o app em modo desenvolvimento
 cargo test --workspace # testes Rust
+pnpm --filter export-shell test:e2e   # abre exports reais no Chromium e no WebKit (file://)
 ```
 
 ## Que backups dá para abrir
@@ -73,6 +76,23 @@ Ainda não validado com uma conta real:
 - se o WhatsApp Business usa a mesma assinatura (`client_sig`) e se os backups dele aparecem na mesma listagem.
 
 Mídias (opcional): em backups sem E2E vêm em claro (`Media/...`, MD5 conferido). Em backups E2E vêm como `<hash>.mcrypt1`, com o nome real em metadados cifrados (HMAC + AES-CBC) e o conteúdo em AES-GCM com chave por arquivo (`wa_crypt::mcrypt1`). Não está documentado se o arquivo traz a tag GCM: o app tenta com a tag e, se não conferir, só aceita o conteúdo se o SHA-256 bater com o `file_hash` do msgstore. Formato ainda não validado com um backup real.
+
+## Export HTML
+
+Pasta que abre offline em qualquer navegador:
+
+```
+index.html            visualizador (um arquivo só), CSP sem rede
+data/manifest.js      Argon2id (64 MiB, t=3) + um slot cifrado por senha
+data/<id>.js          pedaços cifrados (AES-GCM, chave por conversa via HKDF), tamanho arredondado a 64 KiB
+media/pack-NNN.bin    mídias cifradas (STREAM 1 MiB, chave por mídia) — ou media/<id> em claro, se escolhido
+```
+
+- Todas as conversas, só algumas, ou uma senha por conversa. Uma senha não abre nem lista as conversas de outra, e a busca só cobre as destravadas. Conversas fora do export não entram em nada.
+- Nomes de arquivo aleatórios; nenhum telefone, texto ou caminho em claro (testado).
+- Em `file://` o navegador bloqueia `fetch`, então os dados são carregados como `<script src>`. Mídias cifradas: o usuário seleciona a pasta uma vez (`<input webkitdirectory>`) e os arquivos são lidos com `File.slice`.
+- CSP: `connect-src 'none'`, scripts só do pacote (inline por hash). **Sem `'self'`**: no WebKit (Safari), `'self'` numa página `file://` libera qualquer URL remota; `file:` não.
+- Trava sozinho após 15 minutos sem uso (recarrega a página e esquece as chaves).
 
 ## Fixtures de teste
 

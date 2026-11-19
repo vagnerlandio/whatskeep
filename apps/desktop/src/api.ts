@@ -1,6 +1,9 @@
 // Wrappers tipados dos comandos Rust. O webview nunca vê chaves nem o banco:
 // só envia senha/chave uma vez e recebe resumos.
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import type { Anchor, Around, Chat, Cursor, DataSource, Message, SearchHit } from "@wa/viewer";
+export { errorOf, formatCount, formatSize } from "@wa/viewer";
+export type { CmdError } from "@wa/viewer";
 
 export type VaultState = "none" | "locked" | "unlocked";
 export type VaultStatus = { state: VaultState; autolockSecs: number };
@@ -37,14 +40,6 @@ export type ImportSummary = {
 
 export type ImportPhase = "reading" | "downloading" | "decrypting" | "importing" | "done";
 
-export type CmdError = { code: string; message: string };
-
-export function errorOf(e: unknown): CmdError {
-  if (e && typeof e === "object" && "code" in e && "message" in e) {
-    return { code: String(e.code), message: String(e.message) };
-  }
-  return { code: "internal", message: String(e) };
-}
 
 export const api = {
   status: () => invoke<VaultStatus>("vault_status"),
@@ -61,90 +56,12 @@ export const api = {
 
 // ---------------------------------------------------------------- visualizador
 
-export type Person = { jid: string; phone: string | null; name: string | null };
-
-export type Chat = {
-  id: number;
-  kind: "direct" | "group" | "broadcast" | "channel";
-  title: string | null;
-  jid: string;
-  phone: string | null;
-  name: string | null;
-  archived: boolean;
-  messageCount: number;
-  lastMessageAt: number | null;
-  last: { kind: MessageKind; text: string | null; fromMe: boolean; sender: Person | null } | null;
-};
-
-export type MessageKind =
-  | "text"
-  | "image"
-  | "audio"
-  | "voice"
-  | "video"
-  | "gif"
-  | "sticker"
-  | "document"
-  | "contact"
-  | "location"
-  | "live_location"
-  | "system"
-  | "deleted"
-  | "unknown";
-
-export type Message = {
-  id: number;
-  chatId: number;
-  sentAt: number;
-  fromMe: boolean;
-  kind: MessageKind;
-  text: string | null;
-  sender: Person | null;
-  starred: boolean;
-  edited: boolean;
-  systemAction: number | null;
-  quoted: { messageId: number | null; text: string | null; fromMe: boolean; sender: Person | null } | null;
-  media: {
-    mime: string | null;
-    size: number | null;
-    width: number | null;
-    height: number | null;
-    durationS: number | null;
-    fileName: string | null;
-    transcription: string | null;
-    hasThumbnail: boolean;
-    /** O arquivo está no cofre. */
-    available: boolean;
-  } | null;
-  location: { latitude: number; longitude: number; name: string | null; address: string | null } | null;
-  contacts: { name: string | null; phones: string[] }[];
-  reactions: { emoji: string; count: number; mine: boolean }[];
-};
-
-export type Cursor = { sentAt: number; id: number };
-export type Anchor = { type: "message"; id: number } | { type: "time"; at: number };
-
-export type SearchHit = {
-  messageId: number;
-  chatId: number;
-  sentAt: number;
-  fromMe: boolean;
-  sender: Person | null;
-  /** Trecho com os termos entre \u0001 e \u0002. */
-  snippet: string;
-};
-
 export const viewerApi = {
   chats: (store: SourceApp) => invoke<Chat[]>("list_chats", { store }),
   messages: (store: SourceApp, chatId: number, direction: "before" | "after", cursor: Cursor | null, limit: number) =>
     invoke<Message[]>("get_messages", { store, chatId, direction, cursor, limit }),
   around: (store: SourceApp, chatId: number, anchor: Anchor, limit: number) =>
-    invoke<{ messages: Message[]; anchorIndex: number | null }>("get_messages_around", {
-      store,
-      chatId,
-      anchor,
-      limit,
-    }),
+    invoke<Around>("get_messages_around", { store, chatId, anchor, limit }),
   search: (store: SourceApp, query: string, chatId: number | null, before: Cursor | null, limit: number) =>
     invoke<SearchHit[]>("search_messages", { store, query, chatId, before, limit }),
 };
@@ -210,17 +127,40 @@ export const driveApi = {
     }),
 };
 
+// ---------------------------------------------------------------- export HTML
+
+export type ExportMedia = "encrypted" | "plain" | "none";
+export type ExportProgress = { chatsDone: number; chatsTotal: number; messages: number; mediaFiles: number; mediaBytes: number };
+export type ExportSummary = {
+  chats: number;
+  messages: number;
+  mediaFiles: number;
+  mediaBytes: number;
+  mediaMissing: number;
+  slots: number;
+};
+
+export const exportApi = {
+  /** Seletor nativo de pasta; o caminho fica guardado no backend. */
+  pickDestination: () => invoke<{ path: string; cloud: string | null } | null>("export_pick_destination"),
+  run: (store: SourceApp, groups: { password: string; chats: number[] }[], media: ExportMedia) =>
+    invoke<{ summary: ExportSummary; path: string }>("export_html", { store, groups, media }),
+  cancel: () => invoke<void>("export_cancel"),
+};
+
 export const MIN_PASSWORD_CHARS = 8;
 
-export function formatSize(bytes: number): string {
-  const units = ["B", "KB", "MB", "GB"];
-  let v = bytes;
-  let i = 0;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i++;
-  }
-  return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
-}
 
-export const formatCount = (n: number) => n.toLocaleString("pt-BR");
+
+/** Fonte de dados do visualizador sobre o cofre (Rust, via IPC). */
+export function tauriSource(store: SourceApp): DataSource {
+  return {
+    chats: () => viewerApi.chats(store),
+    messages: (chatId, direction, cursor, limit) => viewerApi.messages(store, chatId, direction, cursor, limit),
+    around: (chatId, anchor, limit) => viewerApi.around(store, chatId, anchor, limit),
+    search: (query, chatId, before, limit) => viewerApi.search(store, query, chatId, before, limit),
+    thumbUrl: (m) => thumbUrl(store, m.id),
+    mediaUrl: (m) => mediaUrl(store, m.id),
+    saveMedia: (m) => mediaApi.save(store, m.id),
+  };
+}

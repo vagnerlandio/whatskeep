@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
-import { Anchor, Chat, errorOf, formatCount, Message, SourceApp, viewerApi } from "../api";
+import { useSource } from "./source";
+import { Anchor, Chat, errorOf, formatCount, Message } from "./types";
 import { chatTitle, formatPhone } from "./format";
 import Avatar from "./Avatar";
 import MessageRow from "./MessageRow";
@@ -21,14 +22,14 @@ type Loaded = {
 };
 
 type Props = {
-  store: SourceApp;
   chat: Chat;
   /** Âncora vinda de fora (resultado de busca). */
   anchor: Anchor | null;
   onSearchInChat: () => void;
 };
 
-export default function ChatPane({ store, chat, anchor: externalAnchor, onSearchInChat }: Props) {
+export default function ChatPane({ chat, anchor: externalAnchor, onSearchInChat }: Props) {
+  const source = useSource();
   const [anchor, setAnchor] = useState<Anchor | null>(externalAnchor);
   const [seq, setSeq] = useState(0); // força recarregar/remontar a lista
   const [data, setData] = useState<Loaded | null>(null);
@@ -61,7 +62,7 @@ export default function ChatPane({ store, chat, anchor: externalAnchor, onSearch
       try {
         let loaded: Loaded;
         if (anchor) {
-          const r = await viewerApi.around(store, chat.id, anchor, PAGE);
+          const r = await source.around(chat.id, anchor, PAGE);
           const idx = r.anchorIndex ?? Math.max(0, r.messages.length - 1);
           loaded = {
             messages: r.messages,
@@ -73,7 +74,7 @@ export default function ChatPane({ store, chat, anchor: externalAnchor, onSearch
           };
           setHighlightId(anchor.type === "message" ? anchor.id : (r.messages[idx]?.id ?? null));
         } else {
-          const msgs = await viewerApi.messages(store, chat.id, "before", null, PAGE);
+          const msgs = await source.messages(chat.id, "before", null, PAGE);
           loaded = {
             messages: msgs,
             firstItemIndex: START,
@@ -108,7 +109,7 @@ export default function ChatPane({ store, chat, anchor: externalAnchor, onSearch
     loading.current = true;
     try {
       const first = data.messages[0];
-      const older = await viewerApi.messages(store, chat.id, "before", { sentAt: first.sentAt, id: first.id }, PAGE);
+      const older = await source.messages(chat.id, "before", { sentAt: first.sentAt, id: first.id }, PAGE);
       setData((d) =>
         d && {
           ...d,
@@ -120,19 +121,19 @@ export default function ChatPane({ store, chat, anchor: externalAnchor, onSearch
     } finally {
       loading.current = false;
     }
-  }, [data, store, chat.id]);
+  }, [data, source, chat.id]);
 
   const loadNewer = useCallback(async () => {
     if (!data?.hasNewer || loading.current) return;
     loading.current = true;
     try {
       const last = data.messages[data.messages.length - 1];
-      const newer = await viewerApi.messages(store, chat.id, "after", { sentAt: last.sentAt, id: last.id }, PAGE);
+      const newer = await source.messages(chat.id, "after", { sentAt: last.sentAt, id: last.id }, PAGE);
       setData((d) => d && { ...d, messages: [...d.messages, ...newer], hasNewer: newer.length === PAGE });
     } finally {
       loading.current = false;
     }
-  }, [data, store, chat.id]);
+  }, [data, source, chat.id]);
 
   const jumpTo = useCallback((next: Anchor | null) => {
     setAnchor(next);
@@ -223,7 +224,6 @@ export default function ChatPane({ store, chat, anchor: externalAnchor, onSearch
             components={components}
             itemContent={(index, m) => (
               <MessageRow
-                store={store}
                 message={m}
                 prev={data.messages[index - data.firstItemIndex - 1]}
                 isGroup={isGroup}
@@ -240,7 +240,7 @@ export default function ChatPane({ store, chat, anchor: externalAnchor, onSearch
         )}
       </div>
       </ViewerContext.Provider>
-      {lightbox && <Lightbox store={store} m={lightbox} onClose={() => setLightbox(null)} />}
+      {lightbox && <Lightbox m={lightbox} onClose={() => setLightbox(null)} />}
     </section>
   );
 }
