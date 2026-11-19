@@ -1,0 +1,106 @@
+/* Paleta próxima ao WhatsApp Desktop */
+:root {
+  --wa-green: #00a884;
+  --wa-teal-dark: #008069;
+  --bg: #efeae2;
+  --panel: #ffffff;
+  --text: #111b21;
+  --text-muted: #667781;
+  --border: #d1d7db;
+  --danger: #ea0038;
+  font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b141a;
+    --panel: #202c33;
+    --text: #e9edef;
+    --text-muted: #8696a0;
+    --border: #2a3942;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+}
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  background: var(--wa-teal-dark);
+  color: #fff;
+  padding: 14px 20px;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.welcome {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px;
+}
+
+.dropzone {
+  width: min(560px, 100%);
+  background: var(--panel);
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  padding: 40px 32px;
+  text-align: center;
+}
+
+.title {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.result {
+  margin-top: 24px;
+  padding: 16px;
+  border-radius: 8px;
+  border-left: 4px solid var(--wa-green);
+  background: color-mix(in srgb, var(--wa-green) 8%, transparent);
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.result.error {
+  border-left-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+
+.result p {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+}
+
+.footnote {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: 0;
+}

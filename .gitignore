@@ -1,0 +1,21 @@
+node_modules/
+dist/
+target/
+.DS_Store
+*.log
+
+# --- Dados sensíveis: NUNCA versionar backups, chaves ou bancos reais ---
+*.crypt12
+*.crypt14
+*.crypt15
+msgstore*.db*
+wa.db*
+**/key
+encrypted_backup.key
+*.hex
+historico/
+vault/
+
+# Exceção: vetores de teste sintéticos (chaves aleatórias, conteúdo fictício)
+!crates/wa-crypt/tests/fixtures/
+!crates/wa-crypt/tests/fixtures/**

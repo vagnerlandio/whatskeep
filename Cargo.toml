@@ -1,0 +1,20 @@
+[workspace]
+resolver = "3"
+members = ["crates/wa-crypt", "apps/desktop/src-tauri"]
+
+[workspace.package]
+edition = "2024"
+license = "UNLICENSED"
+
+# Perfis só valem na raiz do workspace.
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
+
+# A descriptografia de backups grandes fica lenta demais sem otimização,
+# mesmo nos testes.
+[profile.dev.package."*"]
+opt-level = 2
