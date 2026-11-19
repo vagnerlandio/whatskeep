@@ -4,8 +4,8 @@
 //! <dir>/
 //!   vault.json                parâmetros do Argon2id + DEK embrulhada (AES-256-GCM)
 //!   .metadata_never_index     Spotlight não indexa
-//!   stores/whatsapp.db        SQLCipher, chave = HKDF(DEK, "store:whatsapp")
-//!   stores/business.db        SQLCipher, chave = HKDF(DEK, "store:business")
+//!   stores/whatsapp.db        SQLCipher, chave = HKDF(DEK, id do cofre, "wa-vault store v1:whatsapp")
+//!   stores/business.db        SQLCipher, chave = HKDF(DEK, id do cofre, "wa-vault store v1:business")
 //! ```
 //!
 //! * A senha do app só serve para desembrulhar a DEK. Sem ela, nada no disco

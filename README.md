@@ -4,6 +4,8 @@ App desktop (Tauri v2 + React) que baixa o backup do WhatsApp/WhatsApp Business 
 
 ## Estrutura
 
+Guia para agentes de IA e novos colaboradores: [AGENTS.md](AGENTS.md) (com [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) e [docs/RECIPES.md](docs/RECIPES.md)).
+
 ```
 apps/desktop/        App Tauri (React em src/, Rust em src-tauri/)
 crates/wa-crypt/     Descriptografia crypt14/crypt15, sem I/O e sem dependência do Tauri
@@ -49,8 +51,8 @@ Fica em `~/Library/Application Support/com.local.wahistorico/vault/` (macOS; nos
 
 ```
 vault.json            Argon2id (256 MiB, t=3, p=4) + chave de dados (DEK) embrulhada com AES-256-GCM
-stores/whatsapp.db    SQLCipher, chave = HKDF(DEK, id do cofre, "store:whatsapp")
-stores/business.db    SQLCipher, chave = HKDF(DEK, id do cofre, "store:business")
+stores/whatsapp.db    SQLCipher, chave = HKDF(DEK, id do cofre, "wa-vault store v1:whatsapp")
+stores/business.db    SQLCipher, chave = HKDF(DEK, id do cofre, "wa-vault store v1:business")
 stores/<app>-media.db índice das mídias (SQLCipher): sha256 → arquivo, caminho no celular → sha256
 stores/<app>-media/   um arquivo cifrado por mídia (nome aleatório)
 ```
