@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+tracing = { workspace = true }
 base64 = "0.22"
 md-5 = "0.10"
 # Sem TLS padrão: o cliente usa um rustls configurado à mão (veja http.rs).
@@ -19,4 +20,5 @@ url = "2"
 zeroize = { version = "1", features = ["std"] }
 
 [dev-dependencies]
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
 wa-crypt = { path = "../wa-crypt" }

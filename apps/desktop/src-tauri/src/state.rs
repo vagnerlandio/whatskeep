@@ -179,6 +179,7 @@ pub fn spawn_autolock(app: AppHandle) {
             std::thread::sleep(AUTOLOCK_CHECK_EVERY);
             let state = app.state::<AppState>();
             if state.busy.load(Ordering::SeqCst) == 0 && state.idle_for() >= AUTOLOCK_AFTER && state.vault().is_some() {
+                tracing::info!(inativo_s = state.idle_for().as_secs(), "cofre travado por inatividade");
                 lock_all(&app);
                 let _ = app.emit(EVENT_LOCKED, "inactivity");
             }

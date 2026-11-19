@@ -25,6 +25,8 @@ wa-export = { path = "../../../crates/wa-export" }
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 url = "2"
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "std", "smallvec", "tracing-log"] }
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }

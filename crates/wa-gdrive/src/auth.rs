@@ -126,14 +126,37 @@ pub fn access_token(
 struct AuthResponse(Vec<(String, Zeroizing<String>)>);
 
 fn post_auth(ep: &Endpoints, body: &str) -> Result<AuthResponse, Error> {
-    let resp = http::client(Some(std::time::Duration::from_secs(30)))?
+    let started = std::time::Instant::now();
+    tracing::debug!(
+        target: "wa_gdrive::http",
+        "→ POST {} {}",
+        ep.auth,
+        crate::trace::form(form_urlencoded::parse(body.as_bytes()).collect::<Vec<_>>().iter().map(|(k, v)| (k.as_ref(), v.as_ref())))
+    );
+    let result = http::client(Some(std::time::Duration::from_secs(30)))?
         .post(&ep.auth)
         .header("Content-Type", "application/x-www-form-urlencoded")
         .header("Accept-Encoding", "identity")
         .body(body.to_owned())
-        .send()?;
+        .send();
+    let resp = match result {
+        Ok(r) => r,
+        Err(e) => {
+            let err: Error = e.into();
+            tracing::warn!(target: "wa_gdrive::http", ms = started.elapsed().as_millis() as u64, "✗ POST {} falhou: {}", ep.auth, err);
+            return Err(err);
+        }
+    };
+    let status = resp.status().as_u16();
     let text = Zeroizing::new(resp.text()?);
-    Ok(parse_auth_response(&text))
+    let parsed = parse_auth_response(&text);
+    let shown = crate::trace::form(parsed.0.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+    if status == 200 {
+        tracing::debug!(target: "wa_gdrive::http", status, ms = started.elapsed().as_millis() as u64, "← {shown}");
+    } else {
+        tracing::warn!(target: "wa_gdrive::http", status, ms = started.elapsed().as_millis() as u64, "← {shown}");
+    }
+    Ok(parsed)
 }
 
 fn parse_auth_response(text: &str) -> AuthResponse {

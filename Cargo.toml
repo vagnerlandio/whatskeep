@@ -6,6 +6,8 @@ members = ["crates/wa-crypt", "crates/wa-import", "crates/wa-vault", "crates/wa-
 # SQLCipher em todo o workspace: o rusqlite não aceita SQLite "comum" e
 # SQLCipher no mesmo build, e o cofre precisa do SQLCipher.
 rusqlite = { version = "0.43", features = ["bundled-sqlcipher-vendored-openssl", "serialize"] }
+# Diagnóstico. Sem subscriber instalado (bibliotecas, testes), não custa nada.
+tracing = "0.1"
 
 [workspace.package]
 edition = "2024"

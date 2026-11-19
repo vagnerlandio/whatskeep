@@ -102,9 +102,47 @@ impl<'a> Api<'a> {
             .pop_if_empty()
             .extend(path.split('/').filter(|s| !s.is_empty() && *s != "." && *s != ".."));
         url.query_pairs_mut().extend_pairs(query);
-        let resp = self.client.get(url).bearer_auth(self.token.expose()).send()?;
-        match resp.status() {
-            StatusCode::OK => Ok(resp),
+        let shown = format!(
+            "{}/{}{}",
+            url.host_str().unwrap_or(""),
+            crate::trace::path(path),
+            if query.is_empty() {
+                String::new()
+            } else {
+                // pageToken é opaco, mas não precisa aparecer.
+                let q: Vec<String> = query
+                    .iter()
+                    .map(|(k, v)| if *k == "pageToken" { format!("{k}=<redigido>") } else { format!("{k}={v}") })
+                    .collect();
+                format!("?{}", q.join("&"))
+            }
+        );
+        let started = std::time::Instant::now();
+        tracing::debug!(target: "wa_gdrive::http", "→ GET {shown} (Authorization: Bearer <redigido>)");
+        let resp = match self.client.get(url).bearer_auth(self.token.expose()).send() {
+            Ok(r) => r,
+            Err(e) => {
+                let err: Error = e.into();
+                tracing::warn!(target: "wa_gdrive::http", ms = started.elapsed().as_millis() as u64, "✗ GET {shown} falhou: {}", err);
+                return Err(err);
+            }
+        };
+        let status = resp.status();
+        let ms = started.elapsed().as_millis() as u64;
+        let content_type = resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("").to_owned();
+        let length = resp.content_length();
+        if status == StatusCode::OK {
+            tracing::debug!(target: "wa_gdrive::http", status = status.as_u16(), ms, content_type, length, "← GET {shown}");
+            return Ok(resp);
+        }
+        // Erro: o corpo (JSON de erro do Google) ajuda a entender o motivo.
+        let body = resp.bytes().map(|b| b.to_vec()).unwrap_or_default();
+        let detail = match serde_json::from_slice::<serde_json::Value>(&body) {
+            Ok(v) => crate::trace::json(&v).to_string(),
+            Err(_) => crate::trace::text_snippet(&body),
+        };
+        tracing::warn!(target: "wa_gdrive::http", status = status.as_u16(), ms, content_type, "← GET {shown}: {detail}");
+        match status {
             StatusCode::UNAUTHORIZED => Err(Error::TokenExpired),
             StatusCode::FORBIDDEN => Err(Error::Forbidden),
             StatusCode::NOT_FOUND => Err(Error::NotFound),
@@ -122,8 +160,15 @@ impl<'a> Api<'a> {
             if let Some(t) = page_token.as_deref() {
                 query.push(("pageToken", t));
             }
-            let page: serde_json::Value = serde_json::from_slice(&self.get(path, &query)?.bytes()?)
-                .map_err(|_| Error::Unexpected("JSON inválido na listagem"))?;
+            let body = self.get(path, &query)?.bytes()?;
+            let page: serde_json::Value = match serde_json::from_slice(&body) {
+                Ok(v) => v,
+                Err(_) => {
+                    tracing::warn!(target: "wa_gdrive::http", "listagem não é JSON: {}", crate::trace::text_snippet(&body));
+                    return Err(Error::Unexpected("JSON inválido na listagem"));
+                }
+            };
+            tracing::debug!(target: "wa_gdrive::http", bytes = body.len(), "  corpo: {}", crate::trace::json(&page));
             if let Some(items) = page.get(field) {
                 out.extend(
                     serde_json::from_value::<Vec<T>>(items.clone())
@@ -175,6 +220,8 @@ impl<'a> Api<'a> {
         if file.size_bytes > MAX_DOWNLOAD {
             return Err(Error::TooLarge(file.size_bytes));
         }
+        let started = std::time::Instant::now();
+        let shown = crate::trace::file_path(&file.path);
         let mut resp = self.get(&file.name, &[("alt", "media")])?;
         let mut out = Vec::with_capacity(file.size_bytes as usize);
         let mut md5 = Md5::new();
@@ -199,13 +246,18 @@ impl<'a> Api<'a> {
             }
         }
         progress(out.len() as u64, file.size_bytes);
+        let ms = started.elapsed().as_millis() as u64;
         if file.size_bytes > 0 && out.len() as u64 != file.size_bytes {
+            tracing::warn!(target: "wa_gdrive::http", recebido = out.len(), anunciado = file.size_bytes, ms, "download incompleto: {shown}");
             return Err(Error::Incomplete);
         }
-        if let Some(expected) = file.md5
-            && md5.finalize().as_slice() != expected {
-                return Err(Error::Checksum);
-            }
+        let md5_ok = file.md5.map(|expected| md5.finalize().as_slice() == expected);
+        let mbps = out.len() as f64 / 1_048_576.0 / (ms.max(1) as f64 / 1000.0);
+        if md5_ok == Some(false) {
+            tracing::warn!(target: "wa_gdrive::http", bytes = out.len(), ms, "MD5 não confere: {shown}");
+            return Err(Error::Checksum);
+        }
+        tracing::debug!(target: "wa_gdrive::http", bytes = out.len(), ms, md5 = ?md5_ok, "baixado {shown} ({mbps:.1} MB/s)");
         Ok(out)
     }
 }
@@ -285,3 +337,4 @@ mod tests {
         assert_eq!(find_msgstore(&files[3..]), None);
     }
 }
+

@@ -217,3 +217,67 @@ fn cancelamento_token_expirado_e_redirecionamento() {
     // Nome de backup que tenta sair do caminho é recusado antes da rede.
     assert!(matches!(api.files("clients/wa/backups/../../x"), Err(Error::Unexpected(_))));
 }
+
+/// O log de diagnóstico (requests/responses) mostra o fluxo, mas nunca o
+/// cookie, os tokens, o e-mail, o id do aparelho nem o telefone do backup.
+#[test]
+fn log_de_requests_nao_vaza_segredos() {
+    #[derive(Clone, Default)]
+    struct Buf(Arc<Mutex<Vec<u8>>>);
+    impl Write for Buf {
+        fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(b);
+            Ok(b.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let buf = Buf::default();
+    let writer = buf.clone();
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::TRACE)
+        .with_ansi(false)
+        .with_writer(move || writer.clone())
+        .finish();
+
+    // Global (não `with_default`): com testes em paralelo, um subscriber de
+    // escopo perde eventos pelo cache de interesse dos callsites. Assim os
+    // logs dos outros testes deste arquivo também passam pela checagem.
+    tracing::subscriber::set_global_default(subscriber).unwrap();
+
+    let (ep, reqs) = google(false);
+    let session = login(&ep, "a@b.com", OauthCookie::new("oauth2_4/cookie".into())).unwrap();
+    let api = Api::new(&ep, &session.tokens[0].1).unwrap();
+    let backups = api.backups().unwrap();
+    let files = api.files(&backups[0].name).unwrap();
+    api.download(find_msgstore(&files).unwrap(), &AtomicBool::new(false), |_, _| {}).unwrap();
+
+    let log = String::from_utf8(buf.0.lock().unwrap().clone()).unwrap();
+    if std::env::var_os("WA_SHOW_LOG").is_some() {
+        eprintln!("{log}");
+    }
+    let android_id = form(&reqs.lock().unwrap()[0].body)
+        .into_iter()
+        .find(|(k, _)| k == "androidId")
+        .map(|(_, v)| v)
+        .unwrap();
+    for secret in ["oauth2_4/cookie", "aas_et", "MASTER", "ya29", "a@b.com", "5511900000001", "5511900000002", "p2", &android_id] {
+        assert!(!log.contains(secret), "o log contém {secret:?}:\n{log}");
+    }
+    // Mas mostra o que importa para diagnosticar.
+    for expected in [
+        "→ POST",
+        "Token=<redigido:",
+        "service=ac2dm",
+        "Error=",
+        "→ GET",
+        "clients/wa/backups/<backup>/files",
+        "Databases/msgstore.db.crypt15",
+        "status=200",
+        "encryptedBackupEnabled",
+        "baixado",
+    ] {
+        assert!(log.contains(expected), "o log não contém {expected:?}:\n{log}");
+    }
+}

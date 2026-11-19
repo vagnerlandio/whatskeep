@@ -75,7 +75,7 @@ fn cloud_provider(path: &std::path::Path) -> Option<&'static str> {
 #[tauri::command]
 pub async fn export_pick_destination(app: AppHandle) -> Result<Option<Destination>, CmdError> {
     use tauri_plugin_dialog::DialogExt;
-    blocking(move || {
+    blocking("export_pick_destination", move || {
         let Some(folder) = app.dialog().file().set_title("Onde salvar o histórico exportado").blocking_pick_folder() else {
             return Ok(None);
         };
@@ -138,7 +138,7 @@ pub async fn export_html(
         .map(|g| Group { password: Zeroizing::new(g.password), chats: g.chats })
         .collect();
     let target = source_app(&store)?;
-    blocking(move || {
+    blocking("export_html", move || {
         if SHELL.is_empty() {
             return Err(CmdError::new("internal", "o visualizador do export não foi incluído nesta versão do app"));
         }
@@ -163,11 +163,22 @@ pub async fn export_html(
             .ok_or_else(|| CmdError::new("no_store", "nenhum histórico importado deste app"))?;
         let reader = if media == MediaMode::None { None } else { media_handle.reader()? };
 
+        tracing::info!(
+            app = target.as_str(),
+            senhas = opts.groups.len(),
+            conversas = opts.groups.iter().map(|g| g.chats.len()).sum::<usize>(),
+            midias = ?media,
+            "export: iniciando"
+        );
+        let t = crate::diag::timer("export");
         let result = wa_export::export(&conn, reader.as_ref(), SHELL, &dest, &opts, &state.export.cancel, |p| {
             let _ = app.emit(EVENT_EXPORT, p.clone());
         });
         match result {
-            Ok(summary) => Ok(ExportResult { summary, path: dest.display().to_string() }),
+            Ok(summary) => {
+                tracing::info!(ms = t.ms() as u64, resumo = ?summary, "export: concluído");
+                Ok(ExportResult { summary, path: dest.display().to_string() })
+            }
             Err(e) => {
                 // Pacote pela metade não serve para nada: apaga a pasta que o app criou.
                 let _ = std::fs::remove_dir_all(&dest);

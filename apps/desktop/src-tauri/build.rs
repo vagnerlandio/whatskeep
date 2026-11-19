@@ -41,6 +41,7 @@ fn main() {
         "export_html",
         "export_cancel",
         "open_link",
+        "ui_log",
     ];
     tauri_build::try_build(
         tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(commands)),

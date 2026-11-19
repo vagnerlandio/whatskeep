@@ -1,4 +1,5 @@
 mod commands;
+mod diag;
 mod error;
 mod export;
 mod gdrive;
@@ -46,13 +47,23 @@ fn context<R: tauri::Runtime>() -> tauri::Context<R> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    diag::init();
     disable_core_dumps();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(
             tauri::plugin::Builder::<tauri::Wry>::new("nav-guard")
-                .on_navigation(|webview, url| webview.label() != "main" || main_window_navigation_allowed(url))
+                .on_navigation(|webview, url| {
+                    if webview.label() != "main" {
+                        return true;
+                    }
+                    let ok = main_window_navigation_allowed(url);
+                    if !ok {
+                        tracing::warn!(esquema = url.scheme(), host = url.host_str().unwrap_or(""), "navegação da janela principal BLOQUEADA");
+                    }
+                    ok
+                })
                 .build(),
         )
         .register_asynchronous_uri_scheme_protocol(media::SCHEME, |ctx, request, responder| {
@@ -64,6 +75,7 @@ pub fn run() {
         })
         .setup(|app| {
             let vault_dir = app.path().app_data_dir()?.join("vault");
+            tracing::info!(cofre_existe = wa_vault::Vault::exists(&vault_dir), "app iniciado");
             app.manage(AppState::new(vault_dir));
             state::spawn_autolock(app.handle().clone());
             Ok(())
@@ -93,6 +105,7 @@ pub fn run() {
             export::export_html,
             export::export_cancel,
             links::open_link,
+            diag::ui_log,
         ])
         .run(context())
         .expect("falha ao iniciar o aplicativo");

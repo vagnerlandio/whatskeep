@@ -14,7 +14,8 @@
 //!   e vale 1 hora.
 //! * Redirecionamentos HTTP não são seguidos (o token não vai para outro host).
 
-pub mod api;
+pub mod trace;
+mod api;
 pub mod auth;
 mod http;
 
@@ -125,7 +126,10 @@ pub fn login(ep: &Endpoints, email: &str, cookie: OauthCookie) -> Result<Session
     for app in DriveApp::ALL {
         match auth::access_token(ep, &master, &android_id, app) {
             Ok(t) => session.tokens.push((app, t)),
-            Err(e) => session.refused.push((app, e.to_string())),
+            Err(e) => {
+                tracing::warn!(app = app.package(), "token de acesso recusado: {e}");
+                session.refused.push((app, e.to_string()))
+            }
         }
     }
     drop(master);

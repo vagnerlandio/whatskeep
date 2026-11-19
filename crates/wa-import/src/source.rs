@@ -73,8 +73,37 @@ impl SourceInfo {
             (true, true) if count("message") == 0 && count("messages") > 0 => SourceSchema::Legacy,
             (true, _) => SourceSchema::Modern,
             (false, true) => SourceSchema::Legacy,
-            (false, false) => return Err(Error::NotMsgstore),
+            (false, false) => {
+                let mut names: Vec<&String> = tables.keys().collect();
+                names.sort();
+                tracing::warn!(tabelas = ?names, "nenhum schema de mensagens reconhecido");
+                return Err(Error::NotMsgstore);
+            }
         };
+        // Diagnóstico: só nomes de tabelas do WhatsApp e contagens.
+        let main: Vec<(&str, i64)> = [
+            "message", "messages", "chat", "chat_list", "jid", "jid_map", "message_media", "message_quoted",
+            "message_add_on", "message_vcard", "message_location", "message_thumbnail", "message_system",
+        ]
+        .into_iter()
+        .filter(|t| tables.contains_key(*t))
+        .map(|t| (t, count(t)))
+        .collect();
+        tracing::info!(schema = kind.as_str(), tabelas = tables.len(), contagens = ?main, "msgstore reconhecido");
+        let features = [
+            ("miniaturas", has("message_thumbnail", "message_row_id") || has("media_hash_thumbnail", "media_hash") || has("message_thumbnails", "key_id")),
+            ("edicoes", has("message_edit_info", "message_row_id") || has("messages", "edit_version")),
+            ("citacoes", has("message_quoted", "message_row_id") || has("messages", "quoted_row_id")),
+            ("reacoes", has("message_add_on_reaction", "reaction")),
+            ("vcards", has("message_vcard", "vcard") || has("messages_vcards", "vcard")),
+            ("lid_para_telefone", has("jid_map", "lid_row_id")),
+            ("mensagens_de_sistema", tables.contains_key("message_system")),
+            ("midias", has("message_media", "message_row_id") || has("messages", "media_wa_type")),
+        ];
+        tracing::info!(recursos = ?features, "recursos encontrados no msgstore");
+        let mut all: Vec<&String> = tables.keys().collect();
+        all.sort();
+        tracing::debug!(tabelas = ?all, "tabelas do msgstore");
         Ok(Self { kind, tables })
     }
 
@@ -87,6 +116,7 @@ impl SourceInfo {
         if self.has_col(table, col) {
             format!("{alias}.{col}")
         } else {
+            tracing::debug!(tabela = table, coluna = col, existe_tabela = self.tables.contains_key(table), "coluna ausente no msgstore (vira NULL)");
             "NULL".to_owned()
         }
     }
@@ -96,6 +126,7 @@ impl SourceInfo {
         if self.has_col(table, required_col) {
             format!("LEFT JOIN {table} {alias} ON {cond}")
         } else {
+            tracing::debug!(tabela = table, coluna = required_col, "tabela/coluna ausente no msgstore (join ignorado)");
             String::new()
         }
     }

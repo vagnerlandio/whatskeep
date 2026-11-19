@@ -46,10 +46,19 @@ pub fn handle(app: &AppHandle, from_main_window: bool, request: &Request<Vec<u8>
         media(&state, store, id, range.as_deref())
     };
     match result {
-        Ok(r) => r,
+        Ok(r) => {
+            tracing::trace!(tipo = kind, status = r.status().as_u16(), bytes = r.body().len(), "wamedia");
+            r
+        }
         Err(e) if e.code == "locked" => status(StatusCode::FORBIDDEN),
-        Err(e) if e.code == "not_found" => status(StatusCode::NOT_FOUND),
-        Err(_) => status(StatusCode::INTERNAL_SERVER_ERROR),
+        Err(e) if e.code == "not_found" => {
+            tracing::debug!(tipo = kind, mensagem = id, "wamedia: não encontrado");
+            status(StatusCode::NOT_FOUND)
+        }
+        Err(e) => {
+            tracing::warn!(tipo = kind, mensagem = id, codigo = e.code, "wamedia: erro: {}", e.message);
+            status(StatusCode::INTERNAL_SERVER_ERROR)
+        }
     }
 }
 

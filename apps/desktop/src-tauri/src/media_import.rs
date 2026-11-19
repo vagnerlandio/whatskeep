@@ -31,10 +31,25 @@ pub(crate) struct Plan {
 impl Plan {
     pub fn load(state: &AppState, app: SourceApp) -> Result<Self, CmdError> {
         let refs = state.with_store(app, |c| Ok(query::media_refs(c)?))?;
-        let wanted = refs
+        let total = refs.len();
+        let without_path = refs.iter().filter(|r| r.file_path.is_none()).count();
+        let with_hash = refs.iter().filter(|r| r.file_hash.is_some()).count();
+        let wanted: HashMap<String, MediaRef> = refs
             .into_iter()
             .filter_map(|r| Some((normalize_path(r.file_path.as_deref()?)?, r)))
             .collect();
+        let mut by_folder: std::collections::BTreeMap<&str, u64> = Default::default();
+        for k in wanted.keys() {
+            *by_folder.entry(media_folder(k)).or_default() += 1;
+        }
+        tracing::info!(
+            referencias = total,
+            sem_caminho = without_path,
+            com_file_hash = with_hash,
+            caminhos_unicos = wanted.len(),
+            por_pasta = ?by_folder,
+            "mídias que o histórico usa"
+        );
         Ok(Self { wanted })
     }
 
@@ -111,6 +126,7 @@ impl<'a> Progress<'a> {
 pub(crate) fn store_one(
     writer: &MediaWriter,
     summary: &mut MediaSummary,
+    tally: &mut crate::diag::Tally,
     want: &MediaRef,
     data: impl std::io::Read,
     expected: Option<&str>,
@@ -118,8 +134,16 @@ pub(crate) fn store_one(
     match writer.put(data, expected, want.mime.as_deref(), want.file_path.as_deref()) {
         Ok((_, Put::Added)) => summary.added += 1,
         Ok((_, Put::AlreadyStored)) => summary.already += 1,
-        Err(_) => summary.failed += 1,
+        Err(e) => {
+            tally.add("gravar no cofre", format!("{e} (tipo {})", want.kind));
+            summary.failed += 1
+        }
     }
+}
+
+/// Subpasta de `Media/` (ex.: `WhatsApp Images`), para contagens no log.
+fn media_folder(normalized: &str) -> &str {
+    normalized.strip_prefix("Media/").and_then(|r| r.split('/').next()).unwrap_or("(outro)")
 }
 
 pub(crate) fn already_stored(writer: &MediaWriter, want: &MediaRef) -> bool {
@@ -154,7 +178,7 @@ pub async fn import_media_folder(app: AppHandle, source_app: String) -> Result<O
     use tauri_plugin_dialog::DialogExt;
 
     let target = self::source_app(&source_app)?;
-    blocking(move || {
+    blocking("import_media_folder", move || {
         // O seletor nativo roda no backend: o webview não escolhe caminhos.
         let Some(folder) = app
             .dialog()
@@ -181,17 +205,39 @@ fn import_folder(app: &AppHandle, target: SourceApp, root: &Path) -> Result<Medi
     let cancelled = || state.media_cancel.load(Ordering::SeqCst);
 
     let mut files = Vec::new();
+    let t = crate::diag::timer("listar a pasta de mídias");
     walk(root, &mut files, &cancelled);
+    drop(t);
     let mut summary = MediaSummary { expected: plan.len() as u64, ..Default::default() };
+    let mut tally = crate::diag::Tally::new("mídias da pasta");
     let mut todo = Vec::new();
-    for path in files {
+    let mut unmatched_by_folder: std::collections::BTreeMap<String, u64> = Default::default();
+    let mut outside_media = 0u64;
+    for path in files.iter() {
         let rel = path.to_string_lossy();
         match plan.get(&rel) {
             Some(want) => todo.push((path.clone(), want)),
-            None => summary.unmatched += 1,
+            None => {
+                summary.unmatched += 1;
+                match normalize_path(&rel) {
+                    Some(n) => *unmatched_by_folder.entry(media_folder(&n).to_owned()).or_default() += 1,
+                    None => outside_media += 1,
+                }
+            }
         }
     }
     summary.matched = todo.len() as u64;
+    tracing::info!(
+        arquivos_na_pasta = files.len(),
+        esperadas = plan.len(),
+        casadas = summary.matched,
+        fora_de_media = outside_media,
+        sem_mensagem_por_pasta = ?unmatched_by_folder,
+        "pasta de mídias analisada"
+    );
+    if !files.is_empty() && outside_media == files.len() as u64 {
+        tracing::warn!("nenhum arquivo está sob uma pasta Media/: provavelmente a pasta escolhida não é a do WhatsApp");
+    }
     let total_bytes = todo.iter().filter_map(|(p, _)| p.metadata().ok()).map(|m| m.len()).sum();
     let mut progress = Progress::new(app, todo.len() as u64, total_bytes);
 
@@ -208,14 +254,25 @@ fn import_folder(app: &AppHandle, target: SourceApp, root: &Path) -> Result<Medi
                 // Arquivo local: o conteúdo é o que o usuário tem. Não exige o
                 // hash do WhatsApp (o arquivo pode ter sido recomprimido) e
                 // fica achável pelo caminho.
-                Ok(f) => store_one(&writer, &mut summary, want, std::io::BufReader::new(f), None),
-                Err(_) => summary.failed += 1,
+                Ok(f) => store_one(&writer, &mut summary, &mut tally, want, std::io::BufReader::new(f), None),
+                Err(e) => {
+                    tally.add("abrir arquivo", e);
+                    summary.failed += 1
+                }
             }
         }
         summary.bytes += size;
         progress.report(&summary, false);
     }
     progress.report(&summary, true);
+    tally.report();
+    tracing::info!(
+        adicionadas = summary.added,
+        ja_no_cofre = summary.already,
+        falharam = summary.failed,
+        interrompido = ?summary.stopped,
+        "pasta de mídias: fim"
+    );
     Ok(summary)
 }
 
@@ -234,7 +291,7 @@ pub async fn save_media(app: AppHandle, store: String, message_id: i64) -> Resul
     use tauri_plugin_dialog::DialogExt;
 
     let target = self::source_app(&store)?;
-    blocking(move || {
+    blocking("save_media", move || {
         let state = app.state::<AppState>();
         let r = state
             .with_store(target, |c| Ok(query::media_ref(c, message_id)?))?

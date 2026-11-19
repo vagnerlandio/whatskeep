@@ -21,7 +21,9 @@ pub fn validate(raw: &str) -> Result<Url, CmdError> {
 
 #[tauri::command]
 pub fn open_link(app: AppHandle, url: String) -> Result<(), CmdError> {
-    let url = validate(&url)?;
+    let url = validate(&url).inspect_err(|_| tracing::info!("link recusado (inválido)"))?;
+    // O endereço veio de uma mensagem: não vai para o log.
+    tracing::info!(esquema = url.scheme(), "link externo aberto no navegador");
     app.opener()
         .open_url(url.as_str(), None::<&str>)
         .map_err(|e| CmdError::new("internal", format!("não foi possível abrir o link: {e}")))
