@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 import { useSource } from "./source";
-import { Anchor, Chat, errorOf, formatCount, Message } from "./types";
+import { Anchor, Chat, errorOf, Message } from "./types";
 import { chatTitle, formatPhone } from "./format";
 import Avatar from "./Avatar";
 import MessageRow from "./MessageRow";
@@ -9,6 +9,7 @@ import { Lightbox } from "./MediaView";
 import LinkConfirm from "./LinkConfirm";
 import { ViewerContext } from "./context";
 import { Icon } from "./icons";
+import { useViewerT } from "./messages";
 
 const PAGE = 80;
 /** Índice virtual alto o bastante para ir prependendo páginas antigas. */
@@ -44,6 +45,7 @@ export default function ChatPane({ chat, anchor: externalAnchor, onSearchInChat 
   const viewerCtx = useMemo(() => ({ scrolling, openMedia: setLightbox, openLink: setLink }), [scrolling]);
   const loading = useRef(false);
   const virtuoso = useRef<VirtuosoHandle>(null);
+  const t = useViewerT();
 
   // Nova âncora vinda de fora com a conversa já aberta (o Viewer remonta este
   // componente ao trocar de conversa, então a primeira âncora vem do estado inicial).
@@ -162,11 +164,11 @@ export default function ChatPane({ chat, anchor: externalAnchor, onSearchInChat 
   const isGroup = chat.kind === "group";
   const subtitle =
     chat.kind === "group"
-      ? "Grupo"
+      ? t.group
       : chat.kind === "broadcast"
-        ? "Lista de transmissão"
+        ? t.broadcast
         : chat.kind === "channel"
-          ? "Canal"
+          ? t.channel
           : chat.phone && chat.title
             ? formatPhone(chat.phone)
             : null;
@@ -175,18 +177,18 @@ export default function ChatPane({ chat, anchor: externalAnchor, onSearchInChat 
     () => ({
       Header: () =>
         data?.hasOlder ? (
-          <div className="list-edge">Carregando mensagens antigas…</div>
+          <div className="list-edge">{t.loadingOlder}</div>
         ) : (
           <div className="list-edge">
             <span className="e2e-note">
               <Icon name="lock" size={12} />
-              Histórico importado de um backup. Fica só neste computador, cifrado.
+              {t.backupNote}
             </span>
           </div>
         ),
-      Footer: () => (data?.hasNewer ? <div className="list-edge">Carregando…</div> : <div style={{ height: 12 }} />),
+      Footer: () => (data?.hasNewer ? <div className="list-edge">{t.loading}</div> : <div style={{ height: 12 }} />),
     }),
-    [data?.hasOlder, data?.hasNewer],
+    [data?.hasOlder, data?.hasNewer, t],
   );
 
   return (
@@ -196,14 +198,14 @@ export default function ChatPane({ chat, anchor: externalAnchor, onSearchInChat 
         <div className="chat-header-text">
           <strong>{chatTitle(chat)}</strong>
           <span>
-            {[subtitle, `${formatCount(chat.messageCount)} mensagens`].filter(Boolean).join(" · ")}
+            {[subtitle, t.messageCount(chat.messageCount)].filter(Boolean).join(" · ")}
           </span>
         </div>
-        <label className="icon-btn" title="Ir para uma data">
+        <label className="icon-btn" title={t.goToDate}>
           <Icon name="calendar" size={22} />
           <input type="date" className="date-input" onChange={(e) => onPickDate(e.target.value)} />
         </label>
-        <button className="icon-btn" title="Buscar nesta conversa" onClick={onSearchInChat}>
+        <button className="icon-btn" title={t.searchInChat} onClick={onSearchInChat}>
           <Icon name="search" size={22} />
         </button>
       </header>
@@ -211,7 +213,7 @@ export default function ChatPane({ chat, anchor: externalAnchor, onSearchInChat 
       <ViewerContext.Provider value={viewerCtx}>
       <div className="messages-wrap">
         {error && <div className="result error pane-error">{error}</div>}
-        {data && data.messages.length === 0 && <div className="list-edge">Nenhuma mensagem.</div>}
+        {data && data.messages.length === 0 && <div className="list-edge">{t.noMessages}</div>}
         {data && data.messages.length > 0 && (
           <Virtuoso
             key={seq}
@@ -240,7 +242,7 @@ export default function ChatPane({ chat, anchor: externalAnchor, onSearchInChat 
           />
         )}
         {data && (!atBottom || data.hasNewer) && (
-          <button className="to-bottom" onClick={goToEnd} title="Ir para a mensagem mais recente">
+          <button className="to-bottom" onClick={goToEnd} title={t.goToLatest}>
             <Icon name="chevronDown" size={24} />
           </button>
         )}
@@ -249,7 +251,7 @@ export default function ChatPane({ chat, anchor: externalAnchor, onSearchInChat 
       <footer className="chat-footer">
         <div className="readonly-bar">
           <Icon name="lock" size={16} />
-          Somente leitura: este histórico veio de um backup.
+          {t.readOnly}
         </div>
       </footer>
       {lightbox && <Lightbox m={lightbox} onClose={() => setLightbox(null)} />}

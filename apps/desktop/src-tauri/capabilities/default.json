@@ -33,6 +33,8 @@
     "allow-export-html",
     "allow-export-cancel",
     "allow-open-link",
-    "allow-ui-log"
+    "allow-ui-log",
+    "allow-get-language",
+    "allow-set-language"
   ]
 }

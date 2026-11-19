@@ -4,8 +4,15 @@ import React, { Component, ErrorInfo, ReactNode } from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { describe, installDiagnostics, uiLog } from "./diag";
+import { detectLang } from "@wa/viewer";
 
 installDiagnostics();
+
+// A tela de erro fica fora do LangProvider: usa o idioma do sistema.
+const CRASH_TEXT = {
+  "pt-BR": { title: "Algo deu errado", reload: "Recarregar" },
+  en: { title: "Something went wrong", reload: "Reload" },
+};
 
 /** Falha de renderização: registra no log e mostra uma tela de erro em vez
  * de deixar a janela em branco. */
@@ -22,14 +29,15 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 
   render() {
     if (!this.state.error) return this.props.children;
+    const t = CRASH_TEXT[detectLang()];
     return (
       <div className="app">
         <main className="content">
           <div className="card narrow">
-            <h2>Algo deu errado</h2>
+            <h2>{t.title}</h2>
             <p className="muted">{this.state.error.message}</p>
             <button className="primary" onClick={() => location.reload()}>
-              Recarregar
+              {t.reload}
             </button>
           </div>
         </main>

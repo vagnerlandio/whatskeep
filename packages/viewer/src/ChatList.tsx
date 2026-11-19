@@ -4,6 +4,8 @@ import type { Chat } from "./types";
 import Avatar from "./Avatar";
 import { chatTitle, formatListTime, personLabel, Preview } from "./format";
 import { Icon } from "./icons";
+import { useLang } from "./i18n";
+import { useViewerT } from "./messages";
 
 type Props = {
   chats: Chat[];
@@ -15,6 +17,7 @@ type Props = {
 };
 
 export default function ChatList({ chats, selectedId, onSelect, archivedCount, showingArchived, onToggleArchived }: Props) {
+  const t = useViewerT();
   return (
     <div className="chat-list">
       {archivedCount > 0 && !showingArchived && (
@@ -22,11 +25,11 @@ export default function ChatList({ chats, selectedId, onSelect, archivedCount, s
           <span className="archived-icon">
             <Icon name="archive" size={20} />
           </span>
-          <span className="archived-label">Arquivadas</span>
+          <span className="archived-label">{t.archived}</span>
           <span className="count">{archivedCount}</span>
         </button>
       )}
-      {chats.length === 0 && <p className="muted list-empty">Nenhuma conversa aqui.</p>}
+      {chats.length === 0 && <p className="muted list-empty">{t.noChatsHere}</p>}
       <Virtuoso
         className="chat-list-scroll"
         data={chats}
@@ -46,13 +49,16 @@ const ChatItem = memo(function ChatItem({
   selected: boolean;
   onSelect: (c: Chat) => void;
 }) {
+  // Hooks aqui dentro: o memo não impede re-renderizar ao trocar o idioma.
+  const t = useViewerT();
+  const { lang } = useLang();
   const last = chat.last;
   const prefix = !last
     ? ""
     : last.fromMe && last.kind !== "system"
-      ? "Você: "
+      ? `${t.you}: `
       : chat.kind === "group" && last.sender && last.kind !== "system"
-        ? `${personLabel(last.sender)}: `
+        ? `${personLabel(last.sender, lang)}: `
         : "";
   return (
     <button className={`chat-item ${selected ? "selected" : ""}`} onClick={() => onSelect(chat)}>
@@ -60,7 +66,7 @@ const ChatItem = memo(function ChatItem({
       <span className="chat-item-body">
         <span className="chat-item-top">
           <span className="chat-item-title">{chatTitle(chat)}</span>
-          {chat.lastMessageAt != null && <span className="chat-item-time">{formatListTime(chat.lastMessageAt)}</span>}
+          {chat.lastMessageAt != null && <span className="chat-item-time">{formatListTime(chat.lastMessageAt, lang)}</span>}
         </span>
         <span className="chat-item-preview">
           {last && (

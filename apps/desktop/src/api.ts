@@ -1,7 +1,7 @@
 // Wrappers tipados dos comandos Rust. O webview nunca vê chaves nem o banco:
 // só envia senha/chave uma vez e recebe resumos.
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import type { Anchor, Around, Chat, Cursor, DataSource, Message, SearchHit } from "@wa/viewer";
+import type { Anchor, Around, Chat, Cursor, DataSource, Lang, Message, SearchHit } from "@wa/viewer";
 export { errorOf, formatCount, formatSize } from "@wa/viewer";
 export type { CmdError } from "@wa/viewer";
 
@@ -149,6 +149,14 @@ export const exportApi = {
 };
 
 export const MIN_PASSWORD_CHARS = 8;
+
+// ---------------------------------------------------------------- preferências
+
+export const settingsApi = {
+  /** Idioma salvo, ou `null` (usar o do sistema). */
+  getLanguage: () => invoke<Lang | null>("get_language"),
+  setLanguage: (language: Lang) => invoke<void>("set_language", { language }),
+};
 
 
 

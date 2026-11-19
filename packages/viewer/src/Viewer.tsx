@@ -5,6 +5,8 @@ import SearchPanel from "./SearchPanel";
 import { DataSource, SourceContext } from "./source";
 import { Anchor, Chat, errorOf, SearchHit } from "./types";
 import { Icon, IconName } from "./icons";
+import { LanguageSelect } from "./i18n";
+import { useViewerT } from "./messages";
 
 type Props = {
   source: DataSource;
@@ -35,6 +37,7 @@ export default function Viewer({ source, title, actions, railTop, railBottom, ba
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<Chat | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
+  const t = useViewerT();
 
   useEffect(() => {
     let cancelled = false;
@@ -84,20 +87,21 @@ export default function Viewer({ source, title, actions, railTop, railBottom, ba
     <SourceContext.Provider value={source}>
       <div className="viewer">
         <nav className="rail">
-          <RailButton icon="chats" title="Conversas" active={!showArchived && !searching} onClick={showChats} />
+          <RailButton icon="chats" title={t.chats} active={!showArchived && !searching} onClick={showChats} />
           {railTop}
           <span className="rail-spacer" />
+          <LanguageSelect variant="rail" />
           {railBottom}
         </nav>
 
         <aside className="sidebar">
           <header className="sidebar-header">
             {showArchived && (
-              <button className="icon-btn" title="Voltar às conversas" onClick={() => setShowArchived(false)}>
+              <button className="icon-btn" title={t.backToChats} onClick={() => setShowArchived(false)}>
                 <Icon name="back" size={22} />
               </button>
             )}
-            <h1 className={showArchived ? "sidebar-title plain" : "sidebar-title"}>{showArchived ? "Arquivadas" : title}</h1>
+            <h1 className={showArchived ? "sidebar-title plain" : "sidebar-title"}>{showArchived ? t.archived : title}</h1>
             {actions && <div className="sidebar-actions">{actions}</div>}
           </header>
 
@@ -106,7 +110,7 @@ export default function Viewer({ source, title, actions, railTop, railBottom, ba
             <input
               ref={searchInput}
               type="search"
-              placeholder={scope ? "Pesquisar nesta conversa" : "Pesquisar mensagens"}
+              placeholder={scope ? t.searchThisChat : t.searchMessages}
               value={query}
               spellCheck={false}
               onChange={(e) => setQuery(e.target.value)}
@@ -118,7 +122,7 @@ export default function Viewer({ source, title, actions, railTop, railBottom, ba
               }}
             />
             {query && (
-              <button className="icon-btn tiny" title="Limpar" onClick={() => (setQuery(""), setScope(null))}>
+              <button className="icon-btn tiny" title={t.clear} onClick={() => (setQuery(""), setScope(null))}>
                 <Icon name="close" size={16} />
               </button>
             )}
@@ -127,10 +131,10 @@ export default function Viewer({ source, title, actions, railTop, railBottom, ba
           {!searching && !showArchived && hasGroups && (
             <div className="chips">
               <button className={filter === "all" ? "chip active" : "chip"} onClick={() => setFilter("all")}>
-                Tudo
+                {t.filterAll}
               </button>
               <button className={filter === "groups" ? "chip active" : "chip"} onClick={() => setFilter("groups")}>
-                Grupos
+                {t.filterGroups}
               </button>
             </div>
           )}
@@ -166,7 +170,7 @@ export default function Viewer({ source, title, actions, railTop, railBottom, ba
                 <Icon name="chats" size={56} strokeWidth={1.25} />
               </div>
               <h2>{emptyTitle}</h2>
-              <p className="muted">Escolha uma conversa ou pesquise por uma mensagem.</p>
+              <p className="muted">{t.emptyPaneHint}</p>
               {emptyNote && (
                 <p className="empty-note">
                   <Icon name="lock" size={14} />

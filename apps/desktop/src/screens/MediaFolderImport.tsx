@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { errorOf, mediaApi, MediaProgress, MediaSummary, SourceApp } from "../api";
+import { mediaApi, MediaProgress, MediaSummary, SourceApp } from "../api";
+import { useErrorText } from "../i18n/errors";
+import { useImportT } from "../i18n/import";
 import { MediaProgressView, MediaSummaryLine } from "./shared";
 
 type State =
@@ -11,6 +13,8 @@ type State =
 /** Importa as mídias da pasta WhatsApp copiada do celular para o cofre. */
 export default function MediaFolderImport({ source }: { source: SourceApp }) {
   const [state, setState] = useState<State>({ kind: "idle" });
+  const t = useImportT();
+  const errorText = useErrorText();
 
   async function run() {
     setState({ kind: "running", progress: null });
@@ -21,7 +25,7 @@ export default function MediaFolderImport({ source }: { source: SourceApp }) {
       const summary = await mediaApi.importFolder(source);
       setState(summary ? { kind: "done", summary } : { kind: "idle" });
     } catch (e) {
-      setState({ kind: "idle", error: errorOf(e).message });
+      setState({ kind: "idle", error: errorText(e) });
     } finally {
       unlisten();
     }
@@ -38,8 +42,8 @@ export default function MediaFolderImport({ source }: { source: SourceApp }) {
     <div className="media-import">
       {state.kind === "done" && <MediaSummaryLine s={state.summary} />}
       {state.kind === "idle" && state.error && <div className="result error">{state.error}</div>}
-      <button onClick={run} title="Escolha a pasta WhatsApp (ou WhatsApp Business) copiada do celular">
-        {state.kind === "done" ? "Importar mídias de outra pasta…" : "Importar mídias de uma pasta…"}
+      <button onClick={run} title={t.mediaFolderTitle}>
+        {state.kind === "done" ? t.mediaFolderAgain : t.mediaFolder}
       </button>
     </div>
   );

@@ -1,7 +1,9 @@
 import { ReactNode, useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { Icon } from "@wa/viewer";
-import { api, errorOf, StoreInfo, VaultStatus } from "./api";
+import { detectLang, Icon, Lang, LangProvider, LanguageSelect } from "@wa/viewer";
+import { api, settingsApi, StoreInfo, VaultStatus } from "./api";
+import { useAppT } from "./i18n/app";
+import { useErrorText } from "./i18n/errors";
 import CreateVault from "./screens/CreateVault";
 import Home from "./screens/Home";
 import Unlock from "./screens/Unlock";
@@ -13,16 +15,39 @@ import "./App.css";
 /** Intervalo mínimo entre avisos de atividade ao backend (autolock). */
 const TOUCH_EVERY_MS = 15_000;
 
+/** Carrega o idioma salvo (ou o do sistema) antes de desenhar qualquer tela. */
 export default function App() {
+  const [lang, setLangState] = useState<Lang | null>(null);
+  useEffect(() => {
+    settingsApi
+      .getLanguage()
+      .then((l) => setLangState(l ?? detectLang()))
+      .catch(() => setLangState(detectLang()));
+  }, []);
+  const setLang = useCallback((l: Lang) => {
+    setLangState(l);
+    void settingsApi.setLanguage(l).catch(() => {});
+  }, []);
+  if (!lang) return null;
+  return (
+    <LangProvider lang={lang} setLang={setLang}>
+      <AppScreens />
+    </LangProvider>
+  );
+}
+
+function AppScreens() {
+  const t = useAppT();
   const [status, setStatus] = useState<VaultStatus | null>(null);
-  const [lockReason, setLockReason] = useState<string | null>(null);
+  // Travado por inatividade: o texto sai do dicionário na hora de mostrar.
+  const [lockedIdle, setLockedIdle] = useState(false);
 
   const refresh = useCallback(async () => setStatus(await api.status()), []);
 
   useEffect(() => {
     void refresh();
     const unlisten = listen("vault-locked", () => {
-      setLockReason("O cofre foi travado por inatividade.");
+      setLockedIdle(true);
       void refresh();
     });
     return () => void unlisten.then((fn) => fn());
@@ -46,7 +71,7 @@ export default function App() {
 
   async function lock() {
     await api.lock();
-    setLockReason(null);
+    setLockedIdle(false);
     await refresh();
   }
 
@@ -58,41 +83,47 @@ export default function App() {
       {status.state === "none" ? (
         <CreateVault autolockMinutes={Math.round(status.autolockSecs / 60)} onCreated={refresh} />
       ) : (
-        <Unlock reason={lockReason} onUnlocked={refresh} />
+        <Unlock reason={lockedIdle ? t.lockedIdle : null} onUnlocked={refresh} />
       )}
     </Frame>
   );
 }
 
 function Frame({ children, onLock }: { children: ReactNode; onLock?: () => void }) {
+  const t = useAppT();
   return (
     <div className="app">
       <header className="topbar">
-        <span>Histórico WhatsApp</span>
-        {onLock && (
-          <button className="ghost" onClick={onLock} title="Travar o cofre">
-            <Icon name="lock" size={16} /> Travar
+        <span>{t.appName}</span>
+        <span className="topbar-actions">
+          <LanguageSelect />
+          {onLock && (
+          <button className="ghost" onClick={onLock} title={t.lockTitle}>
+            <Icon name="lock" size={16} /> {t.lock}
           </button>
-        )}
+          )}
+        </span>
       </header>
       <main className="content">{children}</main>
       <p className="footnote">
-        <Icon name="lock" size={14} /> Tudo é processado localmente neste computador. Nada é enviado para servidores.
+        <Icon name="lock" size={14} /> {t.footnote}
       </p>
     </div>
   );
 }
 
 function Unlocked({ onLock }: { onLock: () => void }) {
+  const errorText = useErrorText();
   const [stores, setStores] = useState<StoreInfo[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Guarda o erro bruto: o texto acompanha a troca de idioma.
+  const [error, setError] = useState<{ e: unknown } | null>(null);
   const [importing, setImporting] = useState(false);
 
   const load = useCallback(async () => {
     try {
       setStores(await api.listStores());
     } catch (e) {
-      setError(errorOf(e).message);
+      setError({ e });
     }
   }, []);
 
@@ -103,7 +134,7 @@ function Unlocked({ onLock }: { onLock: () => void }) {
   if (error) {
     return (
       <Frame onLock={onLock}>
-        <div className="result error">{error}</div>
+        <div className="result error">{errorText(error.e)}</div>
       </Frame>
     );
   }

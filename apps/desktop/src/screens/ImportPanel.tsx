@@ -2,17 +2,20 @@ import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api, BackupInfo, errorOf, formatSize, ImportPhase, ImportSummary, SOURCE_LABEL, SourceApp, StoreInfo } from "../api";
+import { formatDateTime, useLang } from "@wa/viewer";
+import { api, BackupInfo, formatSize, ImportPhase, ImportSummary, SOURCE_LABEL, SourceApp, StoreInfo } from "../api";
+import { useErrorText } from "../i18n/errors";
+import { useImportT } from "../i18n/import";
 import {
-  friendlyError,
   initialKey,
   KeyField,
   KeyState,
   keyReady,
-  PHASE_LABEL,
   SourcePicker,
   SummaryView,
   toKeyInput,
+  useFriendlyError,
+  usePhaseLabel,
 } from "./shared";
 
 type Step =
@@ -30,6 +33,11 @@ export default function ImportPanel({ stores, onImported }: Props) {
   const [step, setStep] = useState<Step>({ kind: "pick" });
   const [source, setSource] = useState<SourceApp>("whatsapp");
   const [key, setKey] = useState<KeyState>(initialKey("crypt15"));
+  const t = useImportT();
+  const { lang } = useLang();
+  const phaseLabel = usePhaseLabel();
+  const errorText = useErrorText();
+  const friendlyError = useFriendlyError();
 
   async function selectBackup(path: string) {
     try {
@@ -38,7 +46,7 @@ export default function ImportPanel({ stores, onImported }: Props) {
       setSource(/business|w4b/i.test(path) ? "business" : "whatsapp");
       setStep({ kind: "configure", path, info });
     } catch (e) {
-      setStep({ kind: "pick", error: `${fileName(path)}: ${errorOf(e).message}` });
+      setStep({ kind: "pick", error: `${fileName(path)}: ${errorText(e)}` });
     }
   }
 
@@ -55,7 +63,7 @@ export default function ImportPanel({ stores, onImported }: Props) {
     const path = await open({
       multiple: false,
       directory: false,
-      filters: [{ name: "Backup do WhatsApp", extensions: ["crypt14", "crypt15"] }],
+      filters: [{ name: t.backupFilter, extensions: ["crypt14", "crypt15"] }],
     });
     if (path) await selectBackup(path);
   }
@@ -74,8 +82,7 @@ export default function ImportPanel({ stores, onImported }: Props) {
       setStep({ kind: "done", source, summary });
       onImported();
     } catch (e) {
-      const { code, message } = errorOf(e);
-      setStep({ ...configured, error: friendlyError(code, message) });
+      setStep({ ...configured, error: friendlyError(e) });
     } finally {
       unlisten();
     }
@@ -84,12 +91,12 @@ export default function ImportPanel({ stores, onImported }: Props) {
   if (step.kind === "running") {
     return (
       <section className="card">
-        <h2>Importando</h2>
+        <h2>{t.importing}</h2>
         <div className="progress">
           <div className="spinner" />
-          <span>{PHASE_LABEL[step.phase]}</span>
+          <span>{phaseLabel[step.phase]}</span>
         </div>
-        <p className="muted small">O conteúdo descriptografado fica só na memória e vai direto para o cofre.</p>
+        <p className="muted small">{t.inMemoryNote}</p>
       </section>
     );
   }
@@ -101,11 +108,11 @@ export default function ImportPanel({ stores, onImported }: Props) {
   if (step.kind === "pick") {
     return (
       <section className="card">
-        <h2>Importar de um arquivo</h2>
+        <h2>{t.importFromFile}</h2>
         <div className="dropzone">
-          <p className="title">Arraste o msgstore.db.crypt15 ou .crypt14 para cá</p>
-          <p className="subtitle">No celular fica em Android/media/com.whatsapp/WhatsApp/Databases</p>
-          <button onClick={chooseBackup}>Escolher arquivo…</button>
+          <p className="title">{t.dropTitle}</p>
+          <p className="subtitle">{t.dropSubtitle}</p>
+          <button onClick={chooseBackup}>{t.chooseFile}</button>
         </div>
         {step.error && <div className="result error">{step.error}</div>}
       </section>
@@ -116,15 +123,15 @@ export default function ImportPanel({ stores, onImported }: Props) {
 
   return (
     <section className="card">
-      <h2>Importar de um arquivo</h2>
+      <h2>{t.importFromFile}</h2>
       <div className="file-row">
         <div>
           <strong>{fileName(step.path)}</strong>
           <span className="muted small">
-            {step.info.version} · {formatSize(step.info.sizeBytes)}
+            {step.info.version} · {formatSize(step.info.sizeBytes, lang)}
           </span>
         </div>
-        <button onClick={() => setStep({ kind: "pick" })}>Trocar</button>
+        <button onClick={() => setStep({ kind: "pick" })}>{t.change}</button>
       </div>
 
       <SourcePicker value={source} onChange={setSource} />
@@ -134,17 +141,14 @@ export default function ImportPanel({ stores, onImported }: Props) {
       {step.error && <div className="result error">{step.error}</div>}
 
       <button className="primary" disabled={!keyReady(key)} onClick={runImport}>
-        Importar
+        {t.import}
       </button>
     </section>
   );
 }
 
 export function ReplaceWarning({ source, at }: { source: SourceApp; at: number }) {
-  return (
-    <div className="warning">
-      Já existe um histórico do {SOURCE_LABEL[source]} importado em {new Date(at).toLocaleString("pt-BR")}. Ele será
-      substituído por este backup.
-    </div>
-  );
+  const t = useImportT();
+  const { lang } = useLang();
+  return <div className="warning">{t.replaceWarning(SOURCE_LABEL[source], formatDateTime(at, lang))}</div>;
 }

@@ -187,7 +187,7 @@ pub async fn gdrive_login(app: AppHandle, email: String) -> Result<LoginResult, 
     // A página do Google preenche o e-mail com isto: o usuário não digita duas vezes.
     login_url.query_pairs_mut().append_pair("Email", email.trim());
     WebviewWindowBuilder::new(&app, LOGIN_WINDOW, WebviewUrl::External(login_url))
-        .title("Entrar no Google")
+        .title(crate::settings::tr(&app, "Entrar no Google", "Sign in to Google"))
         .inner_size(480.0, 720.0)
         .incognito(true)
         // O WKWebView se identifica sem o marcador do Safari, e o Google recusa

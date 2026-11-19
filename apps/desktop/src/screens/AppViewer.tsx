@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Icon, RailButton, Viewer } from "@wa/viewer";
 import { SOURCE_LABEL, SourceApp, StoreInfo, tauriSource } from "../api";
+import { useAppT } from "../i18n/app";
 
 type Props = {
   stores: StoreInfo[];
@@ -10,6 +11,7 @@ type Props = {
 
 /** O visualizador compartilhado sobre o cofre, com os controles do app. */
 export default function AppViewer({ stores, onLock, onOpenImport }: Props) {
+  const t = useAppT();
   const [store, setStore] = useState<SourceApp>(stores[0].sourceApp);
 
   // Se o banco selecionado sumir (não deveria), volta para o primeiro.
@@ -25,7 +27,7 @@ export default function AppViewer({ stores, onLock, onOpenImport }: Props) {
   const actions = other && (
     <button
       className="icon-btn"
-      title={`Trocar para ${SOURCE_LABEL[other.sourceApp]}`}
+      title={t.switchTo(SOURCE_LABEL[other.sourceApp])}
       onClick={() => setStore(other.sourceApp)}
     >
       <Icon name="swap" size={22} />
@@ -33,8 +35,8 @@ export default function AppViewer({ stores, onLock, onOpenImport }: Props) {
   );
   const railBottom = (
     <>
-      <RailButton icon="import" title="Importar ou exportar" onClick={onOpenImport} />
-      <RailButton icon="lock" title="Travar o cofre" onClick={onLock} />
+      <RailButton icon="import" title={t.importOrExport} onClick={onOpenImport} />
+      <RailButton icon="lock" title={t.lockTitle} onClick={onLock} />
     </>
   );
 
@@ -45,8 +47,8 @@ export default function AppViewer({ stores, onLock, onOpenImport }: Props) {
       title={SOURCE_LABEL[store]}
       actions={actions}
       railBottom={railBottom}
-      emptyTitle={`Histórico do ${SOURCE_LABEL[store]}`}
-      emptyNote="Os dados ficam cifrados neste computador e não saem dele."
+      emptyTitle={t.emptyTitle(SOURCE_LABEL[store])}
+      emptyNote={t.emptyNote}
     />
   );
 }

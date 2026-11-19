@@ -446,3 +446,155 @@ code {
 .media-import .bar {
   width: 100%;
 }
+
+/* ---------------------------------------------------------------- idioma */
+
+.lang-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.lang-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 9px;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  color: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.lang-trigger:hover,
+.lang-menu.open .lang-trigger {
+  background: color-mix(in srgb, currentColor 18%, transparent);
+}
+
+.lang-menu-rail .lang-trigger {
+  border: none;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.lang-menu-rail .lang-trigger:hover,
+.lang-menu-rail.open .lang-trigger {
+  background: var(--rail-active);
+}
+
+.lang-chevron {
+  opacity: 0.8;
+  transition: transform 0.15s;
+}
+
+.lang-menu.open .lang-chevron {
+  transform: rotate(180deg);
+}
+
+.lang-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 70;
+  min-width: 250px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 10px 28px rgb(11 20 26 / 0.22), 0 0 0 1px rgb(11 20 26 / 0.06);
+  animation: lang-pop 0.12s ease-out;
+}
+
+.lang-menu-rail .lang-popover {
+  top: auto;
+  right: auto;
+  bottom: 0;
+  left: calc(100% + 10px);
+}
+
+@keyframes lang-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+
+.lang-caption {
+  padding: 6px 10px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.lang-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.lang-option:hover,
+.lang-option:focus-visible {
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  outline: none;
+}
+
+.lang-code {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--text-muted);
+}
+
+.lang-option.selected .lang-code {
+  background: color-mix(in srgb, var(--wa-green) 18%, transparent);
+  color: var(--wa-teal-dark);
+}
+
+.lang-names {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  font-size: 15px;
+  line-height: 20px;
+}
+
+.lang-names small {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.lang-option.selected .lang-names > span {
+  font-weight: 600;
+}
+
+.lang-check {
+  color: var(--wa-green);
+}
+
+@media (prefers-color-scheme: dark) {
+  .lang-option.selected .lang-code {
+    color: var(--wa-green);
+  }
+}

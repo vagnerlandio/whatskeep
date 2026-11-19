@@ -53,3 +53,9 @@
 .dest-path {
   word-break: break-all;
 }
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}

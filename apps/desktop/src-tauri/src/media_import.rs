@@ -183,7 +183,7 @@ pub async fn import_media_folder(app: AppHandle, source_app: String) -> Result<O
         let Some(folder) = app
             .dialog()
             .file()
-            .set_title("Escolha a pasta WhatsApp copiada do celular")
+            .set_title(crate::settings::tr(&app, "Escolha a pasta WhatsApp copiada do celular", "Choose the WhatsApp folder copied from the phone"))
             .blocking_pick_folder()
         else {
             return Ok(None);

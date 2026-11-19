@@ -42,6 +42,8 @@ fn main() {
         "export_cancel",
         "open_link",
         "ui_log",
+        "get_language",
+        "set_language",
     ];
     tauri_build::try_build(
         tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(commands)),

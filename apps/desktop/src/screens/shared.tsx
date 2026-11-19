@@ -1,6 +1,9 @@
 // Peças compartilhadas pela importação local e pelo download do Google Drive.
 import { open } from "@tauri-apps/plugin-dialog";
-import { formatCount, formatSize, ImportPhase, ImportSummary, KeyInput, MediaProgress, MediaSummary, SOURCE_LABEL, SourceApp } from "../api";
+import { useLang } from "@wa/viewer";
+import { errorOf, formatCount, formatSize, ImportPhase, ImportSummary, KeyInput, MediaProgress, MediaSummary, SOURCE_LABEL, SourceApp } from "../api";
+import { useErrorText } from "../i18n/errors";
+import { useImportT } from "../i18n/import";
 
 export type BackupVersion = "crypt14" | "crypt15";
 export type KeyState = { mode: "hex" | "file"; hex: string; file: string | null };
@@ -33,6 +36,7 @@ export function KeyField({
   value: KeyState;
   onChange: (k: KeyState) => void;
 }) {
+  const t = useImportT();
   const digits = hexDigits(value.hex);
 
   async function chooseKeyFile() {
@@ -42,20 +46,21 @@ export function KeyField({
 
   return (
     <fieldset>
-      <legend>Chave do backup</legend>
+      <legend>{t.keyLegend}</legend>
       {version === "crypt15" ? (
         <div className="tabs">
           <button className={value.mode === "hex" ? "active" : ""} onClick={() => onChange({ ...value, mode: "hex" })}>
-            64 dígitos
+            {t.keyTabHex}
           </button>
           <button className={value.mode === "file" ? "active" : ""} onClick={() => onChange({ ...value, mode: "file" })}>
-            Arquivo encrypted_backup.key
+            {t.keyTabFile}
           </button>
         </div>
       ) : (
         <p className="muted small">
-          Backups crypt14 não têm criptografia de ponta a ponta: a chave é o arquivo <code>key</code> do celular
-          (/data/data/com.whatsapp/files/key, só com root).
+          {t.crypt14KeyBefore}
+          <code>key</code>
+          {t.crypt14KeyAfter}
         </p>
       )}
 
@@ -68,35 +73,32 @@ export function KeyField({
             autoComplete="off"
             autoCorrect="off"
             autoCapitalize="off"
-            placeholder="Cole aqui a chave de 64 dígitos mostrada quando você ativou o backup criptografado"
+            placeholder={t.keyPlaceholder}
             value={value.hex}
             onChange={(e) => onChange({ ...value, hex: e.target.value })}
           />
           <span className={`hint ${digits === null || (value.hex && digits !== 64) ? "bad" : ""}`}>
-            {digits === null ? "A chave só tem os dígitos 0–9 e as letras a–f." : `${digits}/64 dígitos`}
+            {digits === null ? t.keyBadChars : t.keyDigits(digits)}
           </span>
         </>
       ) : (
         <div className="file-row">
-          <span className="muted small">{value.file ? fileName(value.file) : "Nenhum arquivo escolhido"}</span>
-          <button onClick={chooseKeyFile}>Escolher arquivo de chave…</button>
+          <span className="muted small">{value.file ? fileName(value.file) : t.noFileChosen}</span>
+          <button onClick={chooseKeyFile}>{t.chooseKeyFile}</button>
         </div>
       )}
       {version === "crypt15" && (
-        <p className="muted small">
-          Se o backup foi protegido só com uma senha (sem a chave de 64 dígitos), não há como abri-lo fora do
-          WhatsApp: a chave fica guardada nos servidores dele. No celular, troque a proteção para a chave de 64 dígitos
-          e faça um backup novo.
-        </p>
+        <p className="muted small">{t.passwordOnly}</p>
       )}
     </fieldset>
   );
 }
 
 export function SourcePicker({ value, onChange }: { value: SourceApp; onChange: (s: SourceApp) => void }) {
+  const t = useImportT();
   return (
     <fieldset>
-      <legend>Importar como</legend>
+      <legend>{t.importAs}</legend>
       {(["whatsapp", "business"] as const).map((app) => (
         <label key={app} className="radio">
           <input type="radio" checked={value === app} onChange={() => onChange(app)} />
@@ -107,22 +109,19 @@ export function SourcePicker({ value, onChange }: { value: SourceApp; onChange: 
   );
 }
 
-export const PHASE_LABEL: Record<ImportPhase, string> = {
-  reading: "Lendo o arquivo…",
-  downloading: "Baixando do Google Drive…",
-  decrypting: "Descriptografando…",
-  importing: "Importando mensagens e montando o índice de busca…",
-  done: "Concluído",
-};
+/** Rótulos das fases da importação no idioma atual. */
+export function usePhaseLabel(): Record<ImportPhase, string> {
+  return useImportT().phase;
+}
 
-/** Mensagens amigáveis para os códigos de erro mais comuns. */
-export function friendlyError(code: string, message: string): string {
-  const map: Record<string, string> = {
-    wrong_key: "A chave não abre este backup. Confira os 64 dígitos ou o arquivo de chave.",
-    key_mismatch: "Este arquivo de chave é de outro formato de backup.",
-    not_msgstore: "O arquivo foi descriptografado, mas não é um banco de mensagens (msgstore).",
+/** Mensagens amigáveis para os códigos de erro mais comuns; os demais vêm de `useErrorText`. */
+export function useFriendlyError(): (e: unknown) => string {
+  const t = useImportT();
+  const errorText = useErrorText();
+  return (e: unknown) => {
+    const code = errorOf(e).code;
+    return t.friendly[code] ?? errorText(e);
   };
-  return map[code] ?? message;
 }
 
 export function SummaryView({
@@ -138,51 +137,56 @@ export function SummaryView({
   footer?: string;
   onAgain: () => void;
 }) {
+  const t = useImportT();
+  const { lang } = useLang();
+  const n = (v: number) => formatCount(v, lang);
   return (
     <section className="card">
-      <h2>Importação concluída</h2>
+      <h2>{t.importDone}</h2>
       <div className="result">
         <strong>{SOURCE_LABEL[source]}</strong>
-        <span>
-          {formatCount(s.chats)} conversas · {formatCount(s.messages)} mensagens · {formatCount(s.media)} mídias
-        </span>
-        <span className="muted small">
-          {formatCount(s.reactions)} reações · {formatCount(s.vcards)} contatos compartilhados ·{" "}
-          {formatCount(s.skippedStatus)} status ignorados
-        </span>
+        <span>{t.summaryMain(n(s.chats), n(s.messages), n(s.media))}</span>
+        <span className="muted small">{t.summaryExtra(n(s.reactions), n(s.vcards), n(s.skippedStatus))}</span>
         {s.unknownTypes.length > 0 && (
-          <p>
-            Tipos de mensagem ainda não reconhecidos:{" "}
-            {s.unknownTypes.map(([t, n]) => `${t} (${formatCount(n)})`).join(", ")}. Elas aparecem como "mensagem não
-            suportada".
-          </p>
+          <p>{t.unknownTypes(s.unknownTypes.map(([type, count]) => `${type} (${n(count)})`).join(", "))}</p>
         )}
       </div>
       {media && <MediaSummaryLine s={media} />}
       {footer && <p className="muted small">{footer}</p>}
-      <button onClick={onAgain}>Importar outro backup</button>
+      <button onClick={onAgain}>{t.importAnother}</button>
     </section>
   );
 }
 
+// Motivos de parada que o backend manda em português (ver gdrive.rs e media_import.rs).
+const STOPPED_CANCELLED = "cancelado";
+const STOPPED_EXPIRED = "a sessão do Google expirou; entre de novo para continuar";
+
 export function MediaSummaryLine({ s }: { s: MediaSummary }) {
+  const t = useImportT();
+  const { lang } = useLang();
+  const n = (v: number) => formatCount(v, lang);
+  const stopped =
+    s.stopped === STOPPED_CANCELLED ? t.stoppedCancelled : s.stopped === STOPPED_EXPIRED ? t.stoppedExpired : s.stopped;
   return (
     <div className={`result ${s.failed > 0 || s.stopped ? "partial" : ""}`}>
-      <strong>Mídias</strong>
+      <strong>{t.media}</strong>
       <span>
-        {formatCount(s.added)} novas · {formatCount(s.already)} já estavam no cofre
-        {s.failed > 0 && ` · ${formatCount(s.failed)} com erro`} · {formatSize(s.bytes)}
+        {t.mediaAdded(n(s.added), n(s.already))}
+        {s.failed > 0 && t.mediaFailed(n(s.failed))} · {formatSize(s.bytes, lang)}
       </span>
       <span className="muted small">
-        {formatCount(s.matched)} de {formatCount(s.expected)} mídias do histórico encontradas na origem
-        {s.unmatched > 0 && ` · ${formatCount(s.unmatched)} arquivos sem mensagem correspondente ignorados`}
+        {t.mediaMatched(n(s.matched), n(s.expected))}
+        {s.unmatched > 0 && t.mediaUnmatched(n(s.unmatched))}
       </span>
-      {s.stopped && <p>Parou antes do fim: {s.stopped}. O que já entrou continua no cofre; rode de novo para continuar.</p>}
+      {stopped && <p>{t.stoppedEarly(stopped)}</p>}
     </div>
   );
 }
 
 export function MediaProgressView({ p, onCancel }: { p: MediaProgress | null; onCancel: () => void }) {
+  const t = useImportT();
+  const { lang } = useLang();
   const pct = p && p.totalBytes > 0 ? Math.min(100, (p.bytes / p.totalBytes) * 100) : 0;
   return (
     <>
@@ -191,10 +195,16 @@ export function MediaProgressView({ p, onCancel }: { p: MediaProgress | null; on
       </div>
       <span className="muted small">
         {p
-          ? `${formatCount(p.done)} de ${formatCount(p.total)} arquivos · ${formatSize(p.bytes)} de ${formatSize(p.totalBytes)} · ${formatCount(p.added)} novos`
-          : "Procurando os arquivos…"}
+          ? t.mediaProgress(
+              formatCount(p.done, lang),
+              formatCount(p.total, lang),
+              formatSize(p.bytes, lang),
+              formatSize(p.totalBytes, lang),
+              formatCount(p.added, lang),
+            )
+          : t.searchingFiles}
       </span>
-      <button onClick={onCancel}>Parar</button>
+      <button onClick={onCancel}>{t.stop}</button>
     </>
   );
 }

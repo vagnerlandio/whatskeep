@@ -1,11 +1,16 @@
 import { Icon } from "@wa/viewer";
 import { FormEvent, useState } from "react";
 import { api, errorOf } from "../api";
+import { useAppT } from "../i18n/app";
+import { useErrorText } from "../i18n/errors";
 
 export default function Unlock({ reason, onUnlocked }: { reason: string | null; onUnlocked: () => void }) {
+  const t = useAppT();
+  const errorText = useErrorText();
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Erro bruto (ou senha errada): o texto acompanha a troca de idioma.
+  const [error, setError] = useState<{ wrong: true } | { e: unknown } | null>(null);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -17,8 +22,7 @@ export default function Unlock({ reason, onUnlocked }: { reason: string | null; 
       setPassword("");
       onUnlocked();
     } catch (err) {
-      const { code, message } = errorOf(err);
-      setError(code === "wrong_password" ? "Senha incorreta." : message);
+      setError(errorOf(err).code === "wrong_password" ? { wrong: true } : { e: err });
       setPassword("");
       setBusy(false);
     }
@@ -29,10 +33,10 @@ export default function Unlock({ reason, onUnlocked }: { reason: string | null; 
       <div className="lock-icon">
         <Icon name="lockKeyhole" size={40} strokeWidth={1.5} />
       </div>
-      <h1>Cofre travado</h1>
+      <h1>{t.unlockTitle}</h1>
       {reason && <p className="muted">{reason}</p>}
       <label>
-        Senha do cofre
+        {t.vaultPassword}
         <input
           type="password"
           autoFocus
@@ -42,9 +46,9 @@ export default function Unlock({ reason, onUnlocked }: { reason: string | null; 
           disabled={busy}
         />
       </label>
-      {error && <div className="result error">{error}</div>}
+      {error && <div className="result error">{"wrong" in error ? t.wrongPassword : errorText(error.e)}</div>}
       <button className="primary" type="submit" disabled={!password || busy}>
-        {busy ? "Abrindo…" : "Abrir"}
+        {busy ? t.opening : t.open}
       </button>
     </form>
   );

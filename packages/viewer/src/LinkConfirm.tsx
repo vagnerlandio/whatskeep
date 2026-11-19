@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { useSource } from "./source";
 import { errorOf } from "./types";
+import { useViewerT } from "./messages";
 
 /** Host em destaque e URL completa: o usuário vê para onde vai antes de sair. */
 export default function LinkConfirm({ url, onClose }: { url: string; onClose: () => void }) {
   const source = useSource();
+  const t = useViewerT();
   const [error, setError] = useState<string | null>(null);
   let host = "";
   let valid = false;
@@ -35,22 +37,22 @@ export default function LinkConfirm({ url, onClose }: { url: string; onClose: ()
   return (
     <div className="modal-backdrop" onClick={onClose} role="dialog" aria-modal>
       <div className="card narrow" onClick={(e) => e.stopPropagation()}>
-        <h2>Abrir link externo?</h2>
+        <h2>{t.linkTitle}</h2>
         {valid ? (
           <>
-            <p className="muted small">O link vai abrir no navegador, fora deste histórico. Ele veio de uma mensagem: confira o endereço.</p>
+            <p className="muted small">{t.linkExplain}</p>
             <p className="link-host">{host}</p>
             <p className="link-full">{url}</p>
           </>
         ) : (
-          <p className="result error">Este link não pode ser aberto.</p>
+          <p className="result error">{t.linkInvalid}</p>
         )}
         {error && <div className="result error">{error}</div>}
         <div className="row-buttons">
-          <button onClick={onClose}>Cancelar</button>
+          <button onClick={onClose}>{t.cancel}</button>
           {valid && (
             <button className="primary" onClick={go}>
-              Abrir
+              {t.open}
             </button>
           )}
         </div>

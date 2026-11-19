@@ -76,7 +76,7 @@ fn cloud_provider(path: &std::path::Path) -> Option<&'static str> {
 pub async fn export_pick_destination(app: AppHandle) -> Result<Option<Destination>, CmdError> {
     use tauri_plugin_dialog::DialogExt;
     blocking("export_pick_destination", move || {
-        let Some(folder) = app.dialog().file().set_title("Onde salvar o histórico exportado").blocking_pick_folder() else {
+        let Some(folder) = app.dialog().file().set_title(crate::settings::tr(&app, "Onde salvar o histórico exportado", "Where to save the exported history")).blocking_pick_folder() else {
             return Ok(None);
         };
         let base = folder.into_path().map_err(|_| CmdError::new("invalid_argument", "pasta inválida"))?;

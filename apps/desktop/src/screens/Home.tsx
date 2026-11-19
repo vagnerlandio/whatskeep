@@ -1,5 +1,6 @@
-import { Icon } from "@wa/viewer";
-import { formatCount, SOURCE_LABEL, StoreInfo } from "../api";
+import { formatDateTime, Icon, useLang } from "@wa/viewer";
+import { SOURCE_LABEL, StoreInfo } from "../api";
+import { useAppT } from "../i18n/app";
 import DriveImport from "./DriveImport";
 import ExportPanel from "./ExportPanel";
 import MediaFolderImport from "./MediaFolderImport";
@@ -9,23 +10,25 @@ type Props = { stores: StoreInfo[]; onImported: () => void; onClose?: () => void
 
 /** Importação e lista dos históricos no cofre. Tela inicial quando o cofre está vazio. */
 export default function Home({ stores, onImported, onClose }: Props) {
+  const t = useAppT();
+  const { lang } = useLang();
   return (
     <div className="home">
       {onClose && (
         <button className="back" onClick={onClose}>
-          <Icon name="back" size={16} /> Voltar ao histórico
+          <Icon name="back" size={16} /> {t.backToHistory}
         </button>
       )}
       <section className="card">
-        <h2>Históricos no cofre</h2>
-        {stores.length === 0 && <p className="muted">Nenhum backup importado ainda.</p>}
+        <h2>{t.storesTitle}</h2>
+        {stores.length === 0 && <p className="muted">{t.noStores}</p>}
         {stores.map((s) => (
           <div className="store" key={s.sourceApp}>
             <strong>{SOURCE_LABEL[s.sourceApp]}</strong>
             <span>
-              {formatCount(s.chats)} conversas · {formatCount(s.messages)} mensagens
+              {t.chats(s.chats)} · {t.messages(s.messages)}
             </span>
-            <span className="muted small">Importado em {new Date(s.importedAtMs).toLocaleString("pt-BR")}</span>
+            <span className="muted small">{t.importedAt(formatDateTime(s.importedAtMs, lang))}</span>
             <MediaFolderImport source={s.sourceApp} />
           </div>
         ))}

@@ -5,3 +5,6 @@ export * from "./types";
 export { chatTitle, formatPhone, personLabel } from "./format";
 export { Icon, icons } from "./icons";
 export type { IconName } from "./icons";
+export { detectLang, isLang, LangProvider, LANGS, LanguageSelect, makeT, useLang } from "./i18n";
+export type { Lang } from "./i18n";
+export { formatDate, formatDateTime, formatDay, formatListTime, formatTime } from "./format";

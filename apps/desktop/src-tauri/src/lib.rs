@@ -6,6 +6,7 @@ mod gdrive;
 mod links;
 mod media;
 mod media_import;
+mod settings;
 mod state;
 
 use tauri::Manager;
@@ -74,7 +75,9 @@ pub fn run() {
             });
         })
         .setup(|app| {
-            let vault_dir = app.path().app_data_dir()?.join("vault");
+            let data_dir = app.path().app_data_dir()?;
+            app.manage(settings::Settings::load(&data_dir));
+            let vault_dir = data_dir.join("vault");
             tracing::info!(cofre_existe = wa_vault::Vault::exists(&vault_dir), "app iniciado");
             app.manage(AppState::new(vault_dir));
             state::spawn_autolock(app.handle().clone());
@@ -106,6 +109,8 @@ pub fn run() {
             export::export_cancel,
             links::open_link,
             diag::ui_log,
+            settings::get_language,
+            settings::set_language,
         ])
         .run(context())
         .expect("falha ao iniciar o aplicativo");

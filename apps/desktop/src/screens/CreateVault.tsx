@@ -1,13 +1,18 @@
 import { FormEvent, useState } from "react";
-import { api, errorOf, MIN_PASSWORD_CHARS } from "../api";
+import { api, MIN_PASSWORD_CHARS } from "../api";
+import { useAppT } from "../i18n/app";
+import { useErrorText } from "../i18n/errors";
 
 type Props = { autolockMinutes: number; onCreated: () => void };
 
 export default function CreateVault({ autolockMinutes, onCreated }: Props) {
+  const t = useAppT();
+  const errorText = useErrorText();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Erro bruto: o texto acompanha a troca de idioma.
+  const [error, setError] = useState<{ e: unknown } | null>(null);
 
   const length = [...password].length;
   const tooShort = length < MIN_PASSWORD_CHARS;
@@ -25,20 +30,17 @@ export default function CreateVault({ autolockMinutes, onCreated }: Props) {
       setConfirm("");
       onCreated();
     } catch (err) {
-      setError(errorOf(err).message);
+      setError({ e: err });
       setBusy(false);
     }
   }
 
   return (
     <form className="card narrow" onSubmit={submit}>
-      <h1>Criar cofre</h1>
-      <p className="muted">
-        O histórico importado fica guardado neste computador, cifrado com esta senha. Ela é pedida ao abrir o app e
-        depois de {autolockMinutes} minutos sem uso.
-      </p>
+      <h1>{t.createTitle}</h1>
+      <p className="muted">{t.createIntro(autolockMinutes)}</p>
       <label>
-        Senha
+        {t.password}
         <input
           type="password"
           autoFocus
@@ -49,10 +51,10 @@ export default function CreateVault({ autolockMinutes, onCreated }: Props) {
         />
       </label>
       <span className={`hint ${password && tooShort ? "bad" : ""}`}>
-        Mínimo de {MIN_PASSWORD_CHARS} caracteres. Uma frase longa é mais forte que uma senha curta complicada.
+        {t.passwordRule(MIN_PASSWORD_CHARS)}
       </span>
       <label>
-        Confirmar senha
+        {t.confirmPassword}
         <input
           type="password"
           autoComplete="new-password"
@@ -61,14 +63,13 @@ export default function CreateVault({ autolockMinutes, onCreated }: Props) {
           disabled={busy}
         />
       </label>
-      {mismatch && <span className="hint bad">As senhas não conferem.</span>}
+      {mismatch && <span className="hint bad">{t.mismatch}</span>}
       <div className="warning">
-        <strong>Não existe recuperação de senha.</strong> Se você esquecer, o cofre não pode ser aberto e será preciso
-        importar os backups de novo.
+        <strong>{t.noRecoveryStrong}</strong> {t.noRecoveryCreate}
       </div>
-      {error && <div className="result error">{error}</div>}
+      {error && <div className="result error">{errorText(error.e)}</div>}
       <button className="primary" type="submit" disabled={!canSubmit}>
-        {busy ? "Criando cofre…" : "Criar cofre"}
+        {busy ? t.creating : t.createTitle}
       </button>
     </form>
   );

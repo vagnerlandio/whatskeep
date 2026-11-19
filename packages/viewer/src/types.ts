@@ -88,7 +88,7 @@ export function errorOf(e: unknown): CmdError {
   return { code: "internal", message: String(e) };
 }
 
-export function formatSize(bytes: number): string {
+export function formatSize(bytes: number, lang: "pt-BR" | "en" = "pt-BR"): string {
   const units = ["B", "KB", "MB", "GB"];
   let v = bytes;
   let i = 0;
@@ -96,7 +96,7 @@ export function formatSize(bytes: number): string {
     v /= 1024;
     i++;
   }
-  return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+  return `${v.toLocaleString(lang, { maximumFractionDigits: i === 0 ? 0 : 1, minimumFractionDigits: i === 0 ? 0 : 1 })} ${units[i]}`;
 }
 
-export const formatCount = (n: number) => n.toLocaleString("pt-BR");
+export const formatCount = (n: number, lang: "pt-BR" | "en" = "pt-BR") => n.toLocaleString(lang);

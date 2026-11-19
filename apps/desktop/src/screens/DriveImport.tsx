@@ -1,4 +1,4 @@
-import { Icon } from "@wa/viewer";
+import { formatDateTime, Icon, useLang } from "@wa/viewer";
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -18,18 +18,20 @@ import {
   StoreInfo,
 } from "../api";
 import { formatPhone } from "@wa/viewer";
+import { useErrorText } from "../i18n/errors";
+import { useImportT } from "../i18n/import";
 import { ReplaceWarning } from "./ImportPanel";
 import {
-  friendlyError,
   initialKey,
   KeyField,
   KeyState,
   keyReady,
   MediaProgressView,
-  PHASE_LABEL,
   SourcePicker,
   SummaryView,
   toKeyInput,
+  useFriendlyError,
+  usePhaseLabel,
 } from "./shared";
 
 type Step =
@@ -52,6 +54,11 @@ export default function DriveImport({ stores, onImported }: Props) {
   const [key, setKey] = useState<KeyState>(initialKey("crypt15"));
   const [includeMedia, setIncludeMedia] = useState(false);
   const sessionOpen = useRef(false);
+  const t = useImportT();
+  const { lang } = useLang();
+  const phaseLabel = usePhaseLabel();
+  const errorText = useErrorText();
+  const friendlyError = useFriendlyError();
 
   // Ao sair da tela, os tokens do Google são descartados no backend.
   useEffect(
@@ -81,8 +88,8 @@ export default function DriveImport({ stores, onImported }: Props) {
     try {
       loggedIn(await driveApi.login(email.trim()));
     } catch (e) {
-      const { code, message } = errorOf(e);
-      setStep({ kind: "intro", error: code === "cancelled" ? undefined : message });
+      const { code } = errorOf(e);
+      setStep({ kind: "intro", error: code === "cancelled" ? undefined : errorText(e) });
     }
   }
 
@@ -91,7 +98,7 @@ export default function DriveImport({ stores, onImported }: Props) {
       loggedIn(await driveApi.loginManual(email.trim(), manualToken));
     } catch (e) {
       setManualToken("");
-      setStep({ kind: "manual", error: errorOf(e).message });
+      setStep({ kind: "manual", error: errorText(e) });
     }
   }
 
@@ -124,13 +131,13 @@ export default function DriveImport({ stores, onImported }: Props) {
       setStep({ kind: "done", source, summary, media });
       onImported();
     } catch (e) {
-      const { code, message } = errorOf(e);
+      const { code } = errorOf(e);
       // Rede: a sessão continua no backend e dá para tentar de novo. Outros erros encerram a sessão.
       if (code === "network" || code === "download_corrupt") {
-        setStep({ kind: "list", login, error: message });
+        setStep({ kind: "list", login, error: errorText(e) });
       } else {
         sessionOpen.current = false;
-        setStep({ kind: "intro", error: code === "cancelled" ? undefined : friendlyError(code, message) });
+        setStep({ kind: "intro", error: code === "cancelled" ? undefined : friendlyError(e) });
       }
     } finally {
       unlisteners.forEach((u) => u());
@@ -143,7 +150,7 @@ export default function DriveImport({ stores, onImported }: Props) {
         source={step.source}
         summary={step.summary}
         media={step.media}
-        footer="A sessão do Google foi encerrada e os tokens de acesso foram apagados da memória."
+        footer={t.driveFooter}
         onAgain={() => setStep({ kind: "intro" })}
       />
     );
@@ -154,10 +161,10 @@ export default function DriveImport({ stores, onImported }: Props) {
     const mediaPhase = step.phase === "done" && includeMedia;
     return (
       <section className="card">
-        <h2>Google Drive</h2>
+        <h2>{t.drive}</h2>
         <div className="progress">
           <div className="spinner" />
-          <span>{mediaPhase ? "Baixando fotos, vídeos e áudios…" : PHASE_LABEL[step.phase]}</span>
+          <span>{mediaPhase ? t.downloadingMedia : phaseLabel[step.phase]}</span>
         </div>
         {step.phase === "downloading" && (
           <>
@@ -165,10 +172,10 @@ export default function DriveImport({ stores, onImported }: Props) {
               <div style={{ width: `${pct}%` }} />
             </div>
             <span className="muted small">
-              {formatSize(step.downloaded)}
-              {step.total > 0 && ` de ${formatSize(step.total)}`}
+              {formatSize(step.downloaded, lang)}
+              {step.total > 0 && t.ofTotal(formatSize(step.total, lang))}
             </span>
-            <button onClick={cancel}>Cancelar</button>
+            <button onClick={cancel}>{t.cancel}</button>
           </>
         )}
         {mediaPhase && (
@@ -180,7 +187,7 @@ export default function DriveImport({ stores, onImported }: Props) {
             }}
           />
         )}
-        <p className="muted small">O backup vem cifrado do Google e é aberto só na memória, direto para o cofre.</p>
+        <p className="muted small">{t.driveInMemory}</p>
       </section>
     );
   }
@@ -188,16 +195,13 @@ export default function DriveImport({ stores, onImported }: Props) {
   if (step.kind === "waiting") {
     return (
       <section className="card">
-        <h2>Google Drive</h2>
+        <h2>{t.drive}</h2>
         <div className="progress">
           <div className="spinner" />
-          <span>Entre na sua conta na janela do Google que foi aberta.</span>
+          <span>{t.waitingLogin}</span>
         </div>
-        <p className="muted small">
-          Ela fecha sozinha quando o login terminar. Se o Google disser que o navegador não é seguro, cancele e use a
-          opção manual.
-        </p>
-        <button onClick={cancel}>Cancelar</button>
+        <p className="muted small">{t.waitingHint}</p>
+        <button onClick={cancel}>{t.cancel}</button>
       </section>
     );
   }
@@ -205,18 +209,24 @@ export default function DriveImport({ stores, onImported }: Props) {
   if (step.kind === "manual") {
     return (
       <section className="card">
-        <h2>Google Drive: login manual</h2>
+        <h2>{t.manualTitle}</h2>
         <ol className="steps">
           <li>
-            Num navegador, abra <code>https://accounts.google.com/EmbeddedSetup</code> e entre na conta {email || "do backup"}.
+            {t.manualStep1Before}
+            <code>https://accounts.google.com/EmbeddedSetup</code>
+            {t.manualStep1After(email || t.manualAccountFallback)}
           </li>
           <li>
-            Quando a página parar de carregar, abra as ferramentas do desenvolvedor → Aplicativo/Armazenamento →
-            Cookies → <code>accounts.google.com</code>.
+            {t.manualStep2Before}
+            <code>accounts.google.com</code>
+            {t.manualStep2After}
           </li>
           <li>
-            Copie o valor do cookie <code>oauth_token</code> (começa com <code>oauth2_4/</code>) e cole abaixo. Ele vale
-            por poucos minutos e só uma vez.
+            {t.manualStep3Before}
+            <code>oauth_token</code>
+            {t.manualStep3Middle}
+            <code>oauth2_4/</code>
+            {t.manualStep3After}
           </li>
         </ol>
         <textarea
@@ -230,9 +240,9 @@ export default function DriveImport({ stores, onImported }: Props) {
         />
         {step.error && <div className="result error">{step.error}</div>}
         <div className="row-buttons">
-          <button onClick={() => setStep({ kind: "intro" })}>Voltar</button>
+          <button onClick={() => setStep({ kind: "intro" })}>{t.back}</button>
           <button className="primary" disabled={!manualToken.trim() || !email.includes("@")} onClick={loginManual}>
-            Continuar
+            {t.continue}
           </button>
         </div>
       </section>
@@ -245,12 +255,10 @@ export default function DriveImport({ stores, onImported }: Props) {
     return (
       <section className="card">
         <div className="file-row">
-          <h2>Backups no Google Drive</h2>
-          <button onClick={cancel}>Sair da conta</button>
+          <h2>{t.driveBackups}</h2>
+          <button onClick={cancel}>{t.signOut}</button>
         </div>
-        {backups.length === 0 && (
-          <p className="muted">Nenhum backup do WhatsApp encontrado nesta conta.</p>
-        )}
+        {backups.length === 0 && <p className="muted">{t.noBackups}</p>}
         <div className="drive-list">
           {backups.map((b) => (
             <label key={b.id} className={`drive-item ${b.uploading ? "disabled" : ""}`}>
@@ -263,24 +271,26 @@ export default function DriveImport({ stores, onImported }: Props) {
               />
               <span className="drive-item-body">
                 <strong>
-                  {b.phone ? formatPhone(b.phone) : "Backup"}{" "}
+                  {b.phone ? formatPhone(b.phone) : t.backup}{" "}
                   {b.apps.map((a) => (
                     <span key={a} className="badge">
                       {SOURCE_LABEL[a]}
                     </span>
                   ))}
-                  {b.encrypted && <span className="badge">
-                      <Icon name="lock" size={12} /> ponta a ponta
-                    </span>}
+                  {b.encrypted && (
+                    <span className="badge">
+                      <Icon name="lock" size={12} /> {t.endToEnd}
+                    </span>
+                  )}
                 </strong>
                 <span className="muted small">
                   {b.uploading
-                    ? "Ainda sendo enviado pelo celular"
+                    ? t.stillUploading
                     : [
-                        b.updateTime && new Date(b.updateTime).toLocaleString("pt-BR"),
-                        b.chatDbSize != null && `mensagens: ${formatSize(b.chatDbSize)}`,
-                        b.messages != null && `${formatCount(b.messages)} mensagens`,
-                        b.sizeBytes != null && `backup total: ${formatSize(b.sizeBytes)}`,
+                        b.updateTime && formatDateTime(new Date(b.updateTime).getTime(), lang),
+                        b.chatDbSize != null && t.chatDbSize(formatSize(b.chatDbSize, lang)),
+                        b.messages != null && t.messagesCount(formatCount(b.messages, lang)),
+                        b.sizeBytes != null && t.totalSize(formatSize(b.sizeBytes, lang)),
                       ]
                         .filter(Boolean)
                         .join(" · ")}
@@ -290,51 +300,49 @@ export default function DriveImport({ stores, onImported }: Props) {
           ))}
         </div>
         {refused.length > 0 && backups.length > 0 && (
-          <p className="muted small">
-            O Google não liberou acesso pelo {refused.map((a) => SOURCE_LABEL[a]).join(" e ")}. Se você usa esse app,
-            os backups dele podem não aparecer aqui.
-          </p>
+          <p className="muted small">{t.refused(refused.map((a) => SOURCE_LABEL[a]).join(t.and))}</p>
         )}
         {selected && (
           <>
             <SourcePicker value={source} onChange={setSource} />
             {selected.encrypted === false && (
               <div className="warning">
-                <strong>Este backup não tem criptografia de ponta a ponta.</strong> A chave dele fica num arquivo interno
-                do celular (<code>key</code>), que só dá para copiar com root. Sem root, o caminho é:
+                <strong>{t.noE2eTitle}</strong>
+                {t.noE2eBefore}
+                <code>key</code>
+                {t.noE2eAfter}
                 <ol>
                   <li>
-                    No WhatsApp: <em>Configurações → Conversas → Backup de conversas → Backup criptografado de ponta a
-                    ponta → Ativar</em>.
+                    {t.noE2eStep1Before}
+                    <em>{t.noE2eStep1Path}</em>
+                    {t.noE2eStep1After}
                   </li>
                   <li>
-                    Escolha <em>Usar chave de criptografia de 64 dígitos</em> (não a senha) e anote a chave num lugar
-                    seguro.
+                    {t.noE2eStep2Before}
+                    <em>{t.noE2eStep2Option}</em>
+                    {t.noE2eStep2After}
                   </li>
-                  <li>Faça um novo backup e espere terminar de enviar.</li>
-                  <li>Volte aqui, entre de novo e use a chave de 64 dígitos.</li>
+                  <li>{t.noE2eStep3}</li>
+                  <li>{t.noE2eStep4}</li>
                 </ol>
-                No WhatsApp Business o caminho é o mesmo, com uma chave própria.
+                {t.noE2eBusiness}
               </div>
             )}
             <KeyField version={selected.encrypted === false ? "crypt14" : "crypt15"} value={key} onChange={setKey} />
             {existing && <ReplaceWarning source={source} at={existing.importedAtMs} />}
             <label className="radio">
               <input type="checkbox" checked={includeMedia} onChange={(e) => setIncludeMedia(e.target.checked)} />
-              Baixar também fotos, vídeos, áudios e documentos
-              {selected.mediaSize != null && ` (até ${formatSize(selected.mediaSize)})`}
+              {t.includeMedia}
+              {selected.mediaSize != null && t.upTo(formatSize(selected.mediaSize, lang))}
             </label>
             {includeMedia && (
-              <p className="muted small">
-                Pode demorar bastante. Cada arquivo entra cifrado no cofre; se parar no meio, rode de novo que ele
-                continua de onde estava. O acesso ao Google vale 1 hora.
-              </p>
+              <p className="muted small">{t.includeMediaHint}</p>
             )}
           </>
         )}
         {step.error && <div className="result error">{step.error}</div>}
         <button className="primary" disabled={!selected || !keyReady(key)} onClick={download}>
-          Baixar e importar
+          {t.downloadAndImport}
         </button>
       </section>
     );
@@ -342,20 +350,18 @@ export default function DriveImport({ stores, onImported }: Props) {
 
   return (
     <section className="card">
-      <h2>Baixar do Google Drive</h2>
+      <h2>{t.driveDownload}</h2>
       <ul className="muted small bullets">
         <li>
-          Usa o mesmo acesso do app do WhatsApp no Android. <strong>Não é um método oficial</strong>: o Google pode
-          bloqueá-lo, e você pode receber um alerta de "novo dispositivo" na conta.
+          {t.introUnofficialBefore}
+          <strong>{t.introUnofficial}</strong>
+          {t.introUnofficialAfter}
         </li>
-        <li>
-          O acesso fica só na memória deste app, limitado à pasta de backup do WhatsApp, e é apagado ao terminar o
-          download, ao travar o cofre ou depois de 50 minutos.
-        </li>
-        <li>O login acontece numa janela do próprio Google; este app não vê a sua senha.</li>
+        <li>{t.introMemory}</li>
+        <li>{t.introPassword}</li>
       </ul>
       <label>
-        E-mail da conta Google do backup
+        {t.emailLabel}
         <input
           type="email"
           autoComplete="email"
@@ -364,15 +370,15 @@ export default function DriveImport({ stores, onImported }: Props) {
           onChange={(e) => setEmail(e.target.value)}
         />
       </label>
-      <span className="muted small">A janela do Google já abre com este e-mail preenchido.</span>
+      <span className="muted small">{t.emailHint}</span>
       {step.error && <div className="result error">{step.error}</div>}
       <button className="primary" disabled={!email.includes("@")} onClick={login}>
-        Entrar no Google
+        {t.signIn}
       </button>
       <p className="muted small">
-        O Google recusou a janela de login?{" "}
+        {t.refusedWindow}{" "}
         <button className="link" disabled={!email.includes("@")} onClick={() => setStep({ kind: "manual" })}>
-          Entrar pelo navegador (login manual)
+          {t.manualLogin}
         </button>
       </p>
     </section>

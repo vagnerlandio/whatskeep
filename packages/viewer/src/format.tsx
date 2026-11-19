@@ -7,6 +7,8 @@ import { Fragment, ReactNode } from "react";
 import { useViewer } from "./context";
 import { Icon, IconName } from "./icons";
 import type { Chat, MessageKind, Person } from "./types";
+import { useLang, type Lang } from "./i18n";
+import { VIEWER_MESSAGES } from "./messages";
 
 // ---------------------------------------------------------------- pessoas
 
@@ -17,8 +19,8 @@ export function formatPhone(phone: string): string {
   return `+${phone}`;
 }
 
-export function personLabel(p: Person | null): string {
-  if (!p) return "Desconhecido";
+export function personLabel(p: Person | null, lang: Lang = "pt-BR"): string {
+  if (!p) return VIEWER_MESSAGES[lang].unknownPerson;
   if (p.name) return p.name;
   if (p.phone) return formatPhone(p.phone);
   // LID sem telefone conhecido: o WhatsApp mostra "~" antes de quem não está na agenda.
@@ -49,12 +51,20 @@ export const avatarHue = (jid: string) => [190, 25, 340, 210, 150, 280, 45, 0, 1
 
 // ---------------------------------------------------------------- datas
 
-const timeFmt = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" });
-const dateFmt = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
-const weekdayFmt = new Intl.DateTimeFormat("pt-BR", { weekday: "long" });
-const longDateFmt = new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "long", year: "numeric" });
+// Formatadores por idioma, criados uma vez cada.
+const fmtCache = new Map<string, Intl.DateTimeFormat>();
+function fmt(lang: Lang, key: string, opts: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+  const k = `${lang}|${key}`;
+  let f = fmtCache.get(k);
+  if (!f) {
+    f = new Intl.DateTimeFormat(lang, opts);
+    fmtCache.set(k, f);
+  }
+  return f;
+}
 
-export const formatTime = (ms: number) => timeFmt.format(ms);
+export const formatTime = (ms: number, lang: Lang = "pt-BR") =>
+  fmt(lang, "time", { hour: "2-digit", minute: "2-digit" }).format(ms);
 
 function startOfDay(ms: number): number {
   const d = new Date(ms);
@@ -69,25 +79,32 @@ export const dayKey = (ms: number) => startOfDay(ms);
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+const TODAY: Record<Lang, [string, string]> = { "pt-BR": ["Hoje", "Ontem"], en: ["Today", "Yesterday"] };
+
 /** Separador de dia na conversa: "Hoje", "Ontem", dia da semana ou data por extenso. */
-export function formatDay(ms: number): string {
+export function formatDay(ms: number, lang: Lang = "pt-BR"): string {
   const diff = Math.round((startOfDay(Date.now()) - startOfDay(ms)) / DAY);
-  if (diff === 0) return "Hoje";
-  if (diff === 1) return "Ontem";
-  if (diff > 1 && diff < 7) return capitalize(weekdayFmt.format(ms));
-  return longDateFmt.format(ms);
+  if (diff === 0) return TODAY[lang][0];
+  if (diff === 1) return TODAY[lang][1];
+  if (diff > 1 && diff < 7) return capitalize(fmt(lang, "weekday", { weekday: "long" }).format(ms));
+  return fmt(lang, "long", { day: "numeric", month: "long", year: "numeric" }).format(ms);
 }
 
-/** Hora da lista de conversas: hora (hoje), "Ontem", dia da semana ou dd/mm/aaaa. */
-export function formatListTime(ms: number): string {
+/** Hora da lista de conversas: hora (hoje), "Ontem", dia da semana ou data curta. */
+export function formatListTime(ms: number, lang: Lang = "pt-BR"): string {
   const diff = Math.round((startOfDay(Date.now()) - startOfDay(ms)) / DAY);
-  if (diff === 0) return formatTime(ms);
-  if (diff === 1) return "Ontem";
-  if (diff > 1 && diff < 7) return capitalize(weekdayFmt.format(ms));
-  return dateFmt.format(ms);
+  if (diff === 0) return formatTime(ms, lang);
+  if (diff === 1) return TODAY[lang][1];
+  if (diff > 1 && diff < 7) return capitalize(fmt(lang, "weekday", { weekday: "long" }).format(ms));
+  return formatDate(ms, lang);
 }
 
-export const formatDate = (ms: number) => dateFmt.format(ms);
+export const formatDate = (ms: number, lang: Lang = "pt-BR") =>
+  fmt(lang, "date", { day: "2-digit", month: "2-digit", year: "numeric" }).format(ms);
+
+/** Data e hora (ex.: "importado em"). */
+export const formatDateTime = (ms: number, lang: Lang = "pt-BR") =>
+  fmt(lang, "datetime", { dateStyle: "short", timeStyle: "short" }).format(ms);
 
 export function formatDuration(s: number | null): string {
   if (!s || s < 0) return "0:00";
@@ -100,20 +117,10 @@ export function formatDuration(s: number | null): string {
 
 // ---------------------------------------------------------------- prévias
 
-export const KIND_PREVIEW: Partial<Record<MessageKind, string>> = {
-  image: "Foto",
-  video: "Vídeo",
-  gif: "GIF",
-  audio: "Áudio",
-  voice: "Mensagem de voz",
-  sticker: "Figurinha",
-  document: "Documento",
-  contact: "Contato",
-  location: "Localização",
-  live_location: "Localização em tempo real",
-  deleted: "Mensagem apagada",
-  system: "Mensagem do sistema",
-  unknown: "Mensagem não suportada",
+/** Rótulo de cada tipo de mensagem na prévia, por idioma. */
+export const KIND_PREVIEW: Record<Lang, Partial<Record<MessageKind, string>>> = {
+  "pt-BR": VIEWER_MESSAGES["pt-BR"].kinds,
+  en: VIEWER_MESSAGES.en.kinds,
 };
 
 /** Ícone de cada tipo na prévia da lista de conversas, como no WhatsApp. */
@@ -131,8 +138,8 @@ export const KIND_ICON: Partial<Record<MessageKind, IconName>> = {
   deleted: "cancel",
 };
 
-export function previewText(kind: MessageKind, text: string | null): string {
-  const label = KIND_PREVIEW[kind];
+export function previewText(kind: MessageKind, text: string | null, lang: Lang = "pt-BR"): string {
+  const label = KIND_PREVIEW[lang][kind];
   if (kind === "text") return oneLine(text ?? "");
   if (kind === "deleted" || kind === "system") return label ?? "";
   return text ? oneLine(text) : (label ?? "");
@@ -140,11 +147,12 @@ export function previewText(kind: MessageKind, text: string | null): string {
 
 /** Prévia com o ícone do tipo (foto, áudio...) antes do texto. */
 export function Preview({ kind, text }: { kind: MessageKind; text: string | null }) {
+  const { lang } = useLang();
   const icon = KIND_ICON[kind];
   return (
     <>
       {icon && <Icon name={icon} size={16} className="preview-icon" />}
-      <span className={kind === "deleted" ? "preview-text muted-italic" : "preview-text"}>{previewText(kind, text)}</span>
+      <span className={kind === "deleted" ? "preview-text muted-italic" : "preview-text"}>{previewText(kind, text, lang)}</span>
     </>
   );
 }
