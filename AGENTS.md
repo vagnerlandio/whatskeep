@@ -7,6 +7,7 @@ Desktop app (**Tauri v2 + React**) that imports WhatsApp / WhatsApp Business bac
 Read this file before changing anything. For details:
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — data flow, key hierarchy, on-disk formats, dependencies between modules.
 - [docs/RECIPES.md](docs/RECIPES.md) — step-by-step checklists for common changes (new command, new message field, new WhatsApp message type...).
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — setup, tests, e2e, fixtures and the diagnostics log.
 - [SECURITY.md](SECURITY.md) — threat model and limitations. [README.md](README.md) — user-facing overview (English first, Portuguese section at the end).
 
 ## Map
@@ -16,7 +17,7 @@ Read this file before changing anything. For details:
 | `crates/wa-crypt` | Decrypts crypt14/crypt15 and `.mcrypt1` media. Pure: no I/O, no Tauri. | — |
 | `crates/wa-import` | `msgstore.db` (modern and legacy schemas) → the app's normalized schema (`store.rs`), with FTS5. | — |
 | `crates/wa-vault` | Vault: `vault.json` (Argon2id → DEK), one SQLCipher DB per app, media blobs, **viewer queries** (`query.rs`). | wa-import |
-| `crates/wa-gdrive` | Google login (gpsoauth, unofficial) and download from `backup.googleapis.com`. | wa-crypt |
+| `crates/wa-gdrive` | Google login (Google Play Services flow, unofficial) and download from `backup.googleapis.com`. | wa-crypt |
 | `crates/wa-export` | Builds the encrypted HTML package (format v1 in `format.rs`). | wa-vault |
 | `apps/desktop/src-tauri` | Tauri commands, state, `wamedia://` protocol, ACL. Cargo package `wa-historico`. | all crates |
 | `apps/desktop/src` | App screens (vault, import, Drive, media, export). | @wa/viewer |

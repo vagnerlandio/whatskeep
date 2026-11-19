@@ -49,7 +49,7 @@ It shows up in `unknownTypes` in the import report.
 
 ## New backup format / crypto change
 
-- Only in `crates/wa-crypt` (no I/O, no Tauri). Synthetic vectors in `crates/wa-crypt/tests/fixtures/`, generated with wa-crypt-tools (commands in the README). Never use a real backup as a fixture.
+- Only in `crates/wa-crypt` (no I/O, no Tauri). Synthetic vectors in `crates/wa-crypt/tests/fixtures/`, generated with an independent implementation (commands in [DEVELOPMENT.md](DEVELOPMENT.md#test-fixtures)). Never use a real backup as a fixture.
 - Expose the key choice in `commands.rs` (`KeyInput`) and `apps/desktop/src/screens/ImportPanel.tsx`.
 
 ## Export format change
