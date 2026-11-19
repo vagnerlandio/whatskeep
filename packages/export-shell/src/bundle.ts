@@ -332,8 +332,8 @@ function safeMime(mime?: string): string {
 }
 
 function safeName(m: Message): string {
-  const raw = m.media?.fileName ?? `midia-${m.id}`;
-  return raw.replace(/[\u0000-\u001f/\\:*?"<>|]/g, "_").replace(/^\.+/, "").slice(0, 150) || `midia-${m.id}`;
+  const raw = m.media?.fileName ?? `media-${m.id}`;
+  return raw.replace(/[\u0000-\u001f/\\:*?"<>|]/g, "_").replace(/^\.+/, "").slice(0, 150) || `media-${m.id}`;
 }
 
 function normalizeChat(c: Partial<Chat>): Chat {

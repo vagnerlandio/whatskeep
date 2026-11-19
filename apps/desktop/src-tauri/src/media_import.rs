@@ -305,7 +305,7 @@ pub async fn save_media(app: AppHandle, store: String, message_id: i64) -> Resul
             return Ok(false);
         };
         let dest = dest.into_path().map_err(|_| CmdError::new("invalid_argument", "destino inválido"))?;
-        let tmp = dest.with_extension("parcial");
+        let tmp = dest.with_extension("partial");
         let result = state.with_media(target, |m| {
             let m = m.ok_or_else(|| CmdError::new("not_found", "mídia não encontrada"))?;
             let f = std::fs::File::create(&tmp)?;
@@ -333,13 +333,13 @@ fn suggested_name(r: &MediaRef) -> String {
         .file_name
         .clone()
         .or_else(|| r.file_path.as_deref().and_then(|p| p.rsplit(['/', '\\']).next()).map(str::to_owned))
-        .unwrap_or_else(|| format!("midia-{}", r.message_id));
+        .unwrap_or_else(|| format!("media-{}", r.message_id));
     let clean: String = raw
         .chars()
         .map(|c| if c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') { '_' } else { c })
         .collect();
     let clean = clean.trim_start_matches('.').trim();
-    if clean.is_empty() { format!("midia-{}", r.message_id) } else { clean.chars().take(150).collect() }
+    if clean.is_empty() { format!("media-{}", r.message_id) } else { clean.chars().take(150).collect() }
 }
 
 #[cfg(test)]
@@ -362,7 +362,7 @@ mod tests {
         assert_eq!(suggested_name(&r(Some("contract.pdf"), None)), "contract.pdf");
         assert_eq!(suggested_name(&r(Some("../../etc/passwd"), None)), "_.._etc_passwd");
         assert_eq!(suggested_name(&r(None, Some("Media/WhatsApp Documents/a b.pdf"))), "a b.pdf");
-        assert_eq!(suggested_name(&r(Some("..."), None)), "midia-7");
-        assert_eq!(suggested_name(&r(None, None)), "midia-7");
+        assert_eq!(suggested_name(&r(Some("..."), None)), "media-7");
+        assert_eq!(suggested_name(&r(None, None)), "media-7");
     }
 }

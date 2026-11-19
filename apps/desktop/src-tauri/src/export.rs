@@ -71,7 +71,7 @@ fn cloud_provider(path: &std::path::Path) -> Option<&'static str> {
     .map(|(_, v)| v)
 }
 
-/// Picks where to save. Creates a new `historico-whatsapp-<date>` folder inside it.
+/// Picks where to save. Creates a new `whatskeep-export-<date>` folder inside it.
 #[tauri::command]
 pub async fn export_pick_destination(app: AppHandle) -> Result<Option<Destination>, CmdError> {
     use tauri_plugin_dialog::DialogExt;
@@ -84,10 +84,10 @@ pub async fn export_pick_destination(app: AppHandle) -> Result<Option<Destinatio
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
-        let mut dest = base.join(format!("historico-whatsapp-{}", date_label(stamp)));
+        let mut dest = base.join(format!("whatskeep-export-{}", date_label(stamp)));
         let mut n = 2;
         while dest.exists() {
-            dest = base.join(format!("historico-whatsapp-{}-{n}", date_label(stamp)));
+            dest = base.join(format!("whatskeep-export-{}-{n}", date_label(stamp)));
             n += 1;
         }
         let out = Destination { path: dest.display().to_string(), cloud: cloud_provider(&dest) };
