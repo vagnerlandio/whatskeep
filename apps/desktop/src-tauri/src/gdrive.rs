@@ -447,7 +447,7 @@ pub async fn gdrive_download(
                 return Ok(None);
             };
             let picked = picked.into_path().map_err(|_| CmdError::new("invalid_argument", "pasta inválida"))?;
-            let root = backup_folder::backup_root(&picked, &name);
+            let root = backup_folder::backup_root(&picked, &name, target, &found.backup);
             std::fs::create_dir_all(&root)?;
             Some(root)
         };

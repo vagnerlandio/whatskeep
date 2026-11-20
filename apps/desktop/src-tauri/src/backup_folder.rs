@@ -58,10 +58,27 @@ pub fn folder_name(app: SourceApp, update_time: Option<&str>) -> String {
     format!("{prefix}-backup-{date}")
 }
 
-/// Where the backup goes inside the folder the user picked. Picking the backup
-/// folder itself (to resume a download) uses it as is.
-pub fn backup_root(picked: &Path, name: &str) -> PathBuf {
-    if picked.file_name().is_some_and(|n| n == name) { picked.to_path_buf() } else { picked.join(name) }
+/// Where this backup goes, given the folder the user picked.
+///
+/// `<picked>/<name>`, unless that folder holds something else: then
+/// `<name>-2`, `<name>-3`... A folder is reused only to resume the *same*
+/// backup (its manifest has the same app and backup time) or when it is
+/// empty, so one backup never overwrites another (another phone number, or a
+/// newer backup of the same number on the same day). Picking a backup folder
+/// itself (`.../whatsapp-backup-2026-11-19`) looks among its siblings.
+pub fn backup_root(picked: &Path, name: &str, app: SourceApp, backup: &Backup) -> PathBuf {
+    let is_ours = |n: &str| n == name || n.strip_prefix(name).and_then(|r| r.strip_prefix('-')).is_some_and(|d| d.parse::<u32>().is_ok());
+    let parent = match picked.file_name().and_then(|n| n.to_str()) {
+        Some(n) if is_ours(n) => picked.parent().unwrap_or(picked),
+        _ => picked,
+    };
+    (1u32..)
+        .map(|i| if i == 1 { parent.join(name) } else { parent.join(format!("{name}-{i}")) })
+        .find(|dir| match std::fs::read_dir(dir) {
+            Err(_) => !dir.exists(),
+            Ok(mut entries) => entries.next().is_none() || Manifest::load(dir).is_some_and(|m| m.is_backup(app, backup)),
+        })
+        .expect("an unbounded range always finds a free name")
 }
 
 /// A Drive path (`Media/WhatsApp Images/IMG.jpg`) as a relative path that
@@ -140,6 +157,11 @@ impl Manifest {
         let raw = std::fs::read(root.join(MANIFEST)).ok()?;
         let m: Self = serde_json::from_slice(&raw).ok()?;
         (m.format == MANIFEST_FORMAT).then_some(m)
+    }
+
+    /// The manifest of this very backup (same app and backup time).
+    pub fn is_backup(&self, app: SourceApp, backup: &Backup) -> bool {
+        self.app == app.as_str() && self.update_time.is_some() && self.update_time == backup.update_time
     }
 
     pub fn metadata(&self, rel: &str) -> Option<&str> {
@@ -435,9 +457,60 @@ mod tests {
         // An odd date falls back to today (still a valid name).
         let odd = folder_name(SourceApp::WhatsApp, Some("../../../x"));
         assert!(odd.starts_with("whatsapp-backup-") && !odd.contains('/'));
-        let p = Path::new("/Volumes/SSD/whatsapp-backup-2026-11-19");
-        assert_eq!(backup_root(p, "whatsapp-backup-2026-11-19"), p);
-        assert_eq!(backup_root(Path::new("/Volumes/SSD"), "whatsapp-backup-2026-11-19"), p);
+    }
+
+    fn backup(update_time: &str) -> Backup {
+        Backup {
+            name: "clients/wa/backups/1".into(),
+            phone: None,
+            update_time: Some(update_time.into()),
+            size_bytes: None,
+            uploading: false,
+            encrypted: Some(true),
+            chat_db_size: None,
+            media_size: None,
+            messages: None,
+            app_version: None,
+        }
+    }
+
+    #[test]
+    fn a_backup_never_lands_in_another_backups_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let picked = dir.path();
+        let name = "whatsapp-backup-2026-11-20";
+        let wa = backup("2026-11-20T00:59:23Z");
+        let other = backup("2026-11-20T03:45:04Z"); // another number, or a newer backup, same day
+
+        // New: the plain name.
+        let first = backup_root(picked, name, SourceApp::WhatsApp, &wa);
+        assert_eq!(first, picked.join(name));
+        std::fs::create_dir_all(first.join("Databases")).unwrap();
+        Manifest::new(SourceApp::WhatsApp, &wa, &[]).save(&first).unwrap();
+
+        // Resuming the same backup: same folder, also when picking the folder itself.
+        assert_eq!(backup_root(picked, name, SourceApp::WhatsApp, &wa), first);
+        assert_eq!(backup_root(&first, name, SourceApp::WhatsApp, &wa), first);
+
+        // Another backup with the same name: next free folder, the first one untouched.
+        let second = backup_root(picked, name, SourceApp::WhatsApp, &other);
+        assert_eq!(second, picked.join(format!("{name}-2")));
+        std::fs::create_dir_all(&second).unwrap();
+        Manifest::new(SourceApp::WhatsApp, &other, &[]).save(&second).unwrap();
+        assert_eq!(backup_root(picked, name, SourceApp::WhatsApp, &other), second);
+        assert_eq!(backup_root(&second, name, SourceApp::WhatsApp, &other), second);
+        // A third one, picking the second folder itself.
+        assert_eq!(backup_root(&second, name, SourceApp::WhatsApp, &backup("2026-11-20T09:00:00Z")), picked.join(format!("{name}-3")));
+
+        // The same backup time but marked as the other app is not the same backup.
+        assert_eq!(backup_root(picked, name, SourceApp::Business, &wa), picked.join(format!("{name}-3")));
+
+        // A non-empty folder without our manifest is left alone; an empty one is used.
+        let plain = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(plain.path().join(name)).unwrap();
+        assert_eq!(backup_root(plain.path(), name, SourceApp::WhatsApp, &wa), plain.path().join(name));
+        std::fs::write(plain.path().join(name).join("notes.txt"), b"x").unwrap();
+        assert_eq!(backup_root(plain.path(), name, SourceApp::WhatsApp, &wa), plain.path().join(format!("{name}-2")));
     }
 
     #[test]
