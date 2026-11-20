@@ -121,7 +121,8 @@ fn google(corrupt_md5: bool) -> (Endpoints, Arc<Mutex<Vec<Req>>>) {
                 format!(
                     r#"{{"files":[
                       {{"name":"clients/wa/backups/5511900000001/files/Media/ab12.mcrypt1","sizeBytes":"10"}},
-                      {{"name":"clients/wa/backups/5511900000001/files/Databases/msgstore.db.crypt15","sizeBytes":"{}","md5Hash":"{md5}"}}
+                      {{"name":"clients/wa/backups/5511900000001/files/Databases/msgstore.db.crypt15","sizeBytes":"{}","md5Hash":"{md5}"}},
+                      {{"name":"clients/wa/backups/5511900000001/files/Backups/a+b c=.crypt15","sizeBytes":"5"}}
                     ]}}"#,
                     BACKUP.len()
                 )
@@ -129,6 +130,10 @@ fn google(corrupt_md5: bool) -> (Endpoints, Arc<Mutex<Vec<Req>>>) {
             ),
             ("GET", "/v1/clients/wa/backups/5511900000001/files/Databases/msgstore.db.crypt15?alt=media") => {
                 Resp(200, "application/octet-stream".into(), BACKUP.to_vec())
+            }
+            // Like Google: `+` must come encoded (a bare `+` would mean a space).
+            ("GET", "/v1/clients/wa/backups/5511900000001/files/Backups/a%2Bb%20c%3D.crypt15?alt=media") => {
+                Resp(200, "application/octet-stream".into(), b"hello".to_vec())
             }
             ("GET", t) if t.contains("redirect") => Resp(302, "text/plain".into(), vec![]),
             _ => Resp(404, "text/plain".into(), vec![]),
@@ -159,6 +164,10 @@ fn full_flow() {
     let bytes = api.download(db, &AtomicBool::new(false), |d, t| seen.push((d, t))).unwrap();
     assert_eq!(bytes, BACKUP);
     assert_eq!(seen.last(), Some(&(BACKUP.len() as u64, BACKUP.len() as u64)));
+
+    // A name with `+`, a space and `=` (base64-like names in Backups/).
+    let odd = files.iter().find(|f| f.path == "Backups/a+b c=.crypt15").unwrap();
+    assert_eq!(api.download(odd, &AtomicBool::new(false), |_, _| {}).unwrap(), b"hello");
 
     // What was downloaded opens with the backup key.
     let key = wk_crypt::BackupKey::from_hex(KEY_HEX).unwrap();

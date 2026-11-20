@@ -94,13 +94,11 @@ impl<'a> Api<'a> {
     }
 
     fn get(&self, path: &str, query: &[(&str, &str)]) -> Result<reqwest::blocking::Response, Error> {
-        // Each path segment is encoded separately (file names come from
-        // Google and may contain spaces or `%`).
         let mut url = url::Url::parse(&self.ep.backup).map_err(|_| Error::Unexpected("URL base inválida"))?;
-        url.path_segments_mut()
-            .map_err(|_| Error::Unexpected("URL base inválida"))?
-            .pop_if_empty()
-            .extend(path.split('/').filter(|s| !s.is_empty() && *s != "." && *s != ".."));
+        if url.cannot_be_a_base() {
+            return Err(Error::Unexpected("URL base inválida"));
+        }
+        url.set_path(&join_path(url.path(), path));
         url.query_pairs_mut().extend_pairs(query);
         let shown = format!(
             "{}/{}{}",
@@ -281,6 +279,26 @@ impl<'a> Api<'a> {
     }
 }
 
+/// Appends `path` to the base path, encoding each segment on its own (file
+/// names come from Google and may hold spaces, `%`, `+`, `=`...). Strict:
+/// only `A-Z a-z 0-9 - . _ ~` stay as they are. Google reads a bare `+` in the
+/// path as a space (seen in 2026-11: base64 names in `Backups/` gave 404).
+/// Empty, `.` and `..` segments are dropped.
+fn join_path(base: &str, path: &str) -> String {
+    let mut out = base.trim_end_matches('/').to_owned();
+    for seg in path.split('/').filter(|s| !s.is_empty() && *s != "." && *s != "..") {
+        out.push('/');
+        for b in seg.bytes() {
+            if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~') {
+                out.push(b as char);
+            } else {
+                out.push_str(&format!("%{b:02X}"));
+            }
+        }
+    }
+    out
+}
+
 /// `clients/wa/backups/<id>` with an id that is safe to put in a URL.
 fn is_backup_name(name: &str) -> bool {
     name.strip_prefix("clients/wa/backups/")
@@ -333,6 +351,14 @@ pub fn find_msgstore(files: &[BackupFile]) -> Option<&BackupFile> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn path_segments_are_strictly_encoded() {
+        assert_eq!(join_path("/v1", "clients/wa/backups/1/files/Backups/a+b=.crypt15"), "/v1/clients/wa/backups/1/files/Backups/a%2Bb%3D.crypt15");
+        assert_eq!(join_path("/v1/", "Media/WhatsApp Images/IMG (1).jpg"), "/v1/Media/WhatsApp%20Images/IMG%20%281%29.jpg");
+        assert_eq!(join_path("/v1", "Media/caf\u{e9}%.jpg"), "/v1/Media/caf%C3%A9%25.jpg");
+        assert_eq!(join_path("/v1", "a/../b/./c//d"), "/v1/a/b/c/d");
+    }
 
     #[test]
     fn safe_backup_name() {
