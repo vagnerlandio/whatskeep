@@ -1205,3 +1205,83 @@ button.back {
   max-height: 120px;
   overflow-y: auto;
 }
+
+/* ---------------------------------------------------------------- chat menu (pin) */
+
+.chat-item-wrap {
+  position: relative;
+}
+
+/* Like WhatsApp Desktop: a chevron shows on hover, at the preview line. */
+.chat-item-menu {
+  position: absolute;
+  right: 18px;
+  bottom: 12px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  background: var(--hover);
+  opacity: 0;
+  cursor: pointer;
+}
+
+.chat-item-wrap:hover .chat-item-menu,
+.chat-item-wrap.menu-open .chat-item-menu,
+.chat-item-menu:focus-visible {
+  opacity: 1;
+}
+
+.chat-item-menu:hover {
+  color: var(--text);
+}
+
+.chat-item-pin {
+  flex: none;
+  margin-left: auto;
+  padding-left: 6px;
+  display: inline-flex;
+  color: var(--text-muted);
+}
+
+.chat-item-wrap:hover .chat-item-pin,
+.chat-item-wrap.menu-open .chat-item-pin {
+  visibility: hidden;
+}
+
+.chat-menu {
+  position: fixed;
+  z-index: 50;
+  min-width: 200px;
+  padding: 6px 0;
+  border-radius: 10px;
+  background: var(--panel, #fff);
+  box-shadow: 0 2px 12px rgb(11 20 26 / 0.22);
+}
+
+.chat-menu button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat-menu button:hover,
+.chat-menu button:focus-visible {
+  background: var(--hover);
+  outline: none;
+}

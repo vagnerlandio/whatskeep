@@ -25,6 +25,7 @@
     "allow-inspect-backup",
     "allow-import-backup",
     "allow-list-chats",
+    "allow-set-chat-pinned",
     "allow-get-messages",
     "allow-get-messages-around",
     "allow-search-messages",

@@ -32,6 +32,7 @@ fn main() {
         "inspect_backup",
         "import_backup",
         "list_chats",
+        "set_chat_pinned",
         "get_messages",
         "get_messages_around",
         "search_messages",

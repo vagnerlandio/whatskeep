@@ -102,6 +102,7 @@ pub fn run() {
             commands::inspect_backup,
             commands::import_backup,
             commands::list_chats,
+            commands::set_chat_pinned,
             commands::get_messages,
             commands::get_messages_around,
             commands::search_messages,

@@ -19,6 +19,7 @@ mod header;
 pub mod media;
 pub mod query;
 mod store;
+mod user_state;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -32,6 +33,7 @@ pub use header::KdfParams;
 pub use media::{BlobRef, MediaHandle, MediaReader, MediaWriter, Put};
 pub use addressbook::{AddressBook, AddressBookInfo, NamesApplied};
 pub use store::{StoreHandle, StoreInfo};
+pub use user_state::UserState;
 
 use header::Header;
 
@@ -202,6 +204,15 @@ impl Vault {
             .expand(b"wk-vault address-book v2", key.as_mut())
             .expect("32 bytes fit in HKDF-SHA256");
         Ok(AddressBook::new(&self.dir.join(STORES_DIR), key))
+    }
+
+    /// What the user sets in the app (pinned chats), shared by every history.
+    pub fn user_state(&self) -> Result<UserState, Error> {
+        let mut key = Key::default();
+        Hkdf::<Sha256>::new(Some(&self.header.vault_id()?), self.dek.as_ref())
+            .expand(b"wk-vault user-state v2", key.as_mut())
+            .expect("32 bytes fit in HKDF-SHA256");
+        Ok(UserState::new(&self.dir.join(STORES_DIR), key))
     }
 
     /// Databases already imported, with counts.

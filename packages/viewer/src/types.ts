@@ -30,6 +30,8 @@ export type Chat = {
   messageCount: number;
   lastMessageAt: number | null;
   last: { kind: MessageKind; text: string | null; fromMe: boolean; sender: Person | null } | null;
+  /** Pinned by the user (only where the source supports it, see `DataSource.setPinned`). */
+  pinned?: boolean;
 };
 
 export type Media = {

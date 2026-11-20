@@ -62,6 +62,8 @@ pub struct Chat {
     pub message_count: i64,
     pub last_message_at: Option<i64>,
     pub last: Option<LastMessage>,
+    /// Pinned by the user in the app (see [`apply_pins`]).
+    pub pinned: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -114,6 +116,7 @@ pub fn chats(conn: &Connection) -> Result<Vec<Chat>, Error> {
             archived: r.get(6)?,
             message_count: r.get(7)?,
             last_message_at: r.get(8)?,
+            pinned: false,
             last: match r.get::<_, Option<String>>(9)? {
                 Some(kind) => Some(LastMessage {
                     kind,
@@ -126,6 +129,15 @@ pub fn chats(conn: &Connection) -> Result<Vec<Chat>, Error> {
         })
     })?;
     Ok(rows.collect::<Result<_, _>>()?)
+}
+
+/// Marks the pinned chats (identifier → when pinned) and moves them to the
+/// top, the most recently pinned first; the rest keeps its order.
+pub fn apply_pins(chats: &mut [Chat], pins: &HashMap<String, i64>) {
+    for c in chats.iter_mut() {
+        c.pinned = pins.contains_key(&c.jid);
+    }
+    chats.sort_by_key(|c| std::cmp::Reverse(pins.get(&c.jid).copied().filter(|_| c.pinned)));
 }
 
 // ---------------------------------------------------------------- messages

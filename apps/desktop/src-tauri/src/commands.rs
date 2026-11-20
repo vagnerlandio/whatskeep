@@ -168,7 +168,12 @@ pub async fn store_delete(app: AppHandle, store: String) -> Result<(), CmdError>
         let _job = state.start_job()?;
         state.forget_store(target);
         state.forget_media(target);
-        state.vault().as_ref().ok_or_else(CmdError::locked)?.delete_store(target)?;
+        {
+            let guard = state.vault();
+            let vault = guard.as_ref().ok_or_else(CmdError::locked)?;
+            vault.delete_store(target)?;
+            vault.user_state()?.forget_app(target)?;
+        }
         tracing::info!(app = target.as_str(), "history deleted by the user");
         Ok(())
     })
@@ -431,7 +436,34 @@ pub(crate) fn source_app(s: &str) -> Result<SourceApp, CmdError> {
 pub async fn list_chats(app: AppHandle, store: String) -> Result<Vec<Chat>, CmdError> {
     blocking("list_chats", move || {
         let store = source_app(&store)?;
-        app.state::<AppState>().with_store(store, |c| Ok(query::chats(c)?))
+        let state = app.state::<AppState>();
+        let mut chats = state.with_store(store, |c| Ok(query::chats(c)?))?;
+        let user_state = state.vault().as_ref().ok_or_else(CmdError::locked)?.user_state()?;
+        query::apply_pins(&mut chats, &user_state.pins(store)?);
+        Ok(chats)
+    })
+    .await
+}
+
+/// Pins or unpins a chat. Kept in the vault apart from the history, so it
+/// survives re-importing the backup.
+#[tauri::command]
+pub async fn set_chat_pinned(app: AppHandle, store: String, chat_id: i64, pinned: bool) -> Result<(), CmdError> {
+    blocking("set_chat_pinned", move || {
+        let store = source_app(&store)?;
+        let state = app.state::<AppState>();
+        let jid: String = state.with_store(store, |c| {
+            c.query_row(
+                "SELECT ct.jid FROM chat c JOIN contact ct ON ct.id = c.contact_id WHERE c.id = ?1",
+                [chat_id],
+                |r| r.get(0),
+            )
+            .map_err(|_| CmdError::new("not_found", "conversa não encontrada"))
+        })?;
+        let user_state = state.vault().as_ref().ok_or_else(CmdError::locked)?.user_state()?;
+        user_state.set_pinned(store, &jid, pinned)?;
+        tracing::info!(pinned, "chat pin changed");
+        Ok(())
     })
     .await
 }

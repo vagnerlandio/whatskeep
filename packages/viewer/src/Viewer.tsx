@@ -39,6 +39,8 @@ export default function Viewer({ source, title, actions, railTop, railBottom, ba
   const searchInput = useRef<HTMLInputElement>(null);
   const t = useViewerT();
 
+  // Bumped to list the chats again (after pinning).
+  const [listVersion, setListVersion] = useState(0);
   useEffect(() => {
     let cancelled = false;
     source
@@ -48,7 +50,19 @@ export default function Viewer({ source, title, actions, railTop, railBottom, ba
     return () => {
       cancelled = true;
     };
-  }, [source]);
+  }, [source, listVersion]);
+
+  const setPinned = source.setPinned?.bind(source);
+  const togglePin = useMemo(
+    () =>
+      setPinned &&
+      ((chat: Chat) =>
+        void setPinned(chat.id, !chat.pinned).then(
+          () => setListVersion((v) => v + 1),
+          (e) => setError(errorOf(e).message),
+        )),
+    [setPinned],
+  );
 
   const chatsById = useMemo(() => new Map(chats.map((c) => [c.id, c])), [chats]);
   const visible = useMemo(
@@ -154,6 +168,7 @@ export default function Viewer({ source, title, actions, railTop, railBottom, ba
               chats={visible}
               selectedId={selected?.id ?? null}
               onSelect={(c) => openChat(c)}
+              onTogglePin={showArchived ? undefined : togglePin}
               archivedCount={archivedCount}
               showingArchived={showArchived}
               onToggleArchived={() => setShowArchived((v) => !v)}

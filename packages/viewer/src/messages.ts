@@ -19,6 +19,10 @@ const pt = {
 
   // chat list
   noChatsHere: "Nenhuma conversa aqui.",
+  chatOptions: "Opções da conversa",
+  pinChat: "Fixar conversa",
+  unpinChat: "Desafixar conversa",
+  pinned: "Fixada",
   you: "Você",
   unknownPerson: "Desconhecido",
 
@@ -105,6 +109,10 @@ const en: typeof pt = {
   emptyPaneHint: "Pick a chat or search for a message.",
 
   noChatsHere: "No chats here.",
+  chatOptions: "Chat options",
+  pinChat: "Pin chat",
+  unpinChat: "Unpin chat",
+  pinned: "Pinned",
   you: "You",
   unknownPerson: "Unknown",
 

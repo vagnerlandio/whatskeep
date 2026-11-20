@@ -38,6 +38,7 @@ DEK ──HKDF(salt = vault_id, "wk-vault store v2:<app>")──► SQLCipher ke
 DEK ──HKDF(salt = vault_id, "wk-vault media v2:<app>")──► media blob key
 DEK ──HKDF(salt = vault_id, "wk-vault media-index v2:<app>")──► SQLCipher key of the media index
 DEK ──HKDF(salt = vault_id, "wk-vault address-book v2")──► SQLCipher key of the address book
+DEK ──HKDF(salt = vault_id, "wk-vault user-state v2")──► SQLCipher key of the user state (pinned chats)
 ```
 
 `<app>` = `whatsapp` | `business` (`SourceApp::as_str`). Changing the password only re-wraps the DEK. SQLCipher is opened with a raw key (`PRAGMA key = "x'..'"`).
@@ -66,6 +67,7 @@ One Argon2id per password attempt; slots are tried with GCM only. The mirror JS 
 | `vault/stores/<app>.db` | SQLCipher with the schema in `wk-import/src/store.rs` (`SCHEMA_VERSION = 1`) |
 | `vault/stores/<app>-media.db` | SQLCipher: `blob(sha256 PK, id, size, mime)`, `path(path PK, sha256)` |
 | `vault/stores/address-book.db` | SQLCipher: `number(phone PK, name)` (normalized numbers from a Google Contacts export), `meta(people, imported_at)`. Shared by both apps; its names are written into `contact.name` of each history after every import (`StoreHandle::apply_names`, Brazilian "9" variants via `wk_import::contacts::variants`) |
+| `vault/stores/user-state.db` | SQLCipher: `pin(app, jid, pinned_at)`. What the user sets in the app, kept apart from the histories so it survives re-imports; `query::apply_pins` puts pinned chats first |
 | `vault/stores/<app>-media/<id>` | STREAM AES-256-GCM, 1 MiB segments, nonce = prefix7 ‖ u32 BE counter ‖ last flag, AAD = id |
 | export `data/manifest.js` | `window.__wkManifest = {format, kdf, slots[], media}` |
 | export `data/<id>.js` | `window.__wkChunk(id, b64)`; plaintext = `[u32 LE len][gzip JSON {messages:[...]}][zero pad to 64 KiB]` |

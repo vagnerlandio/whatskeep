@@ -226,5 +226,6 @@ export function tauriSource(store: SourceApp): DataSource {
     mediaUrl: (m) => mediaUrl(store, m.id),
     saveMedia: (m) => mediaApi.save(store, m.id),
     openLink: (url) => invoke<void>("open_link", { url }),
+    setPinned: (chatId, pinned) => invoke<void>("set_chat_pinned", { store, chatId, pinned }),
   };
 }

@@ -24,6 +24,8 @@ export interface DataSource {
   mediaHint?(): string | null;
   /** Opens an http(s) link outside the viewer (already confirmed by the user). */
   openLink?(url: string): Promise<void>;
+  /** Pins/unpins a chat; `chats()` then lists it first. Absent: no pinning (the export). */
+  setPinned?(chatId: number, pinned: boolean): Promise<void>;
 }
 
 export const SourceContext = createContext<DataSource | null>(null);
