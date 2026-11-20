@@ -91,7 +91,8 @@ export default function DriveImport({ stores, folderOnly = false, onBack, backLa
   function loggedIn(login: DriveLogin) {
     sessionOpen.current = true;
     setManualToken("");
-    const first = login.backups.find((b) => !b.uploading) ?? null;
+    // A backup Google still marks as uploading can be picked too (see `uploadingNote`).
+    const first = login.backups.find((b) => !b.uploading) ?? login.backups[0] ?? null;
     pick(first);
     setStep({ kind: "list", login });
   }
@@ -244,7 +245,6 @@ export default function DriveImport({ stores, folderOnly = false, onBack, backLa
                   key={b.id}
                   name="drive-backup"
                   selected={selected?.id === b.id}
-                  disabled={b.uploading}
                   onSelect={() => pick(b)}
                   icon="cloud"
                   title={
@@ -257,22 +257,20 @@ export default function DriveImport({ stores, folderOnly = false, onBack, backLa
                         </span>
                       )}
                       {b.encrypted === false && <span className="tag warn">{t.noE2eTag}</span>}
+                      {b.uploading && <span className="tag warn">{t.maybeIncomplete}</span>}
                     </>
                   }
-                  hint={
-                    b.uploading
-                      ? t.stillUploading
-                      : [
-                          b.messages != null && t.messagesCount(formatCount(b.messages, lang)),
-                          b.chatDbSize != null && t.chatDbSize(formatSize(b.chatDbSize, lang)),
-                          b.sizeBytes != null && t.totalSize(formatSize(b.sizeBytes, lang)),
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")
-                  }
+                  hint={[
+                    b.messages != null && t.messagesCount(formatCount(b.messages, lang)),
+                    b.chatDbSize != null && t.chatDbSize(formatSize(b.chatDbSize, lang)),
+                    b.sizeBytes != null && t.totalSize(formatSize(b.sizeBytes, lang)),
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 />
               ))}
             </div>
+            {selected?.uploading && <Note tone="warn">{t.uploadingNote}</Note>}
             {selected?.encrypted === false && (
               <Note tone="warn">
                 <p>

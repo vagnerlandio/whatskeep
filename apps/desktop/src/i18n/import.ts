@@ -188,7 +188,9 @@ const pt = {
   noBackups: "Nenhum backup do WhatsApp encontrado nesta conta.",
   backup: "Backup",
   endToEnd: "ponta a ponta",
-  stillUploading: "Ainda sendo enviado pelo celular",
+  maybeIncomplete: "pode estar incompleto",
+  uploadingNote:
+    "O Google indica que este backup ainda está sendo enviado pelo celular. Se o WhatsApp no celular estiver mostrando que o backup está sendo protegido ou enviado, espere a mensagem sumir antes de baixar. Se baixar agora e faltar algo, baixe de novo depois que ele completa o que falta.",
   chatDbSize: (size: string) => `banco de mensagens: ${size}`,
   messagesCount: (n: string) => `${n} mensagens`,
   totalSize: (size: string) => `backup total: ${size}`,
@@ -390,7 +392,9 @@ const en: typeof pt = {
   noBackups: "No WhatsApp backup found in this account.",
   backup: "Backup",
   endToEnd: "end-to-end",
-  stillUploading: "Still being uploaded by the phone",
+  maybeIncomplete: "may be incomplete",
+  uploadingNote:
+    "Google says this backup is still being uploaded by the phone. If WhatsApp on the phone shows that the backup is being protected or uploaded, wait for that message to go away before downloading. If you download now and something is missing, download again later and it fills in what is missing.",
   chatDbSize: (size) => `message database: ${size}`,
   messagesCount: (n) => `${n} messages`,
   totalSize: (size) => `total backup: ${size}`,
