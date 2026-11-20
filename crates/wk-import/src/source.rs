@@ -107,6 +107,20 @@ impl SourceInfo {
         Ok(Self { kind, tables })
     }
 
+    /// Table names, sorted.
+    pub fn table_names(&self) -> Vec<&str> {
+        let mut names: Vec<&str> = self.tables.keys().map(String::as_str).collect();
+        names.sort_unstable();
+        names
+    }
+
+    /// Column names of `table`, sorted (empty if it does not exist).
+    pub fn columns(&self, table: &str) -> Vec<&str> {
+        let mut cols: Vec<&str> = self.tables.get(table).map(|c| c.iter().map(String::as_str).collect()).unwrap_or_default();
+        cols.sort_unstable();
+        cols
+    }
+
     pub fn has_col(&self, table: &str, col: &str) -> bool {
         self.tables.get(table).is_some_and(|c| c.contains(col))
     }

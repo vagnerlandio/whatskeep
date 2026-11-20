@@ -17,7 +17,33 @@ export type MessageKind =
   | "live_location"
   | "system"
   | "deleted"
+  | "poll"
+  | "event"
+  | "product"
+  | "invite"
+  | "waiting"
+  | "status_mention"
   | "unknown";
+
+/** Structured content of some kinds (wk_import::card::Card). */
+export type Card =
+  | { type: "poll"; options: { name: string; votes: number }[]; multiple: boolean }
+  | {
+      type: "event";
+      name: string | null;
+      description: string | null;
+      startMs: number | null;
+      endMs: number | null;
+      place: string | null;
+      canceled: boolean;
+      call: boolean;
+    }
+  | { type: "product"; title: string | null; description: string | null; amount1000: number | null; currency: string | null }
+  | { type: "invite"; group: string | null }
+  | { type: "buttons"; footer: string | null; buttons: string[] }
+  | { type: "disappearing"; seconds: number }
+  | { type: "chatPrivacy"; enabled: boolean }
+  | { type: "sharedHistory"; messages: number | null };
 
 export type Chat = {
   id: number;
@@ -63,6 +89,8 @@ export type Message = {
   location: { latitude: number; longitude: number; name: string | null; address: string | null } | null;
   contacts: { name: string | null; phones: string[] }[];
   reactions: { emoji: string; count: number; mine: boolean }[];
+  /** Absent in histories and exports made before cards existed. */
+  card?: Card | null;
 };
 
 export type Cursor = { sentAt: number; id: number };

@@ -77,9 +77,9 @@ Messages in the export are the JSON of `wk_vault::query::Message` with null/fals
 
 ## Normalized schema (summary)
 
-`contact(jid, phone, name)`, `chat(contact_id, kind, title, archived, hidden, message_count, last_message_at)`, `message(chat_id, key_id, from_me, sender_id, sent_at ms, kind, wa_type, text, starred, edited, system_action, quoted_*)`, `media`, `thumbnail`, `location`, `vcard`, `reaction`, `message_fts` (FTS5 `unicode61 remove_diacritics 2`, content=message), `meta`. Source of truth: `crates/wk-import/src/store.rs`.
+`contact(jid, phone, name)`, `chat(contact_id, kind, title, archived, hidden, message_count, last_message_at)`, `message(chat_id, key_id, from_me, sender_id, sent_at ms, kind, wa_type, text, starred, edited, system_action, quoted_*)`, `media`, `thumbnail`, `location`, `vcard`, `reaction`, `card(message_id, data JSON)` (schema 2: poll options, event, product, business buttons, the setting a notice is about; mirrored by `Card` in `packages/viewer/src/types.ts`; a version 1 history without it still opens), `message_fts` (FTS5 `unicode61 remove_diacritics 2`, content=message), `meta`. Source of truth: `crates/wk-import/src/store.rs`.
 
-WhatsApp `message_type` → `MessageKind` mapping: `crates/wk-import/src/kind.rs`. Unknown types become `unknown` and are counted in `ImportReport.unknown_types`.
+WhatsApp `message_type` → `MessageKind` mapping: `crates/wk-import/src/kind.rs`, worked out from a real backup's structure (which WhatsApp tables point at each type), not guessed; the new codes apply to the modern schema only. Card content: `crates/wk-import/src/card.rs`. Album containers (type 99) are not imported: their items are messages of their own, and the album's reactions move to the first item. Unknown types become `unknown`, are counted in `ImportReport.unknown_types` and get a diagnostics line from `crates/wk-import/src/probe.rs` (tables, filled `message` columns and media MIME families per type: names and counts only).
 
 ## Tauri app (`apps/desktop/src-tauri/src`)
 

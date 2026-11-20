@@ -224,7 +224,7 @@ async function openHikeChat(page) {
   await page.waitForSelector("text=Sharing the full album");
   // Scroll up a little so both photos are in view.
   await page.waitForTimeout(800);
-  await page.locator(".chat-pane [data-virtuoso-scroller]").evaluate((el) => el.scrollBy(0, -300));
+  await page.locator(".messages").evaluate((el) => el.scrollBy(0, -300));
 }
 
 (async () => {

@@ -10,7 +10,9 @@ use rusqlite::{params, Connection, OptionalExtension};
 use crate::jid::{phone_of, ChatKind};
 use crate::{Error, MessageKind};
 
-pub const SCHEMA_VERSION: i64 = 1;
+/// 2: `card` table and the kinds mapped from real backups (poll, event...).
+/// Version 1 databases still open: the viewer treats a missing `card` table as empty.
+pub const SCHEMA_VERSION: i64 = 2;
 
 const DDL: &str = r#"
 CREATE TABLE IF NOT EXISTS meta (
@@ -105,6 +107,13 @@ CREATE TABLE IF NOT EXISTS reaction (
     reacted_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS reaction_by_message ON reaction(message_id);
+
+-- Structured content of the kinds that need more than text (poll options,
+-- event, product, buttons, the setting a notice is about). JSON: `card::Card`.
+CREATE TABLE IF NOT EXISTS card (
+    message_id INTEGER PRIMARY KEY REFERENCES message(id),
+    data       TEXT NOT NULL
+);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5(
     text,
@@ -314,6 +323,23 @@ impl<'c> Writer<'c> {
         self.conn
             .prepare_cached("INSERT OR REPLACE INTO location(message_id, latitude, longitude, name, address) VALUES (?1, ?2, ?3, ?4, ?5)")?
             .execute(params![message_id, lat, lon, name, address])?;
+        Ok(())
+    }
+
+    pub fn card(&mut self, message_id: i64, card: &crate::card::Card) -> Result<(), Error> {
+        // Plain data: serializing it cannot fail.
+        let data = serde_json::to_string(card).unwrap_or_else(|_| "null".to_owned());
+        self.conn
+            .prepare_cached("INSERT OR REPLACE INTO card(message_id, data) VALUES (?1, ?2)")?
+            .execute(params![message_id, data])?;
+        Ok(())
+    }
+
+    /// Text for a message that had none (a template's body lives in another table).
+    pub fn fill_text(&mut self, message_id: i64, text: &str) -> Result<(), Error> {
+        self.conn
+            .prepare_cached("UPDATE message SET text = ?2 WHERE id = ?1 AND text IS NULL")?
+            .execute(params![message_id, text])?;
         Ok(())
     }
 

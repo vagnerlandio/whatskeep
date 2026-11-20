@@ -831,6 +831,11 @@ button.link {
   display: none;
 }
 
+/* A flex line has no inline spacer: reserve the time's room on the right. */
+.text.with-icon {
+  padding-right: 64px;
+}
+
 .meta {
   float: right;
   display: inline-flex;
@@ -1297,4 +1302,132 @@ button.back {
 .chat-menu button:focus-visible {
   background: var(--hover);
   outline: none;
+}
+
+/* ---------------------------------------------------------------- cards: poll, event, product, invite, business buttons */
+.msg-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 240px;
+  padding: 10px 12px;
+  margin-bottom: 4px;
+  border-radius: 7.5px;
+  background: var(--quote-bg);
+}
+
+.msg-card.canceled strong {
+  text-decoration: line-through;
+}
+
+.msg-card-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--brand);
+}
+
+.msg-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.msg-card-body small {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.msg-card-body small.price {
+  color: inherit;
+  font-weight: 600;
+}
+
+.poll {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 260px;
+  padding: 2px 2px 4px;
+}
+
+.poll-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.poll-question {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.poll-options {
+  list-style: none;
+  margin: 6px 0 2px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.poll-option {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  overflow-wrap: anywhere;
+}
+
+.poll-votes {
+  flex: none;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.poll-bar {
+  display: block;
+  height: 6px;
+  margin-top: 4px;
+  border-radius: 3px;
+  background: rgb(127 127 127 / 0.2);
+  overflow: hidden;
+}
+
+.poll-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--brand);
+}
+
+.msg-footer {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.msg-buttons {
+  display: flex;
+  flex-direction: column;
+  margin: 6px -9px -2px;
+  border-top: 1px solid rgb(127 127 127 / 0.2);
+  clear: both;
+}
+
+.msg-buttons > span {
+  padding: 8px 12px;
+  text-align: center;
+  color: var(--link);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.msg-buttons > span + span {
+  border-top: 1px solid rgb(127 127 127 / 0.2);
 }

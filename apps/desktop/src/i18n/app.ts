@@ -71,7 +71,7 @@ const pt = {
   importedAt: (when: string) => `Importado em ${when}`,
 
   // Viewer
-  switchTo: (app: string) => `Trocar para ${app}`,
+  switchLabel: "Histórico mostrado",
   importOrExport: "Importar ou exportar",
   emptyTitle: (app: string) => `Histórico do ${app}`,
   emptyNote: "Os dados ficam cifrados neste computador e não saem dele.",
@@ -200,7 +200,7 @@ const en: typeof pt = {
   media: (n) => plEn(n, "media file", "media files"),
   importedAt: (when) => `Imported on ${when}`,
 
-  switchTo: (app) => `Switch to ${app}`,
+  switchLabel: "History shown",
   importOrExport: "Import or export",
   emptyTitle: (app) => `${app} history`,
   emptyNote: "Your data stays encrypted on this computer and never leaves it.",

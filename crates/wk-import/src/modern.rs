@@ -139,6 +139,8 @@ pub(crate) fn import(src: &Connection, info: &SourceInfo, dst: &Connection, repo
     );
 
     let mut ids: HashMap<i64, i64> = HashMap::new();
+    let mut card_targets: crate::card::Targets = HashMap::new();
+    let mut albums: HashSet<i64> = HashSet::new();
     {
         let mut stmt = src.prepare(&sql)?;
         let mut rows = stmt.query([])?;
@@ -178,9 +180,14 @@ pub(crate) fn import(src: &Connection, info: &SourceInfo, dst: &Connection, repo
                 mime: mime.as_deref(),
                 file_path: file_path.as_deref(),
                 has_system_action: action.is_some(),
+                modern: true,
             });
             if unknown {
                 *report.unknown_types.entry(wa_type).or_default() += 1;
+            }
+            if kind == MessageKind::Album {
+                albums.insert(r.get("id")?);
+                continue;
             }
 
             let text: Option<String> = r.get("text")?;
@@ -207,7 +214,11 @@ pub(crate) fn import(src: &Connection, info: &SourceInfo, dst: &Connection, repo
                 quoted_from_me: r.get::<_, Option<i64>>("q_from_me")?.map(|v| v != 0),
                 quoted_sender_id: q_sender,
             })?;
-            ids.insert(r.get("id")?, id);
+            let src_id: i64 = r.get("id")?;
+            ids.insert(src_id, id);
+            if crate::card::CARD_TYPES.contains(&wa_type) {
+                card_targets.insert(src_id, (id, wa_type));
+            }
             report.messages += 1;
 
             if r.get::<_, Option<i64>>("mm_id")?.is_some() && kind.has_media() {
@@ -254,6 +265,38 @@ pub(crate) fn import(src: &Connection, info: &SourceInfo, dst: &Connection, repo
         }
     }
 
+    // --- Cards (poll, event, product, buttons, notices) --------------------
+    let cards = crate::card::import(src, info, &mut w, &card_targets)?;
+    if !cards.is_empty() {
+        tracing::info!(cards = ?cards, "message cards imported");
+    }
+    // Business messages whose content was not found anywhere stay unsupported.
+    {
+        let empty = "kind = 'text' AND text IS NULL AND wa_type NOT IN (0) AND id NOT IN (SELECT message_id FROM card)";
+        let mut stmt = dst.prepare(&format!("SELECT wa_type, count(*) FROM message WHERE {empty} GROUP BY 1"))?;
+        for row in stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))? {
+            let (t, n) = row?;
+            *report.unknown_types.entry(t).or_default() += n as u64;
+        }
+        dst.execute(&format!("UPDATE message SET kind = 'unknown' WHERE {empty}"), [])?;
+    }
+
+    // Album containers are not imported: their reactions go to the first item.
+    let mut album_first: HashMap<i64, i64> = HashMap::new();
+    if !albums.is_empty() && info.has_col("message_association", "parent_message_row_id") && info.has_col("message_association", "child_message_row_id") {
+        let mut stmt = src.prepare("SELECT parent_message_row_id, child_message_row_id FROM message_association ORDER BY child_message_row_id")?;
+        let mut rows = stmt.query([])?;
+        while let Some(r) = rows.next()? {
+            let (Some(parent), Some(child)) = (r.get::<_, Option<i64>>(0)?, r.get::<_, Option<i64>>(1)?) else { continue };
+            if albums.contains(&parent) && let Some(&id) = ids.get(&child) {
+                album_first.entry(parent).or_insert(id);
+            }
+        }
+    }
+    if !albums.is_empty() {
+        tracing::info!(albums = albums.len(), with_items = album_first.len(), "album containers left out");
+    }
+
     // --- Reactions ---------------------------------------------------------
     if info.has_col("message_add_on", "parent_message_row_id") && info.has_col("message_add_on_reaction", "reaction") {
         let sql = format!(
@@ -267,7 +310,7 @@ pub(crate) fn import(src: &Connection, info: &SourceInfo, dst: &Connection, repo
         let mut stmt = src.prepare(&sql)?;
         let mut rows = stmt.query([])?;
         while let Some(r) = rows.next()? {
-            let Some(&message_id) = r.get::<_, Option<i64>>(0)?.and_then(|p| ids.get(&p)) else {
+            let Some(&message_id) = r.get::<_, Option<i64>>(0)?.and_then(|p| ids.get(&p).or_else(|| album_first.get(&p))) else {
                 continue;
             };
             // A removed reaction is stored with an empty emoji.
@@ -283,5 +326,7 @@ pub(crate) fn import(src: &Connection, info: &SourceInfo, dst: &Connection, repo
             report.reactions += 1;
         }
     }
+
+    crate::probe::unknown_types(src, info, &report.unknown_types);
     Ok(())
 }

@@ -144,6 +144,7 @@ pub(crate) fn import(src: &Connection, info: &SourceInfo, dst: &Connection, repo
                 mime: mime.as_deref(),
                 file_path: file_path.as_deref(),
                 has_system_action: action.is_some(),
+                modern: false,
             });
             if unknown {
                 *report.unknown_types.entry(wa_type).or_default() += 1;

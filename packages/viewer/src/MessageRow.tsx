@@ -1,6 +1,6 @@
 import { CSSProperties, memo, useState } from "react";
-import { formatSize, Message } from "./types";
-import { formatDay, formatTime, personLabel, senderColor, WaText } from "./format";
+import { Card, formatSize, Message } from "./types";
+import { formatDateTime, formatDay, formatTime, personLabel, senderColor, WaText } from "./format";
 import { AudioView, SaveButton, Visual } from "./MediaView";
 import { Icon } from "./icons";
 import { useLang } from "./i18n";
@@ -35,7 +35,7 @@ function MessageRow({ message: m, prev, isGroup, highlighted, onJump }: Props) {
       )}
       {m.kind === "system" ? (
         <div className="system-msg">
-          <span>{m.text ?? t.kinds.system}</span>
+          <span>{m.text ?? noticeText(m.card, t) ?? t.kinds.system}</span>
         </div>
       ) : (
         <Bubble
@@ -93,6 +93,7 @@ function Bubble({
           </button>
         )}
         <Body m={m} />
+        {m.card?.type === "buttons" && <Buttons card={m.card} />}
         <span className="meta">
           {m.starred && <Icon name="star" size={11} fill title={t.starred} />}
           {m.edited && <span>{t.edited}</span>}
@@ -198,6 +199,46 @@ function Body({ m }: { m: Message }) {
           </span>
         </div>
       );
+    case "waiting":
+      return (
+        <p className="text muted-italic with-icon">
+          <Icon name="waiting" size={16} />
+          {t.waiting}
+        </p>
+      );
+    case "status_mention":
+      return (
+        <p className="text muted-italic with-icon">
+          <Icon name="mention" size={16} />
+          {t.statusMention}
+        </p>
+      );
+    case "poll":
+      return m.card?.type === "poll" ? <Poll question={m.text} card={m.card} /> : m.text ? <Text text={m.text} /> : null;
+    case "event":
+      return <Event m={m} card={m.card?.type === "event" ? m.card : null} />;
+    case "product":
+      return (
+        <>
+          {m.card?.type === "product" && <Product card={m.card} />}
+          {m.text && <Text text={m.text} />}
+        </>
+      );
+    case "invite":
+      return (
+        <>
+          <div className="msg-card">
+            <span className="msg-card-icon">
+              <Icon name="group" size={22} />
+            </span>
+            <span className="msg-card-body">
+              <strong>{(m.card?.type === "invite" && m.card.group) || t.groupInvite}</strong>
+              <small>{t.groupInvite}</small>
+            </span>
+          </div>
+          {m.text && <Text text={m.text} />}
+        </>
+      );
     case "unknown":
       return (
         <>
@@ -211,6 +252,132 @@ function Body({ m }: { m: Message }) {
     default:
       return m.text ? <Text text={m.text} /> : null;
   }
+}
+
+type ViewerT = ReturnType<typeof useViewerT>;
+
+/** Text of a notice that only has a card (disappearing messages, privacy...). */
+function noticeText(card: Card | null | undefined, t: ViewerT): string | null {
+  switch (card?.type) {
+    case "disappearing":
+      return card.seconds > 0 ? t.disappearingOn(durationText(card.seconds, t)) : t.disappearingOff;
+    case "chatPrivacy":
+      return card.enabled ? t.chatPrivacyOn : t.chatPrivacyOff;
+    case "sharedHistory":
+      return t.sharedHistory(card.messages);
+    default:
+      return null;
+  }
+}
+
+/** 86400 → "24 hours", 604800 → "7 days" (the durations WhatsApp offers). */
+function durationText(seconds: number, t: ViewerT): string {
+  const hours = Math.round(seconds / 3600);
+  return hours <= 24 || hours % 24 !== 0 ? t.hours(Math.max(1, hours)) : t.days(hours / 24);
+}
+
+function Poll({ question, card }: { question: string | null; card: Extract<Card, { type: "poll" }> }) {
+  const t = useViewerT();
+  const total = card.options.reduce((n, o) => n + o.votes, 0);
+  return (
+    <div className="poll">
+      <span className="poll-label">
+        <Icon name="poll" size={14} />
+        {t.poll}
+      </span>
+      {question && <p className="poll-question">{question}</p>}
+      <small className="muted">{card.multiple ? t.pollMultiple : t.pollSingle}</small>
+      <ul className="poll-options">
+        {card.options.map((o, i) => (
+          <li key={i}>
+            <span className="poll-option">
+              <span>{o.name}</span>
+              <span className="poll-votes">{o.votes}</span>
+            </span>
+            <span className="poll-bar">
+              <span style={{ width: total ? `${(o.votes / total) * 100}%` : 0 }} />
+            </span>
+          </li>
+        ))}
+      </ul>
+      <small className="muted">{t.votes(total)}</small>
+    </div>
+  );
+}
+
+function Event({ m, card }: { m: Message; card: Extract<Card, { type: "event" }> | null }) {
+  const t = useViewerT();
+  const { lang } = useLang();
+  const name = card?.name ?? m.text;
+  const when = card?.startMs
+    ? [formatDateTime(card.startMs, lang), card.endMs ? formatDateTime(card.endMs, lang) : null].filter(Boolean).join(" – ")
+    : null;
+  return (
+    <>
+      <div className={card?.canceled ? "msg-card canceled" : "msg-card"}>
+        <span className="msg-card-icon">
+          <Icon name="calendar" size={22} />
+        </span>
+        <span className="msg-card-body">
+          <small>{card?.canceled ? t.eventCanceled : card?.call ? t.eventCall : t.event}</small>
+          {name && <strong>{name}</strong>}
+          {when && <small>{when}</small>}
+          {card?.place && (
+            <small className="with-icon">
+              <Icon name="location" size={13} />
+              {card.place}
+            </small>
+          )}
+        </span>
+      </div>
+      {card?.description && <Text text={card.description} />}
+      {m.text && m.text !== name && <Text text={m.text} />}
+    </>
+  );
+}
+
+function Product({ card }: { card: Extract<Card, { type: "product" }> }) {
+  const t = useViewerT();
+  const { lang } = useLang();
+  let price: string | null = null;
+  if (card.amount1000 != null) {
+    const value = card.amount1000 / 1000;
+    try {
+      price = card.currency
+        ? new Intl.NumberFormat(lang, { style: "currency", currency: card.currency }).format(value)
+        : new Intl.NumberFormat(lang).format(value);
+    } catch {
+      price = new Intl.NumberFormat(lang).format(value);
+    }
+  }
+  return (
+    <div className="msg-card">
+      <span className="msg-card-icon">
+        <Icon name="product" size={22} />
+      </span>
+      <span className="msg-card-body">
+        <strong>{card.title ?? t.product}</strong>
+        {card.description && <small>{card.description}</small>}
+        {price && <small className="price">{price}</small>}
+      </span>
+    </div>
+  );
+}
+
+/** Footer and buttons of a business message. The buttons are shown, not used. */
+function Buttons({ card }: { card: Extract<Card, { type: "buttons" }> }) {
+  return (
+    <>
+      {card.footer && <p className="msg-footer">{card.footer}</p>}
+      {card.buttons.length > 0 && (
+        <div className="msg-buttons">
+          {card.buttons.map((b, i) => (
+            <span key={i}>{b}</span>
+          ))}
+        </div>
+      )}
+    </>
+  );
 }
 
 function Text({ text }: { text: string }) {

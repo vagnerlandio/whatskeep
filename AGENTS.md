@@ -86,7 +86,7 @@ Breaking any of these requires discussing it with the user first.
 ## Project status
 
 Every phase of the plan is implemented and tested **with synthetic data only**. Not yet validated with real data:
-- real backups (the user will test); the import report lists `unknownTypes` to help map new message types;
+- real backups: tested with a real WhatsApp and WhatsApp Business backup (Drive download, local import, contact names). Message types were mapped from that backup's structure (`kind.rs`, `card.rs`); 87 and 116 are still unknown (nothing in the backup says what they are), and `probe.rs` logs where any unknown type shows up;
 - Google login inside the embedded WebKit (fallback: pasting the `oauth_token` cookie);
 - WhatsApp Business `client_sig` and whether its backups show up in the same listing;
 - the `.mcrypt1` format (whether the GCM tag is present; name format in the metadata).

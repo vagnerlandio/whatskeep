@@ -274,7 +274,7 @@ fn metadata_and_destination_already_used() {
     };
     assert_eq!(meta("source_app").as_deref(), Some("business"));
     assert_eq!(meta("source_schema").as_deref(), Some("modern"));
-    assert_eq!(meta("schema_version").as_deref(), Some("1"));
+    assert_eq!(meta("schema_version").as_deref(), Some("2"));
     assert!(matches!(import(&src, &mut dst, &opts()), Err(Error::DestinationNotEmpty)));
 }
 
@@ -410,4 +410,91 @@ fn open_msgstore_uses_no_temp_files_on_disk() {
     let conn = wk_import::open_msgstore(&db.data).unwrap();
     let v: i64 = conn.query_row("PRAGMA temp_store", [], |r| r.get(0)).unwrap();
     assert_eq!(v, 2, "temp_store must be MEMORY");
+}
+
+// --- Kinds mapped from a real backup's structure (modern-cards.sql) ------
+
+fn cards_source() -> Connection {
+    let c = source("modern.sql");
+    c.execute_batch(&fixture_sql("modern-cards.sql")).unwrap();
+    c
+}
+
+fn card(dst: &Connection, key: &str) -> Option<serde_json::Value> {
+    dst.query_row(
+        "SELECT c.data FROM card c JOIN message m ON m.id = c.message_id WHERE m.key_id = ?1",
+        [key],
+        |r| r.get::<_, String>(0),
+    )
+    .optional()
+    .unwrap()
+    .map(|s| serde_json::from_str(&s).unwrap())
+}
+
+#[test]
+fn modern_cards_by_structure() {
+    let (dst, report) = run(&cards_source());
+    let json = |s: &str| serde_json::from_str::<serde_json::Value>(s).unwrap();
+
+    assert_eq!(msg(&dst, "P1").kind, "poll");
+    assert_eq!(
+        card(&dst, "P1"),
+        Some(json(r#"{"type":"poll","options":[{"name":"Pizza","votes":3},{"name":"Sushi","votes":1}],"multiple":false}"#))
+    );
+    assert_eq!(msg(&dst, "E1").kind, "event");
+    assert_eq!(
+        card(&dst, "E1"),
+        Some(json(
+            r#"{"type":"event","name":"Aniversário da Ana","description":"Traga um bolo","startMs":1700000000000,"endMs":null,"place":"Casa da Ana","canceled":false,"call":false}"#
+        ))
+    );
+    let product = msg(&dst, "PR1");
+    assert_eq!((product.kind.as_str(), product.text.as_deref()), ("product", Some("Veja este produto")));
+    assert_eq!(
+        card(&dst, "PR1"),
+        Some(json(r#"{"type":"product","title":"Caneca","description":"Cerâmica azul","amount1000":39900,"currency":"BRL"}"#))
+    );
+    assert_eq!(msg(&dst, "I1").kind, "invite");
+    assert_eq!(card(&dst, "I1"), Some(json(r#"{"type":"invite","group":"Trilhas"}"#)));
+
+    // Template: the body moves to the text (and is searchable), buttons in the card.
+    let template = msg(&dst, "T1");
+    assert_eq!((template.kind.as_str(), template.text.as_deref()), ("text", Some("Seu pedido saiu para entrega")));
+    assert_eq!(card(&dst, "T1"), Some(json(r#"{"type":"buttons","footer":"Loja Fictícia","buttons":["Rastrear","Falar com a loja"]}"#)));
+    assert_eq!(search(&dst, "entrega"), vec!["T1"]);
+    // Interactive: JSON blobs never become text; repeated buttons appear once.
+    assert_eq!(msg(&dst, "U1").text.as_deref(), Some("Escolha um horário"));
+    assert_eq!(card(&dst, "U1"), Some(json(r#"{"type":"buttons","footer":"Atendimento","buttons":["Ver opções"]}"#)));
+    // Nothing readable anywhere: stays unsupported, and is reported.
+    assert_eq!(msg(&dst, "U2").kind, "unknown");
+    assert_eq!(report.unknown_types, BTreeMap::from([(45, 1), (777, 1)]));
+
+    // Notices.
+    assert_eq!(msg(&dst, "D1").kind, "system");
+    assert_eq!(card(&dst, "D1"), Some(json(r#"{"type":"disappearing","seconds":604800}"#)));
+    assert_eq!(card(&dst, "L1"), Some(json(r#"{"type":"chatPrivacy","enabled":true}"#)), "the last row wins");
+    assert_eq!(card(&dst, "H1"), Some(json(r#"{"type":"sharedHistory","messages":42}"#)));
+
+    assert_eq!(msg(&dst, "W1").kind, "waiting");
+    let revoked = msg(&dst, "R64");
+    assert_eq!((revoked.kind.as_str(), revoked.text), ("deleted", None));
+    assert_eq!(msg(&dst, "V1").kind, "voice");
+}
+
+#[test]
+fn modern_album_container_is_left_out() {
+    let (dst, report) = run(&cards_source());
+    let albums: i64 = dst.query_row("SELECT count(*) FROM message WHERE key_id = 'AL'", [], |r| r.get(0)).unwrap();
+    assert_eq!(albums, 0);
+    assert_eq!(msg(&dst, "AL1").kind, "image");
+    // The album's reaction goes to its first item.
+    let on_first: Vec<String> = dst
+        .prepare("SELECT emoji FROM reaction WHERE message_id = ?1")
+        .unwrap()
+        .query_map([msg(&dst, "AL1").id], |r| r.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(on_first, vec!["😂"]);
+    assert_eq!(report.messages, 12 + 15);
 }

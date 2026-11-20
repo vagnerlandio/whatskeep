@@ -42,10 +42,11 @@ Forgetting step 3 or 4 makes the command fail at runtime with "not allowed".
 
 ## Map a new WhatsApp `message_type`
 
-It shows up in `unknownTypes` in the import report.
-1. `crates/wk-import/src/kind.rs`: new arm in `classify` (and a `MessageKind` variant if it is genuinely new, with `as_str` and `has_media`).
-2. New variant → add the string to `packages/viewer/src/types.ts` (`MessageKind`) and handle it in `MessageRow.tsx` / `MediaView.tsx`.
-3. Test in `kind.rs` (`mod tests`).
+It shows up in `unknownTypes` in the import report, and the diagnostics log (`pnpm dev:log`) has an `unknown message type: where it shows up` line per type from `probe.rs`: the WhatsApp tables that point at those messages (`table^` = as their parent), the `message` columns they fill and their media MIME families, plus the columns of each of those tables. Map by that evidence, never by guessing the number.
+1. `crates/wk-import/src/kind.rs`: new arm in `classify` (and a `MessageKind` variant if it is genuinely new, with `as_str` and `has_media`). Codes seen only in the modern schema go into `MODERN_ONLY`.
+2. Content in another table → a `Card` variant in `crates/wk-import/src/card.rs` (add the code to `CARD_TYPES` and read the table in `card::import`, checking its columns exist), mirrored in `Card` in `packages/viewer/src/types.ts`. Text kept elsewhere (a template's body) goes into `message.text` with `Writer::fill_text`, so search finds it.
+3. New variant → add the string to `packages/viewer/src/types.ts` (`MessageKind`), its label to `kinds` in `messages.ts` (pt and en), its icon to `KIND_ICON` (`format.tsx`) and handle it in `MessageRow.tsx` / `MediaView.tsx`.
+4. Tests: `kind.rs` (`mod tests`) and synthetic rows in `crates/wk-import/tests/fixtures/modern-cards.sql` with assertions in `tests/import.rs`.
 
 ## New backup format / crypto change
 

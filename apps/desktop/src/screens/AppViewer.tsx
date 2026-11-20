@@ -4,6 +4,8 @@ import { SOURCE_LABEL, SourceApp, StoreInfo, tauriSource } from "../api";
 import { useAppT } from "../i18n/app";
 import { JobBanner } from "../jobs";
 
+const SHORT_LABEL: Record<SourceApp, string> = { whatsapp: "WhatsApp", business: "Business" };
+
 type Props = {
   stores: StoreInfo[];
   onLock: () => void;
@@ -24,15 +26,22 @@ export default function AppViewer({ stores, onLock, onOpenImport }: Props) {
   // New source when switching app or reimporting: the viewer starts over.
   const source = useMemo(() => tauriSource(store), [store, stamp]);
 
-  const other = stores.find((s) => s.sourceApp !== store);
-  const actions = other && (
-    <button
-      className="icon-btn"
-      title={t.switchTo(SOURCE_LABEL[other.sourceApp])}
-      onClick={() => setStore(other.sourceApp)}
-    >
-      <Icon name="swap" size={22} />
-    </button>
+  // Both histories imported: a switcher with both names, always in sight.
+  const switcher = stores.length > 1 && (
+    <div className="app-switch" role="radiogroup" aria-label={t.switchLabel}>
+      {stores.map((s) => (
+        <button
+          key={s.sourceApp}
+          role="radio"
+          aria-checked={s.sourceApp === store}
+          className={s.sourceApp === store ? "active" : ""}
+          onClick={() => setStore(s.sourceApp)}
+        >
+          <Icon name={s.sourceApp === "business" ? "business" : "whatsapp"} size={16} />
+          {SHORT_LABEL[s.sourceApp]}
+        </button>
+      ))}
+    </div>
   );
   const railBottom = (
     <>
@@ -46,7 +55,7 @@ export default function AppViewer({ stores, onLock, onOpenImport }: Props) {
       key={`${store}:${stamp}`}
       source={source}
       title={SOURCE_LABEL[store]}
-      actions={actions}
+      subheader={switcher || undefined}
       railBottom={railBottom}
       banner={<JobBanner onDetails={onOpenImport} />}
       emptyTitle={t.emptyTitle(SOURCE_LABEL[store])}

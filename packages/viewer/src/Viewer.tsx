@@ -14,6 +14,8 @@ type Props = {
   title: ReactNode;
   /** Buttons next to the title. */
   actions?: ReactNode;
+  /** Row under the title (e.g. the app switcher), hidden in the archive. */
+  subheader?: ReactNode;
   /** Extra buttons on the left navigation rail, at the top and the bottom. */
   railTop?: ReactNode;
   railBottom?: ReactNode;
@@ -27,7 +29,7 @@ type Filter = "all" | "groups";
 
 /** Navigation rail + chat list (and search) + open chat, in the
  * WhatsApp Desktop layout. Change the `key` to reset when switching sources. */
-export default function Viewer({ source, title, actions, railTop, railBottom, banner, emptyTitle, emptyNote }: Props) {
+export default function Viewer({ source, title, actions, subheader, railTop, railBottom, banner, emptyTitle, emptyNote }: Props) {
   const [chats, setChats] = useState<Chat[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
@@ -118,6 +120,7 @@ export default function Viewer({ source, title, actions, railTop, railBottom, ba
             <h1 className={showArchived ? "sidebar-title plain" : "sidebar-title"}>{showArchived ? t.archived : title}</h1>
             {actions && <div className="sidebar-actions">{actions}</div>}
           </header>
+          {!showArchived && subheader}
 
           <div className="search-box">
             <Icon name="search" size={18} />

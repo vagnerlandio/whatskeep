@@ -161,6 +161,9 @@ pub struct Message {
     pub location: Option<Location>,
     pub contacts: Vec<ContactCard>,
     pub reactions: Vec<Reaction>,
+    /// Structured content (poll, event, product, buttons, notice setting), as
+    /// the importer wrote it (`wk_import::card::Card`).
+    pub card: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -306,6 +309,7 @@ fn message_row(r: &Row) -> rusqlite::Result<Message> {
         location,
         contacts: Vec::new(),
         reactions: Vec::new(),
+        card: None,
     })
 }
 
@@ -412,6 +416,20 @@ fn attach_extras(conn: &Connection, page: &mut [Message]) -> Result<(), Error> {
     while let Some(r) = rows.next()? {
         let i = index[&r.get::<_, i64>(0)?];
         page[i].contacts.push(parse_vcard(&r.get::<_, String>(1)?));
+    }
+
+    // Histories imported before schema 2 have no `card` table.
+    let has_cards: bool = conn
+        .prepare_cached("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'card')")?
+        .query_row([], |r| r.get(0))?;
+    if has_cards {
+        let mut stmt = conn.prepare(&format!("SELECT message_id, data FROM card WHERE message_id IN ({placeholders})"))?;
+        let mut rows = stmt.query(params_from_iter(&ids))?;
+        while let Some(r) = rows.next()? {
+            let i = index[&r.get::<_, i64>(0)?];
+            // A card that does not parse is left out, not an error.
+            page[i].card = serde_json::from_str(&r.get::<_, String>(1)?).ok();
+        }
     }
     Ok(())
 }

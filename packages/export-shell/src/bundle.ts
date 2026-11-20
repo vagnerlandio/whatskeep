@@ -394,5 +394,7 @@ function normalizeMessage(m: Partial<StoredMessage>): StoredMessage {
       : null,
     contacts: (m.contacts ?? []).map((c) => ({ name: c.name ?? null, phones: c.phones ?? [] })),
     reactions: (m.reactions ?? []).map((r) => ({ emoji: r.emoji, count: r.count ?? 1, mine: !!r.mine })),
+    // Nulls inside the card were stripped too: the viewer treats a missing field as null.
+    card: m.card ?? null,
   };
 }

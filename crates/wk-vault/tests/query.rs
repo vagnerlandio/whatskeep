@@ -262,3 +262,35 @@ fn performance_300k() {
     });
 }
 
+
+const CARDS: &str = include_str!("../../wk-import/tests/fixtures/modern-cards.sql");
+
+#[test]
+fn cards_reach_the_viewer() {
+    let (_d, conn) = store_with(CARDS);
+    let (_, group) = alice_and_group(&conn);
+    let page = query::messages(&conn, group, Direction::Before, None, 50).unwrap();
+    let poll = by_time(&page, 20000);
+    assert_eq!(poll.kind, "poll");
+    let card = poll.card.as_ref().unwrap();
+    assert_eq!(card["type"], "poll");
+    assert_eq!(card["options"][0]["name"], "Pizza");
+    // Serialized for the UI as `card`.
+    let json = serde_json::to_value(poll).unwrap();
+    assert_eq!(json["card"]["options"][1]["votes"], 1);
+    assert!(by_time(&page, 7000).card.is_none());
+}
+
+#[test]
+fn history_without_the_card_table_still_opens() {
+    // Imported before schema 2.
+    let src = Connection::open_in_memory().unwrap();
+    src.execute_batch(FIXTURE).unwrap();
+    let mut dst = Connection::open_in_memory().unwrap();
+    wk_import::import(&src, &mut dst, &wk_import::ImportOptions { source_app: SourceApp::WhatsApp }).unwrap();
+    dst.execute_batch("DROP TABLE card").unwrap();
+    let (alice, _) = alice_and_group(&dst);
+    let page = query::messages(&dst, alice, Direction::Before, None, 50).unwrap();
+    assert!(!page.is_empty());
+    assert!(page.iter().all(|m| m.card.is_none()));
+}

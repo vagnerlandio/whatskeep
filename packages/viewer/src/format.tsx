@@ -136,12 +136,18 @@ export const KIND_ICON: Partial<Record<MessageKind, IconName>> = {
   location: "location",
   live_location: "location",
   deleted: "cancel",
+  poll: "poll",
+  event: "calendar",
+  product: "product",
+  invite: "invite",
+  waiting: "waiting",
+  status_mention: "mention",
 };
 
 export function previewText(kind: MessageKind, text: string | null, lang: Lang = "pt-BR"): string {
   const label = KIND_PREVIEW[lang][kind];
   if (kind === "text") return oneLine(text ?? "");
-  if (kind === "deleted" || kind === "system") return label ?? "";
+  if (kind === "deleted" || kind === "system" || kind === "waiting" || kind === "status_mention") return label ?? "";
   return text ? oneLine(text) : (label ?? "");
 }
 
@@ -152,7 +158,7 @@ export function Preview({ kind, text }: { kind: MessageKind; text: string | null
   return (
     <>
       {icon && <Icon name={icon} size={16} className="preview-icon" />}
-      <span className={kind === "deleted" ? "preview-text muted-italic" : "preview-text"}>{previewText(kind, text, lang)}</span>
+      <span className={kind === "deleted" || kind === "waiting" ? "preview-text muted-italic" : "preview-text"}>{previewText(kind, text, lang)}</span>
     </>
   );
 }
