@@ -83,6 +83,8 @@ pub struct Person {
 }
 
 /// All chats with messages, from most recent to oldest.
+/// The chats to list, most recent first. Chats with only system notices are
+/// left out (see the query).
 pub fn chats(conn: &Connection) -> Result<Vec<Chat>, Error> {
     let mut stmt = conn.prepare_cached(
         "SELECT c.id, c.kind, c.title, ct.jid, ct.phone, ct.name, c.archived, c.message_count,
@@ -93,7 +95,12 @@ pub fn chats(conn: &Connection) -> Result<Vec<Chat>, Error> {
          LEFT JOIN message lm ON lm.id = (
              SELECT id FROM message WHERE chat_id = c.id ORDER BY sent_at DESC, id DESC LIMIT 1)
          LEFT JOIN contact s ON s.id = lm.sender_id
+         -- Only chats with something besides system notices. WhatsApp keeps a chat
+         -- row (with an automatic notice: encryption, number change, a new
+         -- identifier...) for every contact it ever touched: tens of thousands
+         -- in a real backup, which WhatsApp itself does not list.
          WHERE c.message_count > 0
+           AND EXISTS (SELECT 1 FROM message m WHERE m.chat_id = c.id AND m.kind <> 'system')
          ORDER BY c.last_message_at DESC, c.id DESC",
     )?;
     let rows = stmt.query_map([], |r| {

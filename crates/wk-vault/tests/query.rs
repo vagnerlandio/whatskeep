@@ -61,6 +61,23 @@ fn chat_list() {
 }
 
 #[test]
+fn chats_with_only_system_notices_are_not_listed() {
+    // Carol's chat only has an automatic notice, like the thousands WhatsApp
+    // keeps for contacts it touched. The group ends with a notice but has
+    // real messages, so it stays.
+    let (_d, conn) = store_with(
+        "INSERT INTO chat (_id, jid_row_id, hidden, subject, archived) VALUES (9, 7, 0, NULL, 0);
+         INSERT INTO message (_id, chat_row_id, from_me, key_id, sender_jid_row_id, status, timestamp, message_type, text_data, starred)
+             VALUES (90, 9, 0, 'C1', 0, 6, 50000, 7, NULL, 0);
+         INSERT INTO message_system VALUES (90, 67);",
+    );
+    let chats = query::chats(&conn).unwrap();
+    assert_eq!(chats.len(), 2, "{:?}", chats.iter().map(|c| &c.jid).collect::<Vec<_>>());
+    assert!(chats.iter().all(|c| c.jid != "55555@lid"));
+    assert!(chats.iter().any(|c| c.kind == "group" && c.last.as_ref().unwrap().kind == "system"));
+}
+
+#[test]
 fn pagination_backward_and_forward() {
     let (_d, conn) = fixture();
     let (alice, _) = alice_and_group(&conn);
