@@ -101,4 +101,4 @@ Frontend: `apps/desktop/src/api.ts` (`invoke` wrappers + `tauriSource(store)`), 
 
 ## Shared viewer (`packages/viewer/src`)
 
-`Viewer.tsx` (layout) → `ChatList`, `ChatPane` (react-virtuoso, provides `ViewerContext`), `MessageRow`, `MediaView` (thumbnail/lightbox/audio), `SearchPanel`, `LinkConfirm`. `format.tsx` does WhatsApp formatting (`*bold*`, `_italic_`, links) producing React nodes — never HTML. `source.ts` defines `DataSource`; implementations: `tauriSource` (app) and `BundleSource` (export).
+`Viewer.tsx` (layout) → `ChatList`, `ChatPane` (bounded, non-virtualized message list that keeps its position when pages come and go; provides `ViewerContext`), `MessageRow`, `MediaView` (thumbnail/lightbox/audio), `SearchPanel`, `LinkConfirm`. `format.tsx` does WhatsApp formatting (`*bold*`, `_italic_`, links) producing React nodes — never HTML. `source.ts` defines `DataSource`; implementations: `tauriSource` (app) and `BundleSource` (export).

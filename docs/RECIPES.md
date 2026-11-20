@@ -65,7 +65,8 @@ It shows up in `unknownTypes` in the import report.
 - New data need → method on `DataSource` (`source.ts`), implemented in `tauriSource` (`apps/desktop/src/api.ts`) and `BundleSource` (`packages/export-shell/src/bundle.ts`).
 - Styles: `viewer.css` (viewer), `base.css` (reset/theme), `apps/desktop/src/App.css` (app screens only), `packages/export-shell/src/shell.css`.
 - Icons: add the Lucide component to the `icons` map in `packages/viewer/src/icons.tsx` and use `<Icon name="..." />`. No emojis as icons, no other icon library.
-- Lists are always virtualized (react-virtuoso); bubbles use `contain: content`; media height is reserved from stored dimensions.
+- The chat list and search results are virtualized (react-virtuoso). The **message list is not**: it keeps at most 400 real messages in the page (pages of 80 come and go at the ends) and puts the first visible message back in place in a `useLayoutEffect` when a page is added or dropped. Virtualizing it made the list shake while scrolling up (heights of unseen messages are estimated and corrected a frame late). Measure any change there with a wheel-scroll test in WebKit: the content must never move against the scroll direction.
+- Bubbles use `contain`; media height is reserved from stored dimensions. Scroll-dependent state goes through `ScrollWatch` (`context.ts`), not React state on the list, so scrolling does not re-render every row.
 - Run `pnpm lint:security`.
 
 ## Feature that loads an external URL or image

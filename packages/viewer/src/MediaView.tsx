@@ -1,5 +1,5 @@
 import { MouseEvent, useEffect, useState } from "react";
-import { useViewer } from "./context";
+import { useScrolling, useViewer } from "./context";
 import { formatDuration } from "./format";
 import { useSource, useUrl } from "./source";
 import { errorOf, Message } from "./types";
@@ -15,7 +15,8 @@ const FULL_DELAY_MS = 150;
  * (if available) only loads once scrolling stops. */
 export function Visual({ m }: { m: Message }) {
   const source = useSource();
-  const { scrolling, openMedia } = useViewer();
+  const { openMedia } = useViewer();
+  const scrolling = useScrolling();
   const t = useViewerT();
   const sticker = m.kind === "sticker";
   const available = !!m.media?.available;

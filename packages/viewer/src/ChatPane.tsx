@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSource } from "./source";
 import { Anchor, Chat, errorOf, Message } from "./types";
 import { chatTitle, formatPhone } from "./format";
@@ -7,22 +6,34 @@ import Avatar from "./Avatar";
 import MessageRow from "./MessageRow";
 import { Lightbox } from "./MediaView";
 import LinkConfirm from "./LinkConfirm";
-import { ViewerContext } from "./context";
+import { ScrollWatch, ViewerContext } from "./context";
 import { Icon } from "./icons";
 import { useViewerT } from "./messages";
 
 const PAGE = 80;
-/** Virtual index high enough to keep prepending older pages. */
-const START = 1_000_000_000;
+/** Messages kept in the page; the far end is dropped (and loaded again if needed). */
+const MAX_LOADED = 400;
+/** Distance from an end (px) at which the next page is loaded. */
+const EDGE = 1500;
+
+/*
+ * The list is not virtualized: every loaded message is in the page with its real
+ * height. Virtualized lists estimate the height of the messages that come into view
+ * and correct the scroll position a frame later when they measure them; with
+ * messages as varied as a chat's, that correction showed as the list shaking while
+ * scrolling up. Here nothing is estimated: when a page is added or dropped, the
+ * first visible message is put back where it was before the frame is painted
+ * (`useLayoutEffect`), so the content does not move.
+ */
 
 type Loaded = {
   messages: Message[];
-  firstItemIndex: number;
   hasOlder: boolean;
   hasNewer: boolean;
-  initialIndex: number;
-  centered: boolean;
 };
+
+/** Where to put the view on the first render of a (re)load. */
+type Initial = { id: number | null; centered: boolean };
 
 type Props = {
   chat: Chat;
@@ -39,12 +50,16 @@ export default function ChatPane({ chat, anchor: externalAnchor, onSearchInChat 
   const [error, setError] = useState<string | null>(null);
   const [highlightId, setHighlightId] = useState<number | null>(null);
   const [atBottom, setAtBottom] = useState(true);
-  const [scrolling, setScrolling] = useState(false);
   const [lightbox, setLightbox] = useState<Message | null>(null);
   const [link, setLink] = useState<string | null>(null);
-  const viewerCtx = useMemo(() => ({ scrolling, openMedia: setLightbox, openLink: setLink }), [scrolling]);
+  const scroll = useMemo(() => new ScrollWatch(), []);
+  const viewerCtx = useMemo(() => ({ scroll, openMedia: setLightbox, openLink: setLink }), [scroll]);
   const loading = useRef(false);
-  const virtuoso = useRef<VirtuosoHandle>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+  /** Placement for the first render after a (re)load. */
+  const initial = useRef<Initial | null>(null);
+  /** A message and its offset from the top of the view, to keep across the next render. */
+  const keep = useRef<{ id: number; top: number } | null>(null);
   const t = useViewerT();
 
   // New anchor from outside with the chat already open (the Viewer remounts this
@@ -66,31 +81,27 @@ export default function ChatPane({ chat, anchor: externalAnchor, onSearchInChat 
     (async () => {
       try {
         let loaded: Loaded;
+        let place: Initial;
         if (anchor) {
           const r = await source.around(chat.id, anchor, PAGE);
           const idx = r.anchorIndex ?? Math.max(0, r.messages.length - 1);
           loaded = {
             messages: r.messages,
-            firstItemIndex: START,
             hasOlder: idx >= PAGE / 2,
             hasNewer: r.messages.length - idx - 1 >= PAGE / 2,
-            initialIndex: idx,
-            centered: true,
           };
+          place = { id: r.messages[idx]?.id ?? null, centered: true };
           setHighlightId(anchor.type === "message" ? anchor.id : (r.messages[idx]?.id ?? null));
         } else {
           const msgs = await source.messages(chat.id, "before", null, PAGE);
-          loaded = {
-            messages: msgs,
-            firstItemIndex: START,
-            hasOlder: msgs.length === PAGE,
-            hasNewer: false,
-            initialIndex: Math.max(0, msgs.length - 1),
-            centered: false,
-          };
+          loaded = { messages: msgs, hasOlder: msgs.length === PAGE, hasNewer: false };
+          place = { id: null, centered: false };
           setHighlightId(null);
         }
-        if (!cancelled) setData(loaded);
+        if (!cancelled) {
+          initial.current = place;
+          setData(loaded);
+        }
       } catch (e) {
         if (!cancelled) setError(errorOf(e).message);
       }
@@ -109,24 +120,37 @@ export default function ChatPane({ chat, anchor: externalAnchor, onSearchInChat 
     return () => clearTimeout(t);
   }, [highlightId]);
 
+  /** Remembers the first visible message and where it is, to keep it there. */
+  const holdPosition = useCallback(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const top = el.getBoundingClientRect().top;
+    for (const row of el.querySelectorAll<HTMLElement>("[data-mid]")) {
+      const r = row.getBoundingClientRect();
+      if (r.bottom > top) {
+        keep.current = { id: Number(row.dataset.mid), top: r.top - top };
+        return;
+      }
+    }
+  }, []);
+
   const loadOlder = useCallback(async () => {
     if (!data?.hasOlder || loading.current) return;
     loading.current = true;
     try {
       const first = data.messages[0];
       const older = await source.messages(chat.id, "before", { sentAt: first.sentAt, id: first.id }, PAGE);
-      setData((d) =>
-        d && {
-          ...d,
-          messages: [...older, ...d.messages],
-          firstItemIndex: d.firstItemIndex - older.length,
-          hasOlder: older.length === PAGE,
-        },
-      );
+      holdPosition();
+      setData((d) => {
+        if (!d) return d;
+        const all = [...older, ...d.messages];
+        const cut = all.length > MAX_LOADED;
+        return { messages: cut ? all.slice(0, MAX_LOADED) : all, hasOlder: older.length === PAGE, hasNewer: d.hasNewer || cut };
+      });
     } finally {
       loading.current = false;
     }
-  }, [data, source, chat.id]);
+  }, [data, source, chat.id, holdPosition]);
 
   const loadNewer = useCallback(async () => {
     if (!data?.hasNewer || loading.current) return;
@@ -134,11 +158,50 @@ export default function ChatPane({ chat, anchor: externalAnchor, onSearchInChat 
     try {
       const last = data.messages[data.messages.length - 1];
       const newer = await source.messages(chat.id, "after", { sentAt: last.sentAt, id: last.id }, PAGE);
-      setData((d) => d && { ...d, messages: [...d.messages, ...newer], hasNewer: newer.length === PAGE });
+      holdPosition();
+      setData((d) => {
+        if (!d) return d;
+        const all = [...d.messages, ...newer];
+        const cut = all.length > MAX_LOADED;
+        return { messages: cut ? all.slice(all.length - MAX_LOADED) : all, hasOlder: d.hasOlder || cut, hasNewer: newer.length === PAGE };
+      });
     } finally {
       loading.current = false;
     }
-  }, [data, source, chat.id]);
+  }, [data, source, chat.id, holdPosition]);
+
+  // Before the frame is painted: the first placement after a load, or the kept
+  // message back where it was (pages added or dropped above it).
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!el || !data) return;
+    const place = initial.current;
+    if (place) {
+      initial.current = null;
+      keep.current = null;
+      const row = place.id === null ? null : el.querySelector<HTMLElement>(`[data-mid="${place.id}"]`);
+      el.scrollTop = row ? row.offsetTop - el.clientHeight / 2 + row.offsetHeight / 2 : el.scrollHeight;
+      return;
+    }
+    const k = keep.current;
+    keep.current = null;
+    const row = k && el.querySelector<HTMLElement>(`[data-mid="${k.id}"]`);
+    if (k && row) el.scrollTop += row.getBoundingClientRect().top - el.getBoundingClientRect().top - k.top;
+  }, [data]);
+
+  /** Loads the next page when the view gets near an end (also right after a load). */
+  const checkEdges = useCallback(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const fromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setAtBottom(fromBottom < 40);
+    if (el.scrollTop < EDGE) void loadOlder();
+    else if (fromBottom < EDGE) void loadNewer();
+  }, [loadOlder, loadNewer]);
+
+  useEffect(() => {
+    checkEdges();
+  }, [checkEdges]);
 
   const jumpTo = useCallback((next: Anchor | null) => {
     setAnchor(next);
@@ -148,8 +211,9 @@ export default function ChatPane({ chat, anchor: externalAnchor, onSearchInChat 
   const onJumpToMessage = useCallback((id: number) => jumpTo({ type: "message", id }), [jumpTo]);
 
   function goToEnd() {
-    if (data && !data.hasNewer) {
-      virtuoso.current?.scrollToIndex({ index: "LAST", align: "end", behavior: "auto" });
+    const el = scroller.current;
+    if (data && !data.hasNewer && el) {
+      el.scrollTop = el.scrollHeight;
     } else {
       jumpTo(null);
     }
@@ -172,24 +236,6 @@ export default function ChatPane({ chat, anchor: externalAnchor, onSearchInChat 
           : chat.phone && chat.title
             ? formatPhone(chat.phone)
             : null;
-
-  const components = useMemo(
-    () => ({
-      Header: () =>
-        data?.hasOlder ? (
-          <div className="list-edge">{t.loadingOlder}</div>
-        ) : (
-          <div className="list-edge">
-            <span className="e2e-note">
-              <Icon name="lock" size={12} />
-              {t.backupNote}
-            </span>
-          </div>
-        ),
-      Footer: () => (data?.hasNewer ? <div className="list-edge">{t.loading}</div> : <div style={{ height: 12 }} />),
-    }),
-    [data?.hasOlder, data?.hasNewer, t],
-  );
 
   return (
     <section className="chat-pane">
@@ -215,31 +261,40 @@ export default function ChatPane({ chat, anchor: externalAnchor, onSearchInChat 
         {error && <div className="result error pane-error">{error}</div>}
         {data && data.messages.length === 0 && <div className="list-edge">{t.noMessages}</div>}
         {data && data.messages.length > 0 && (
-          <Virtuoso
+          <div
             key={seq}
-            ref={virtuoso}
+            ref={scroller}
             className="messages"
-            data={data.messages}
-            firstItemIndex={data.firstItemIndex}
-            initialTopMostItemIndex={{ index: data.initialIndex, align: data.centered ? "center" : "end" }}
-            alignToBottom
-            startReached={loadOlder}
-            endReached={loadNewer}
-            atBottomStateChange={setAtBottom}
-            isScrolling={setScrolling}
-            increaseViewportBy={{ top: 800, bottom: 800 }}
-            computeItemKey={(_, m) => m.id}
-            components={components}
-            itemContent={(index, m) => (
-              <MessageRow
-                message={m}
-                prev={data.messages[index - data.firstItemIndex - 1]}
-                isGroup={isGroup}
-                highlighted={m.id === highlightId}
-                onJump={onJumpToMessage}
-              />
-            )}
-          />
+            onScroll={() => {
+              scroll.touch();
+              checkEdges();
+            }}
+          >
+            <div className="messages-inner">
+              {data.hasOlder ? (
+                <div className="list-edge">{t.loadingOlder}</div>
+              ) : (
+                <div className="list-edge">
+                  <span className="e2e-note">
+                    <Icon name="lock" size={12} />
+                    {t.backupNote}
+                  </span>
+                </div>
+              )}
+              {data.messages.map((m, i) => (
+                <div key={m.id} data-mid={m.id}>
+                  <MessageRow
+                    message={m}
+                    prev={data.messages[i - 1]}
+                    isGroup={isGroup}
+                    highlighted={m.id === highlightId}
+                    onJump={onJumpToMessage}
+                  />
+                </div>
+              ))}
+              {data.hasNewer ? <div className="list-edge">{t.loading}</div> : <div style={{ height: 12 }} />}
+            </div>
+          </div>
         )}
         {data && (!atBottom || data.hasNewer) && (
           <button className="to-bottom" onClick={goToEnd} title={t.goToLatest}>

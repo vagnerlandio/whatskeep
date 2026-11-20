@@ -608,6 +608,19 @@ button.link {
 
 .messages {
   height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* The list keeps its own position when pages come and go (ChatPane);
+     the browser's scroll anchoring would correct it a second time. */
+  overflow-anchor: none;
+}
+
+/* Few messages sit at the bottom, like in WhatsApp. */
+.messages-inner {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
 }
 
 .list-edge {
