@@ -8,7 +8,7 @@
 //! (`<hash>.mcrypt1`) and the real name is in `metadata`, encrypted. The
 //! message database is still `Databases/msgstore.db.crypt15`.
 
-use std::io::Read;
+use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use base64::Engine;
@@ -215,15 +215,33 @@ impl<'a> Api<'a> {
         &self,
         file: &BackupFile,
         cancel: &AtomicBool,
-        mut progress: impl FnMut(u64, u64),
+        progress: impl FnMut(u64, u64),
     ) -> Result<Vec<u8>, Error> {
         if file.size_bytes > MAX_DOWNLOAD {
             return Err(Error::TooLarge(file.size_bytes));
         }
+        let mut out = Vec::with_capacity(file.size_bytes as usize);
+        self.download_into(file, &mut out, cancel, progress)?;
+        Ok(out)
+    }
+
+    /// Streams a file into `out`, checking size and MD5. Returns the bytes
+    /// written. On error, `out` may hold a partial file: the caller discards it
+    /// (write to a temporary name and rename only on success).
+    ///
+    /// `progress(downloaded, total)` is called every ~1 MiB. `cancel` aborts.
+    pub fn download_into(
+        &self,
+        file: &BackupFile,
+        out: &mut impl Write,
+        cancel: &AtomicBool,
+        mut progress: impl FnMut(u64, u64),
+    ) -> Result<u64, Error> {
         let started = std::time::Instant::now();
         let shown = crate::trace::file_path(&file.path);
         let mut resp = self.get(&file.name, &[("alt", "media")])?;
-        let mut out = Vec::with_capacity(file.size_bytes as usize);
+        let limit = file.size_bytes.max(1).saturating_add(1 << 20);
+        let mut written = 0u64;
         let mut md5 = Md5::new();
         let mut buf = vec![0u8; 256 * 1024];
         let mut last_report = 0u64;
@@ -235,30 +253,31 @@ impl<'a> Api<'a> {
             if n == 0 {
                 break;
             }
-            if (out.len() + n) as u64 > file.size_bytes.max(1).saturating_add(1 << 20).min(MAX_DOWNLOAD) {
+            if written + n as u64 > limit {
                 return Err(Error::Unexpected("o arquivo veio maior que o anunciado"));
             }
             md5.update(&buf[..n]);
-            out.extend_from_slice(&buf[..n]);
-            if out.len() as u64 - last_report >= 1 << 20 {
-                last_report = out.len() as u64;
-                progress(last_report, file.size_bytes);
+            out.write_all(&buf[..n]).map_err(|e| Error::Write(e.to_string()))?;
+            written += n as u64;
+            if written - last_report >= 1 << 20 {
+                last_report = written;
+                progress(written, file.size_bytes);
             }
         }
-        progress(out.len() as u64, file.size_bytes);
+        progress(written, file.size_bytes);
         let ms = started.elapsed().as_millis() as u64;
-        if file.size_bytes > 0 && out.len() as u64 != file.size_bytes {
-            tracing::warn!(target: "wk_gdrive::http", received = out.len(), announced = file.size_bytes, ms, "incomplete download: {shown}");
+        if file.size_bytes > 0 && written != file.size_bytes {
+            tracing::warn!(target: "wk_gdrive::http", received = written, announced = file.size_bytes, ms, "incomplete download: {shown}");
             return Err(Error::Incomplete);
         }
         let md5_ok = file.md5.map(|expected| md5.finalize().as_slice() == expected);
-        let mbps = out.len() as f64 / 1_048_576.0 / (ms.max(1) as f64 / 1000.0);
+        let mbps = written as f64 / 1_048_576.0 / (ms.max(1) as f64 / 1000.0);
         if md5_ok == Some(false) {
-            tracing::warn!(target: "wk_gdrive::http", bytes = out.len(), ms, "MD5 mismatch: {shown}");
+            tracing::warn!(target: "wk_gdrive::http", bytes = written, ms, "MD5 mismatch: {shown}");
             return Err(Error::Checksum);
         }
-        tracing::debug!(target: "wk_gdrive::http", bytes = out.len(), ms, md5 = ?md5_ok, "downloaded {shown} ({mbps:.1} MB/s)");
-        Ok(out)
+        tracing::debug!(target: "wk_gdrive::http", bytes = written, ms, md5 = ?md5_ok, "downloaded {shown} ({mbps:.1} MB/s)");
+        Ok(written)
     }
 }
 

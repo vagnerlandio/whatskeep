@@ -3,9 +3,15 @@ import { api, MIN_PASSWORD_CHARS } from "../api";
 import { useAppT } from "../i18n/app";
 import { useErrorText } from "../i18n/errors";
 
-type Props = { autolockMinutes: number; onCreated: () => void };
+type Props = {
+  autolockMinutes: number;
+  onCreated: () => void;
+  /** Why the vault is being asked for now (when it is created on demand). */
+  reason?: string;
+  onCancel?: () => void;
+};
 
-export default function CreateVault({ autolockMinutes, onCreated }: Props) {
+export default function CreateVault({ autolockMinutes, onCreated, reason, onCancel }: Props) {
   const t = useAppT();
   const errorText = useErrorText();
   const [password, setPassword] = useState("");
@@ -38,6 +44,7 @@ export default function CreateVault({ autolockMinutes, onCreated }: Props) {
   return (
     <form className="card narrow" onSubmit={submit}>
       <h1>{t.createTitle}</h1>
+      {reason && <p>{reason}</p>}
       <p className="muted">{t.createIntro(autolockMinutes)}</p>
       <label>
         {t.password}
@@ -68,9 +75,16 @@ export default function CreateVault({ autolockMinutes, onCreated }: Props) {
         <strong>{t.noRecoveryStrong}</strong> {t.noRecoveryCreate}
       </div>
       {error && <div className="result error">{errorText(error.e)}</div>}
-      <button className="primary" type="submit" disabled={!canSubmit}>
-        {busy ? t.creating : t.createTitle}
-      </button>
+      <div className="row-buttons">
+        {onCancel && (
+          <button type="button" onClick={onCancel} disabled={busy}>
+            {t.cancel}
+          </button>
+        )}
+        <button className="primary" type="submit" disabled={!canSubmit}>
+          {busy ? t.creating : t.createTitle}
+        </button>
+      </div>
     </form>
   );
 }

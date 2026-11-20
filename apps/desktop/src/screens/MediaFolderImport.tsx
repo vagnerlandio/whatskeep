@@ -1,50 +1,29 @@
-import { useState } from "react";
-import { listen } from "@tauri-apps/api/event";
-import { mediaApi, MediaProgress, MediaSummary, SourceApp } from "../api";
-import { useErrorText } from "../i18n/errors";
+import { mediaApi, SourceApp } from "../api";
 import { useImportT } from "../i18n/import";
-import { MediaProgressView, MediaSummaryLine } from "./shared";
+import { useJob } from "../jobs";
 
-type State =
-  | { kind: "idle"; error?: string }
-  | { kind: "running"; progress: MediaProgress | null }
-  | { kind: "done"; summary: MediaSummary };
-
-/** Imports the media from the WhatsApp folder copied from the phone into the vault. */
+/** Imports the media from a WhatsApp folder copied from the phone into the vault (as an app-wide job). */
 export default function MediaFolderImport({ source }: { source: SourceApp }) {
-  const [state, setState] = useState<State>({ kind: "idle" });
   const t = useImportT();
-  const errorText = useErrorText();
-
-  async function run() {
-    setState({ kind: "running", progress: null });
-    const unlisten = await listen<MediaProgress>("media-progress", (e) =>
-      setState((s) => (s.kind === "running" ? { kind: "running", progress: e.payload } : s)),
-    );
-    try {
-      const summary = await mediaApi.importFolder(source);
-      setState(summary ? { kind: "done", summary } : { kind: "idle" });
-    } catch (e) {
-      setState({ kind: "idle", error: errorText(e) });
-    } finally {
-      unlisten();
-    }
-  }
-
-  if (state.kind === "running") {
-    return (
-      <div className="media-import">
-        <MediaProgressView p={state.progress} onCancel={() => void mediaApi.cancel()} />
-      </div>
-    );
-  }
+  const { job, start } = useJob();
   return (
-    <div className="media-import">
-      {state.kind === "done" && <MediaSummaryLine s={state.summary} />}
-      {state.kind === "idle" && state.error && <div className="result error">{state.error}</div>}
-      <button onClick={run} title={t.mediaFolderTitle}>
-        {state.kind === "done" ? t.mediaFolderAgain : t.mediaFolder}
-      </button>
-    </div>
+    <button
+      className="small-btn"
+      disabled={job?.status === "running"}
+      title={t.mediaFolderTitle}
+      onClick={() =>
+        start(
+          "media",
+          source,
+          async () => {
+            const media = await mediaApi.importFolder(source);
+            return media && { media };
+          },
+          { steps: ["media"], picksFolder: true },
+        )
+      }
+    >
+      {t.mediaFolder}
+    </button>
   );
 }

@@ -22,7 +22,12 @@ export type StoreInfo = {
   messages: number;
 };
 
-export type BackupInfo = { version: "crypt14" | "crypt15"; sizeBytes: number };
+export type BackupInfo = {
+  version: "crypt14" | "crypt15";
+  sizeBytes: number;
+  /** The file is in a backup folder with a `Media/` folder next to it. */
+  mediaFolder: boolean;
+};
 
 export type KeyInput = { type: "hex"; value: string } | { type: "file"; path: string };
 
@@ -49,9 +54,20 @@ export const api = {
   touch: () => invoke<void>("vault_touch"),
   changePassword: (current: string, next: string) => invoke<void>("vault_change_password", { current, next }),
   listStores: () => invoke<StoreInfo[]>("list_stores"),
+  /** Bytes the vault takes on disk. */
+  usage: () => invoke<number>("vault_usage"),
+  /** Deletes the whole vault (open or locked). */
+  deleteVault: () => invoke<void>("vault_delete"),
+  /** Deletes one app's history (messages and media). */
+  deleteStore: (store: SourceApp) => invoke<void>("store_delete", { store }),
   inspectBackup: (path: string) => invoke<BackupInfo>("inspect_backup", { path }),
-  importBackup: (backupPath: string, key: KeyInput, sourceApp: SourceApp) =>
-    invoke<ImportSummary>("import_backup", { backupPath, key, sourceApp }),
+  importBackup: (backupPath: string, key: KeyInput, sourceApp: SourceApp, withMedia: boolean) =>
+    invoke<{ summary: ImportSummary; media: MediaSummary | null }>("import_backup", {
+      backupPath,
+      key,
+      sourceApp,
+      withMedia,
+    }),
 };
 
 // ---------------------------------------------------------------- viewer
@@ -114,17 +130,45 @@ export type DriveBackup = {
 
 export type DriveLogin = { backups: DriveBackup[]; refused: SourceApp[] };
 
+/** `gdrive-progress`: the database byte by byte, then the other files. */
+export type DownloadProgress = {
+  phase: "database" | "files";
+  filesDone: number;
+  filesTotal: number;
+  bytes: number;
+  totalBytes: number;
+  failed: number;
+};
+
+export type DownloadSummary = {
+  files: number;
+  downloaded: number;
+  already: number;
+  failed: number;
+  bytes: number;
+  totalBytes: number;
+  stopped: string | null;
+};
+
+export type DriveResult = {
+  /** Where the backup was saved (not in the "vault" mode). */
+  folder: string | null;
+  download: DownloadSummary | null;
+  /** When the backup went into the vault. */
+  summary: ImportSummary | null;
+  media: MediaSummary | null;
+};
+
+/** Straight into the vault · a copy in a folder and then the vault · only the copy. */
+export type DriveMode = "vault" | "folderAndVault" | "folder";
+
 export const driveApi = {
   login: (email: string) => invoke<DriveLogin>("gdrive_login", { email }),
   loginManual: (email: string, oauthToken: string) => invoke<DriveLogin>("gdrive_login_manual", { email, oauthToken }),
   cancel: () => invoke<void>("gdrive_cancel"),
-  download: (backupId: number, key: KeyInput, sourceApp: SourceApp, includeMedia: boolean) =>
-    invoke<{ summary: ImportSummary; media: MediaSummary | null }>("gdrive_download", {
-      backupId,
-      key,
-      sourceApp,
-      includeMedia,
-    }),
+  /** Folder modes open the folder picker in the backend: `null` if the user cancels it. */
+  download: (backupId: number, sourceApp: SourceApp, mode: DriveMode, key: KeyInput | null, includeMedia: boolean) =>
+    invoke<DriveResult | null>("gdrive_download", { backupId, sourceApp, mode, key, includeMedia }),
 };
 
 // ---------------------------------------------------------------- export HTML

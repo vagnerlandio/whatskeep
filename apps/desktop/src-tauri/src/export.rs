@@ -98,7 +98,7 @@ pub async fn export_pick_destination(app: AppHandle) -> Result<Option<Destinatio
 }
 
 /// `YYYY-MM-DD` (UTC) without depending on a date crate.
-fn date_label(secs: u64) -> String {
+pub(crate) fn date_label(secs: u64) -> String {
     let days = (secs / 86_400) as i64;
     // civil_from_days algorithm (Howard Hinnant).
     let z = days + 719_468;

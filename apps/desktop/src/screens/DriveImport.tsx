@@ -1,69 +1,89 @@
-import { formatDateTime, Icon, useLang } from "@wk/viewer";
+import { formatDateTime, formatPhone, Icon, IconName, useLang } from "@wk/viewer";
 import { useEffect, useRef, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
 import {
   driveApi,
   DriveBackup,
   DriveLogin,
+  DriveMode,
   errorOf,
   formatCount,
   formatSize,
-  ImportPhase,
-  ImportSummary,
-  mediaApi,
-  MediaProgress,
-  MediaSummary,
   SOURCE_LABEL,
   SourceApp,
   StoreInfo,
 } from "../api";
-import { formatPhone } from "@wk/viewer";
 import { useErrorText } from "../i18n/errors";
 import { useImportT } from "../i18n/import";
+import { JobStep, useJob } from "../jobs";
+import { useOptionalVaultGate } from "../vault";
 import { ReplaceWarning } from "./ImportPanel";
-import {
-  initialKey,
-  KeyField,
-  KeyState,
-  keyReady,
-  MediaProgressView,
-  SourcePicker,
-  SummaryView,
-  toKeyInput,
-  useFriendlyError,
-  usePhaseLabel,
-} from "./shared";
+import { initialKey, KeyField, KeyState, keyReady, SourcePicker, toKeyInput } from "./shared";
+import { FlowHeader, More, Note, OptionCard, Panel, PanelActions, Section, SwitchRow } from "./ui";
 
 type Step =
   | { kind: "intro"; error?: string }
   | { kind: "waiting" }
   | { kind: "manual"; error?: string }
-  | { kind: "list"; login: DriveLogin; error?: string }
-  | { kind: "running"; phase: ImportPhase; downloaded: number; total: number; media: MediaProgress | null }
-  | { kind: "done"; source: SourceApp; summary: ImportSummary; media: MediaSummary | null };
+  | { kind: "list"; login: DriveLogin };
 
-type Props = { stores: StoreInfo[]; onImported: () => void };
+/** Errors after which the backend ended the Google session (the others keep it for a retry). */
+const SESSION_ENDED = ["cancelled", "locked", "google_expired"];
 
-/** Google sign-in and backup download straight from Google Drive. */
-export default function DriveImport({ stores, onImported }: Props) {
+const MODES: DriveMode[] = ["vault", "folderAndVault", "folder"];
+const MODE_ICON: Record<DriveMode, IconName> = { vault: "lock", folderAndVault: "import", folder: "folder" };
+
+/** The steps the progress screen shows for each mode. */
+function stepsFor(mode: DriveMode, includeMedia: boolean): JobStep[] {
+  if (mode === "vault") return includeMedia ? ["download", "import", "mediaDownload"] : ["download", "import"];
+  if (mode === "folder") return ["download", "files"];
+  return includeMedia ? ["download", "import", "files", "media"] : ["download", "import", "files"];
+}
+
+/** `folderOnly`: the vault is locked, only a copy to a folder is possible. */
+type Props = { stores: StoreInfo[]; folderOnly?: boolean; onBack: () => void; backLabel?: string };
+
+/**
+ * Google sign-in and download of a backup: straight into the vault, to a
+ * folder and then the vault, or only to a folder. The download itself runs as
+ * an app-wide job.
+ */
+export default function DriveImport({ stores, folderOnly = false, onBack, backLabel }: Props) {
   const [step, setStep] = useState<Step>({ kind: "intro" });
   const [email, setEmail] = useState("");
   const [manualToken, setManualToken] = useState("");
   const [selected, setSelected] = useState<DriveBackup | null>(null);
   const [source, setSource] = useState<SourceApp>("whatsapp");
   const [key, setKey] = useState<KeyState>(initialKey("crypt15"));
-  const [includeMedia, setIncludeMedia] = useState(false);
+  const [includeMedia, setIncludeMedia] = useState(true);
+  const [mode, setMode] = useState<DriveMode>(folderOnly ? "folder" : "vault");
   const sessionOpen = useRef(false);
   const t = useImportT();
   const { lang } = useLang();
-  const phaseLabel = usePhaseLabel();
   const errorText = useErrorText();
-  const friendlyError = useFriendlyError();
+  const { job, start } = useJob();
+  const gate = useOptionalVaultGate();
+  const back = backLabel ?? t.back;
 
-  // When leaving the screen, the Google tokens are discarded in the backend.
+  // A Drive job that ended also ended the session (or kept it, for a retry).
+  const driveJob = job?.kind === "drive" ? job : null;
+  useEffect(() => {
+    if (!driveJob || driveJob.status === "running") return;
+    const ended = driveJob.status === "done" || SESSION_ENDED.includes(errorOf(driveJob.error).code);
+    if (ended) {
+      sessionOpen.current = false;
+      setStep({ kind: "intro" });
+    } else {
+      sessionOpen.current = true;
+    }
+  }, [driveJob?.status]);
+
+  // When leaving the screen, the Google tokens are discarded in the backend
+  // (unless a download is using them: it ends the session itself).
+  const downloading = useRef(false);
+  downloading.current = job?.kind === "drive" && job.status === "running";
   useEffect(
     () => () => {
-      if (sessionOpen.current) void driveApi.cancel();
+      if (sessionOpen.current && !downloading.current) void driveApi.cancel();
     },
     [],
   );
@@ -102,215 +122,165 @@ export default function DriveImport({ stores, onImported }: Props) {
     }
   }
 
-  async function cancel() {
+  async function signOut() {
     sessionOpen.current = false;
     await driveApi.cancel();
     setStep({ kind: "intro" });
   }
 
-  async function download() {
+  function download() {
     if (step.kind !== "list" || !selected) return;
-    const login = step.login;
-    const input = toKeyInput(key);
-    setKey((k) => ({ ...k, hex: "" }));
-    setStep({ kind: "running", phase: "downloading", downloaded: 0, total: selected.chatDbSize ?? 0, media: null });
-    const unlisteners = await Promise.all([
-      listen<{ phase: ImportPhase }>("import-progress", (e) =>
-        setStep((s) => (s.kind === "running" ? { ...s, phase: e.payload.phase } : s)),
-      ),
-      listen<{ downloaded: number; total: number }>("gdrive-progress", (e) =>
-        setStep((s) => (s.kind === "running" ? { ...s, ...e.payload } : s)),
-      ),
-      listen<MediaProgress>("media-progress", (e) =>
-        setStep((s) => (s.kind === "running" ? { ...s, media: e.payload } : s)),
-      ),
-    ]);
-    try {
-      const { summary, media } = await driveApi.download(selected.id, input, source, includeMedia);
-      sessionOpen.current = false;
-      setStep({ kind: "done", source, summary, media });
-      onImported();
-    } catch (e) {
-      const { code } = errorOf(e);
-      // Network: the session stays alive in the backend and can be retried. Other errors end the session.
-      if (code === "network" || code === "download_corrupt") {
-        setStep({ kind: "list", login, error: errorText(e) });
-      } else {
-        sessionOpen.current = false;
-        setStep({ kind: "intro", error: code === "cancelled" ? undefined : friendlyError(e) });
-      }
-    } finally {
-      unlisteners.forEach((u) => u());
+    const backupId = selected.id;
+    const chosen = { mode, source, includeMedia };
+    const steps = stepsFor(chosen.mode, chosen.includeMedia);
+    if (chosen.mode === "folder") {
+      start("drive", chosen.source, () => driveApi.download(backupId, chosen.source, "folder", null, chosen.includeMedia), {
+        steps,
+        picksFolder: true,
+      });
+      return;
     }
-  }
-
-  if (step.kind === "done") {
-    return (
-      <SummaryView
-        source={step.source}
-        summary={step.summary}
-        media={step.media}
-        footer={t.driveFooter}
-        onAgain={() => setStep({ kind: "intro" })}
-      />
-    );
-  }
-
-  if (step.kind === "running") {
-    const pct = step.total > 0 ? Math.min(100, (step.downloaded / step.total) * 100) : 0;
-    const mediaPhase = step.phase === "done" && includeMedia;
-    return (
-      <section className="card">
-        <h2>{t.drive}</h2>
-        <div className="progress">
-          <div className="spinner" />
-          <span>{mediaPhase ? t.downloadingMedia : phaseLabel[step.phase]}</span>
-        </div>
-        {step.phase === "downloading" && (
-          <>
-            <div className="bar">
-              <div style={{ width: `${pct}%` }} />
-            </div>
-            <span className="muted small">
-              {formatSize(step.downloaded, lang)}
-              {step.total > 0 && t.ofTotal(formatSize(step.total, lang))}
-            </span>
-            <button onClick={cancel}>{t.cancel}</button>
-          </>
-        )}
-        {mediaPhase && (
-          <MediaProgressView
-            p={step.media}
-            onCancel={() => {
-              void mediaApi.cancel();
-              void driveApi.cancel();
-            }}
-          />
-        )}
-        <p className="muted small">{t.driveInMemory}</p>
-      </section>
+    const input = toKeyInput(key);
+    setKey((k) => ({ ...k, hex: "" })); // the key doesn't stay in React state after being sent
+    const requireVault = gate?.requireVault ?? ((action: () => void) => action());
+    requireVault(() =>
+      start("drive", chosen.source, () => driveApi.download(backupId, chosen.source, chosen.mode, input, chosen.includeMedia), {
+        steps,
+        picksFolder: chosen.mode !== "vault",
+      }),
     );
   }
 
   if (step.kind === "waiting") {
     return (
-      <section className="card">
-        <h2>{t.drive}</h2>
-        <div className="progress">
-          <div className="spinner" />
-          <span>{t.waitingLogin}</span>
-        </div>
-        <p className="muted small">{t.waitingHint}</p>
-        <button onClick={cancel}>{t.cancel}</button>
-      </section>
+      <div className="flow">
+        <FlowHeader title={t.driveDownload} />
+        <Panel>
+          <Section>
+            <div className="progress">
+              <div className="spinner" />
+              <strong>{t.waitingLogin}</strong>
+            </div>
+            <p className="muted small">{t.waitingHint}</p>
+          </Section>
+          <PanelActions>
+            <button onClick={signOut}>{t.cancel}</button>
+          </PanelActions>
+        </Panel>
+      </div>
     );
   }
 
   if (step.kind === "manual") {
     return (
-      <section className="card">
-        <h2>{t.manualTitle}</h2>
-        <ol className="steps">
-          <li>
-            {t.manualStep1Before}
-            <code>https://accounts.google.com/EmbeddedSetup</code>
-            {t.manualStep1After(email || t.manualAccountFallback)}
-          </li>
-          <li>
-            {t.manualStep2Before}
-            <code>accounts.google.com</code>
-            {t.manualStep2After}
-          </li>
-          <li>
-            {t.manualStep3Before}
-            <code>oauth_token</code>
-            {t.manualStep3Middle}
-            <code>oauth2_4/</code>
-            {t.manualStep3After}
-          </li>
-        </ol>
-        <textarea
-          className="key-input"
-          rows={3}
-          spellCheck={false}
-          autoComplete="off"
-          placeholder="oauth2_4/…"
-          value={manualToken}
-          onChange={(e) => setManualToken(e.target.value)}
-        />
-        {step.error && <div className="result error">{step.error}</div>}
-        <div className="row-buttons">
-          <button onClick={() => setStep({ kind: "intro" })}>{t.back}</button>
-          <button className="primary" disabled={!manualToken.trim() || !email.includes("@")} onClick={loginManual}>
-            {t.continue}
-          </button>
-        </div>
-      </section>
+      <div className="flow">
+        <FlowHeader title={t.manualTitle} onBack={() => setStep({ kind: "intro" })} backLabel={t.back} />
+        <Panel>
+          <Section>
+            <ol className="steps">
+              <li>
+                {t.manualStep1Before}
+                <code>https://accounts.google.com/EmbeddedSetup</code>
+                {t.manualStep1After(email || t.manualAccountFallback)}
+              </li>
+              <li>
+                {t.manualStep2Before}
+                <code>accounts.google.com</code>
+                {t.manualStep2After}
+              </li>
+              <li>
+                {t.manualStep3Before}
+                <code>oauth_token</code>
+                {t.manualStep3Middle}
+                <code>oauth2_4/</code>
+                {t.manualStep3After}
+              </li>
+            </ol>
+            <textarea
+              className="key-input"
+              rows={3}
+              spellCheck={false}
+              autoComplete="off"
+              placeholder="oauth2_4/…"
+              value={manualToken}
+              onChange={(e) => setManualToken(e.target.value)}
+            />
+            {step.error && <Note tone="danger">{step.error}</Note>}
+          </Section>
+          <PanelActions>
+            <button className="primary" disabled={!manualToken.trim() || !email.includes("@")} onClick={loginManual}>
+              {t.continue}
+            </button>
+          </PanelActions>
+        </Panel>
+      </div>
     );
   }
 
   if (step.kind === "list") {
     const { backups, refused } = step.login;
+    const busy = job?.status === "running";
     const existing = stores.find((s) => s.sourceApp === source);
+    const needsKey = mode !== "folder";
     return (
-      <section className="card">
-        <div className="file-row">
-          <h2>{t.driveBackups}</h2>
-          <button onClick={cancel}>{t.signOut}</button>
-        </div>
-        {backups.length === 0 && <p className="muted">{t.noBackups}</p>}
-        <div className="drive-list">
-          {backups.map((b) => (
-            <label key={b.id} className={`drive-item ${b.uploading ? "disabled" : ""}`}>
-              <input
-                type="radio"
-                name="drive-backup"
-                disabled={b.uploading}
-                checked={selected?.id === b.id}
-                onChange={() => pick(b)}
-              />
-              <span className="drive-item-body">
-                <strong>
-                  {b.phone ? formatPhone(b.phone) : t.backup}{" "}
-                  {b.apps.map((a) => (
-                    <span key={a} className="badge">
-                      {SOURCE_LABEL[a]}
-                    </span>
-                  ))}
-                  {b.encrypted && (
-                    <span className="badge">
-                      <Icon name="lock" size={12} /> {t.endToEnd}
-                    </span>
-                  )}
-                </strong>
-                <span className="muted small">
-                  {b.uploading
-                    ? t.stillUploading
-                    : [
-                        b.updateTime && formatDateTime(new Date(b.updateTime).getTime(), lang),
-                        b.chatDbSize != null && t.chatDbSize(formatSize(b.chatDbSize, lang)),
-                        b.messages != null && t.messagesCount(formatCount(b.messages, lang)),
-                        b.sizeBytes != null && t.totalSize(formatSize(b.sizeBytes, lang)),
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                </span>
-              </span>
-            </label>
-          ))}
-        </div>
-        {refused.length > 0 && backups.length > 0 && (
-          <p className="muted small">{t.refused(refused.map((a) => SOURCE_LABEL[a]).join(t.and))}</p>
-        )}
-        {selected && (
-          <>
-            <SourcePicker value={source} onChange={setSource} />
-            {selected.encrypted === false && (
-              <div className="warning">
-                <strong>{t.noE2eTitle}</strong>
-                {t.noE2eBefore}
-                <code>key</code>
-                {t.noE2eAfter}
+      <div className="flow">
+        <FlowHeader
+          title={t.listTitle}
+          subtitle={t.listSubtitle(backups.length)}
+          onBack={onBack}
+          backLabel={back}
+          actions={
+            <button className="small-btn" onClick={signOut}>
+              <Icon name="logOut" size={14} /> {t.signOut}
+            </button>
+          }
+        />
+        <Panel>
+          <Section label={t.sectionBackup}>
+            {backups.length === 0 && <Note>{t.noBackups}</Note>}
+            <div className="option-list">
+              {backups.map((b) => (
+                <OptionCard
+                  key={b.id}
+                  name="drive-backup"
+                  selected={selected?.id === b.id}
+                  disabled={b.uploading}
+                  onSelect={() => pick(b)}
+                  icon="cloud"
+                  title={
+                    <>
+                      {b.updateTime ? formatDateTime(new Date(b.updateTime).getTime(), lang) : t.backup}
+                      {b.phone && <span className="muted">{formatPhone(b.phone)}</span>}
+                      {b.encrypted === true && (
+                        <span className="tag">
+                          <Icon name="lock" size={11} /> {t.endToEnd}
+                        </span>
+                      )}
+                      {b.encrypted === false && <span className="tag warn">{t.noE2eTag}</span>}
+                    </>
+                  }
+                  hint={
+                    b.uploading
+                      ? t.stillUploading
+                      : [
+                          b.messages != null && t.messagesCount(formatCount(b.messages, lang)),
+                          b.chatDbSize != null && t.chatDbSize(formatSize(b.chatDbSize, lang)),
+                          b.sizeBytes != null && t.totalSize(formatSize(b.sizeBytes, lang)),
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")
+                  }
+                />
+              ))}
+            </div>
+            {selected?.encrypted === false && (
+              <Note tone="warn">
+                <p>
+                  <strong>{t.noE2eTitle}</strong>
+                  {t.noE2eBefore}
+                  <code>key</code>
+                  {t.noE2eAfter}
+                </p>
                 <ol>
                   <li>
                     {t.noE2eStep1Before}
@@ -325,62 +295,113 @@ export default function DriveImport({ stores, onImported }: Props) {
                   <li>{t.noE2eStep3}</li>
                   <li>{t.noE2eStep4}</li>
                 </ol>
-                {t.noE2eBusiness}
-              </div>
+                <p>{t.noE2eBusiness}</p>
+              </Note>
             )}
-            <KeyField version={selected.encrypted === false ? "crypt14" : "crypt15"} value={key} onChange={setKey} />
-            {existing && <ReplaceWarning source={source} at={existing.importedAtMs} />}
-            <label className="radio">
-              <input type="checkbox" checked={includeMedia} onChange={(e) => setIncludeMedia(e.target.checked)} />
-              {t.includeMedia}
-              {selected.mediaSize != null && t.upTo(formatSize(selected.mediaSize, lang))}
-            </label>
-            {includeMedia && (
-              <p className="muted small">{t.includeMediaHint}</p>
+            {refused.length > 0 && backups.length > 0 && (
+              <p className="muted small">{t.refused(refused.map((a) => SOURCE_LABEL[a]).join(t.and))}</p>
             )}
-          </>
-        )}
-        {step.error && <div className="result error">{step.error}</div>}
-        <button className="primary" disabled={!selected || !keyReady(key)} onClick={download}>
-          {t.downloadAndImport}
-        </button>
-      </section>
+          </Section>
+
+          {selected && (
+            <>
+              <Section label={t.importAs}>
+                <SourcePicker value={source} onChange={setSource} />
+                {selected.apps.length > 1 && <p className="muted small">{t.importAsHint}</p>}
+              </Section>
+
+              <Section label={t.whatToDo}>
+                {folderOnly ? (
+                  <Note icon="folder">{t.folderOnlyNote}</Note>
+                ) : (
+                  <div className="option-list">
+                    {MODES.map((m) => (
+                      <OptionCard
+                        key={m}
+                        name="drive-mode"
+                        selected={mode === m}
+                        onSelect={() => setMode(m)}
+                        icon={MODE_ICON[m]}
+                        title={t.modeTitle[m]}
+                        hint={t.modeHint[m]}
+                      />
+                    ))}
+                  </div>
+                )}
+                <SwitchRow
+                  checked={includeMedia}
+                  onChange={setIncludeMedia}
+                  icon="image"
+                  label={t.mediaSwitch}
+                  detail={selected.mediaSize != null ? t.mediaSwitchSize(formatSize(selected.mediaSize, lang)) : t.mediaSwitchDetail}
+                />
+                {mode !== "vault" && <Note icon="folder">{t.saveFolderHint}</Note>}
+              </Section>
+
+              {needsKey && (
+                <Section label={t.keyLegend}>
+                  <KeyField version={selected.encrypted === false ? "crypt14" : "crypt15"} value={key} onChange={setKey} />
+                  {existing && <ReplaceWarning source={source} at={existing.importedAtMs} />}
+                </Section>
+              )}
+            </>
+          )}
+
+          <PanelActions info={selected && includeMedia && needsKey ? t.includeMediaHint : undefined}>
+            <button className="primary" disabled={!selected || busy || (needsKey && !keyReady(key))} onClick={download}>
+              {t.modeButton[mode]}
+            </button>
+          </PanelActions>
+        </Panel>
+      </div>
     );
   }
 
   return (
-    <section className="card">
-      <h2>{t.driveDownload}</h2>
-      <ul className="muted small bullets">
-        <li>
-          {t.introUnofficialBefore}
-          <strong>{t.introUnofficial}</strong>
-          {t.introUnofficialAfter}
-        </li>
-        <li>{t.introMemory}</li>
-        <li>{t.introPassword}</li>
-      </ul>
-      <label>
-        {t.emailLabel}
-        <input
-          type="email"
-          autoComplete="email"
-          spellCheck={false}
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-      </label>
-      <span className="muted small">{t.emailHint}</span>
-      {step.error && <div className="result error">{step.error}</div>}
-      <button className="primary" disabled={!email.includes("@")} onClick={login}>
-        {t.signIn}
-      </button>
-      <p className="muted small">
-        {t.refusedWindow}{" "}
-        <button className="link" disabled={!email.includes("@")} onClick={() => setStep({ kind: "manual" })}>
-          {t.manualLogin}
-        </button>
-      </p>
-    </section>
+    <div className="flow">
+      <FlowHeader title={t.driveDownload} subtitle={t.driveIntroSubtitle} onBack={onBack} backLabel={back} />
+      <Panel>
+        <Section label={t.emailLabel}>
+          <input
+            type="email"
+            autoComplete="email"
+            spellCheck={false}
+            placeholder="nome@gmail.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && email.includes("@") && void login()}
+          />
+          <span className="muted small">{t.emailHint}</span>
+          {step.error && <Note tone="danger">{step.error}</Note>}
+          <Note tone="ok" icon="shield">
+            {t.introPassword}
+          </Note>
+          <More summary={t.howItWorks}>
+            <ul>
+              <li>
+                {t.introUnofficialBefore}
+                <strong>{t.introUnofficial}</strong>
+                {t.introUnofficialAfter}
+              </li>
+              <li>{t.introMemory}</li>
+            </ul>
+          </More>
+        </Section>
+        <PanelActions
+          info={
+            <>
+              {t.refusedWindow}{" "}
+              <button className="link" disabled={!email.includes("@")} onClick={() => setStep({ kind: "manual" })}>
+                {t.manualLogin}
+              </button>
+            </>
+          }
+        >
+          <button className="primary" disabled={!email.includes("@")} onClick={login}>
+            {t.signIn}
+          </button>
+        </PanelActions>
+      </Panel>
+    </div>
   );
 }

@@ -1,5 +1,5 @@
-//! Media import into the vault: from the folder copied from the phone or
-//! from Google Drive.
+//! Media import into the vault from a folder: the one copied from the phone,
+//! or a Google Drive backup the app saved (see `backup_folder`).
 //!
 //! Only files used by some message in the history get in (by their path on
 //! the phone). Deleted messages do not count. Status photos, wallpapers and
@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
+use wk_crypt::BackupKey;
 use wk_import::SourceApp;
 use wk_vault::media::normalize_path;
 use wk_vault::query::{self, MediaRef};
@@ -174,12 +175,16 @@ fn walk(root: &Path, out: &mut Vec<PathBuf>, cancel: &dyn Fn() -> bool) {
 }
 
 /// Asks for the WhatsApp folder copied from the phone and imports its media.
+/// Without the key, `.mcrypt1` media (end-to-end encrypted Drive backups) are
+/// left out: those come in through the backup import, which has the key.
 #[tauri::command]
 pub async fn import_media_folder(app: AppHandle, source_app: String) -> Result<Option<MediaSummary>, CmdError> {
     use tauri_plugin_dialog::DialogExt;
 
     let target = self::source_app(&source_app)?;
     blocking("import_media_folder", move || {
+        let state = app.state::<AppState>();
+        let _job = state.start_job()?;
         // The native picker runs in the backend: the webview does not choose paths.
         let Some(folder) = app
             .dialog()
@@ -190,12 +195,28 @@ pub async fn import_media_folder(app: AppHandle, source_app: String) -> Result<O
             return Ok(None);
         };
         let root = folder.into_path().map_err(|_| CmdError::new("invalid_argument", "pasta inválida"))?;
-        import_folder(&app, target, &root).map(Some)
+        import_folder(&app, target, &root, None).map(Some)
     })
     .await
 }
 
-fn import_folder(app: &AppHandle, target: SourceApp, root: &Path) -> Result<MediaSummary, CmdError> {
+/// One file to bring in: where it is, the message that uses it and, for a
+/// `.mcrypt1`, the hex name that derives its key.
+struct Todo<'a> {
+    path: PathBuf,
+    want: &'a MediaRef,
+    mcrypt1: Option<String>,
+}
+
+/// Imports the media under `root` that the history uses. `key` decrypts the
+/// `.mcrypt1` files of a Drive backup saved by the app (their real names are
+/// in the folder's manifest).
+pub(crate) fn import_folder(
+    app: &AppHandle,
+    target: SourceApp,
+    root: &Path,
+    key: Option<&BackupKey>,
+) -> Result<MediaSummary, CmdError> {
     let state = app.state::<AppState>();
     let _busy = state.busy();
     state.media_cancel.store(false, Ordering::SeqCst);
@@ -204,6 +225,7 @@ fn import_folder(app: &AppHandle, target: SourceApp, root: &Path) -> Result<Medi
     let writer = handle.writer()?;
     writer.cleanup();
     let cancelled = || state.media_cancel.load(Ordering::SeqCst);
+    let manifest = crate::backup_folder::Manifest::load(root);
 
     let mut files = Vec::new();
     let t = crate::diag::timer("list the media folder");
@@ -211,13 +233,39 @@ fn import_folder(app: &AppHandle, target: SourceApp, root: &Path) -> Result<Medi
     drop(t);
     let mut summary = MediaSummary { expected: plan.len() as u64, ..Default::default() };
     let mut tally = crate::diag::Tally::new("folder media");
-    let mut todo = Vec::new();
+    let mut todo: Vec<Todo> = Vec::new();
     let mut unmatched_by_folder: std::collections::BTreeMap<String, u64> = Default::default();
     let mut outside_media = 0u64;
+    let mut mcrypt1_files = 0u64;
+    let mut logged_meta = false;
     for path in files.iter() {
+        if path.extension().is_some_and(|e| e == "mcrypt1") {
+            mcrypt1_files += 1;
+            let rel = path.strip_prefix(root).ok().and_then(|p| p.to_str()).map(|p| p.replace('\\', "/"));
+            let meta = manifest.as_ref().zip(rel.as_deref()).and_then(|(m, r)| m.metadata(r));
+            let resolved = match (key, meta) {
+                (None, _) => Err(("mcrypt1 needs the backup key", String::from("import the backup with its key"))),
+                (_, None) => Err(("mcrypt1 without metadata", String::from("not in the folder's Drive manifest"))),
+                (Some(key), Some(meta)) => mcrypt1_name(key, meta, &mut logged_meta),
+            };
+            match resolved {
+                Ok(name) => match plan.get(&name) {
+                    Some(want) => {
+                        let hex = path.file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_owned();
+                        todo.push(Todo { path: path.clone(), want, mcrypt1: Some(hex) })
+                    }
+                    None => summary.unmatched += 1,
+                },
+                Err((reason, detail)) => {
+                    tally.add(reason, detail);
+                    summary.unmatched += 1;
+                }
+            }
+            continue;
+        }
         let rel = path.to_string_lossy();
         match plan.get(&rel) {
-            Some(want) => todo.push((path.clone(), want)),
+            Some(want) => todo.push(Todo { path: path.clone(), want, mcrypt1: None }),
             None => {
                 summary.unmatched += 1;
                 match normalize_path(&rel) {
@@ -233,33 +281,46 @@ fn import_folder(app: &AppHandle, target: SourceApp, root: &Path) -> Result<Medi
         expected = plan.len(),
         matched = summary.matched,
         outside_media = outside_media,
+        mcrypt1 = mcrypt1_files,
+        manifest = manifest.is_some(),
         unmatched_by_folder = ?unmatched_by_folder,
         "media folder scanned"
     );
     if !files.is_empty() && outside_media == files.len() as u64 {
         tracing::warn!("no file is under a Media/ folder: the chosen folder is probably not the WhatsApp one");
     }
-    let total_bytes = todo.iter().filter_map(|(p, _)| p.metadata().ok()).map(|m| m.len()).sum();
+    let total_bytes = todo.iter().filter_map(|t| t.path.metadata().ok()).map(|m| m.len()).sum();
     let mut progress = Progress::new(app, todo.len() as u64, total_bytes);
+    // (with a valid GCM tag, without a tag but checked against file_hash)
+    let mut mcrypt_stats = (0u64, 0u64);
 
-    for (path, want) in todo {
+    for Todo { path, want, mcrypt1 } in todo {
         if cancelled() {
-            summary.stopped = Some("cancelado".into());
+            summary.stopped = Some(crate::backup_folder::STOPPED_CANCELLED.into());
             break;
         }
         let size = path.metadata().map(|m| m.len()).unwrap_or(0);
         if already_stored(&writer, want) {
             summary.already += 1;
         } else {
-            match std::fs::File::open(&path) {
-                // Local file: the content is whatever the user has. Does not
-                // require WhatsApp's hash (the file may have been recompressed)
-                // and stays findable by path.
-                Ok(f) => store_one(&writer, &mut summary, &mut tally, want, std::io::BufReader::new(f), None),
-                Err(e) => {
-                    tally.add("open file", e);
-                    summary.failed += 1
-                }
+            match (mcrypt1, key) {
+                (Some(hex), Some(key)) => match std::fs::read(&path) {
+                    Ok(bytes) => store_mcrypt1(&writer, &mut summary, &mut tally, &mut mcrypt_stats, want, key, &hex, bytes),
+                    Err(e) => {
+                        tally.add("open file", e);
+                        summary.failed += 1
+                    }
+                },
+                _ => match std::fs::File::open(&path) {
+                    // Local file: the content is whatever the user has. Does not
+                    // require WhatsApp's hash (the file may have been recompressed)
+                    // and stays findable by path.
+                    Ok(f) => store_one(&writer, &mut summary, &mut tally, want, std::io::BufReader::new(f), None),
+                    Err(e) => {
+                        tally.add("open file", e);
+                        summary.failed += 1
+                    }
+                },
             }
         }
         summary.bytes += size;
@@ -271,10 +332,73 @@ fn import_folder(app: &AppHandle, target: SourceApp, root: &Path) -> Result<Medi
         added = summary.added,
         already_in_vault = summary.already,
         failed = summary.failed,
+        mcrypt1_with_tag = mcrypt_stats.0,
+        mcrypt1_checked_by_hash = mcrypt_stats.1,
         stopped = ?summary.stopped,
         "media folder: done"
     );
     Ok(summary)
+}
+
+/// Decrypts a `.mcrypt1` and stores it. If the GCM tag does not verify, the
+/// content only gets in if its SHA-256 matches the `file_hash` the msgstore
+/// keeps for that media.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn store_mcrypt1(
+    writer: &MediaWriter,
+    summary: &mut MediaSummary,
+    tally: &mut crate::diag::Tally,
+    stats: &mut (u64, u64),
+    want: &MediaRef,
+    key: &BackupKey,
+    hex: &str,
+    bytes: Vec<u8>,
+) {
+    match wk_crypt::mcrypt1::decrypt_media(key, hex, bytes) {
+        Ok(m) if m.verified => {
+            stats.0 += 1;
+            store_one(writer, summary, tally, want, &m.data[..], None)
+        }
+        // Not authenticated: only with WhatsApp's hash to check against.
+        Ok(m) => match want.file_hash.as_deref() {
+            Some(h) => {
+                stats.1 += 1;
+                store_one(writer, summary, tally, want, &m.data[..], Some(h))
+            }
+            None => {
+                tally.add("mcrypt1 without tag or file_hash", "no way to verify the content");
+                summary.failed += 1
+            }
+        },
+        Err(e) => {
+            tally.add("mcrypt1 did not decrypt", e);
+            summary.failed += 1
+        }
+    }
+}
+
+/// Real name of a `.mcrypt1`, read from its encrypted metadata (base64). On
+/// error, returns (category, detail) for diagnostics. The first time, it logs
+/// the keys (not the values) of the metadata JSON, to validate the format.
+pub(crate) fn mcrypt1_name(key: &BackupKey, meta: &str, logged: &mut bool) -> Result<String, (&'static str, String)> {
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as B64;
+
+    let raw = B64.decode(meta).map_err(|e| ("metadata is not base64", e.to_string()))?;
+    let json = wk_crypt::mcrypt1::decrypt_metadata(key, &raw)
+        .map_err(|e| ("metadata did not decrypt", format!("{e} ({} bytes)", raw.len())))?;
+    let v: serde_json::Value =
+        serde_json::from_slice(&json).map_err(|e| ("decrypted metadata is not JSON", format!("{e} ({} bytes)", json.len())))?;
+    if !*logged {
+        *logged = true;
+        let keys: Vec<&String> = v.as_object().map(|o| o.keys().collect()).unwrap_or_default();
+        let name = v.get("name").and_then(|n| n.as_str());
+        tracing::info!(keys = ?keys, name_starts_with_media = ?name.map(|n| n.starts_with("Media/")), "metadata of the first .mcrypt1");
+    }
+    v.get("name")
+        .and_then(|n| n.as_str())
+        .map(str::to_owned)
+        .ok_or(("metadata without the name field", String::from("JSON without name")))
 }
 
 /// Stops the media import in progress (what is already in stays).

@@ -12,6 +12,38 @@ pub(crate) fn create_private(path: &Path) -> io::Result<File> {
     opts.open(path)
 }
 
+/// Removes an SQLite database and its side files (`-journal`, `-wal`, `-shm`).
+/// Missing files are fine.
+pub(crate) fn remove_database(path: &Path) -> io::Result<()> {
+    for suffix in ["", "-journal", "-wal", "-shm"] {
+        let mut p = path.as_os_str().to_owned();
+        p.push(suffix);
+        remove_if_exists(fs::remove_file(std::path::PathBuf::from(p)))?;
+    }
+    Ok(())
+}
+
+/// `Ok` for a removal that failed only because the target was already gone.
+pub(crate) fn remove_if_exists(r: io::Result<()>) -> io::Result<()> {
+    match r {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+        other => other,
+    }
+}
+
+/// Bytes of the regular files under `dir` (symlinks are not followed).
+pub(crate) fn disk_usage(dir: &Path) -> u64 {
+    let Ok(entries) = fs::read_dir(dir) else { return 0 };
+    entries
+        .flatten()
+        .map(|e| match e.file_type() {
+            Ok(t) if t.is_dir() => disk_usage(&e.path()),
+            Ok(t) if t.is_file() => e.metadata().map(|m| m.len()).unwrap_or(0),
+            _ => 0,
+        })
+        .sum()
+}
+
 pub(crate) fn create_private_dir(path: &Path) -> io::Result<()> {
     fs::create_dir_all(path)?;
     #[cfg(unix)]

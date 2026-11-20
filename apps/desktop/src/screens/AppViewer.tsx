@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Icon, RailButton, Viewer } from "@wk/viewer";
 import { SOURCE_LABEL, SourceApp, StoreInfo, tauriSource } from "../api";
 import { useAppT } from "../i18n/app";
+import { JobBanner } from "../jobs";
 
 type Props = {
   stores: StoreInfo[];
@@ -47,6 +48,7 @@ export default function AppViewer({ stores, onLock, onOpenImport }: Props) {
       title={SOURCE_LABEL[store]}
       actions={actions}
       railBottom={railBottom}
+      banner={<JobBanner onDetails={onOpenImport} />}
       emptyTitle={t.emptyTitle(SOURCE_LABEL[store])}
       emptyNote={t.emptyNote}
     />

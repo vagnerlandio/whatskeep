@@ -32,6 +32,8 @@ pub struct AppState {
     last_activity: Mutex<Instant>,
     /// Imports in progress. The autolock waits for them to finish.
     busy: AtomicUsize,
+    /// An import or download job is running (only one at a time).
+    job: AtomicBool,
     /// Consecutive wrong passwords (to slow down attempts through the UI).
     failed_unlocks: AtomicUsize,
     /// Google Drive session (access tokens only, never the master token).
@@ -49,6 +51,7 @@ impl AppState {
             vault: Mutex::new(None),
             last_activity: Mutex::new(Instant::now()),
             busy: AtomicUsize::new(0),
+            job: AtomicBool::new(false),
             failed_unlocks: AtomicUsize::new(0),
             drive: Default::default(),
             export: Default::default(),
@@ -134,10 +137,24 @@ impl AppState {
         self.conns().remove(&app);
     }
 
+    /// Closes an app's media index (before deleting it).
+    pub fn forget_media(&self, app: SourceApp) {
+        self.media_readers().remove(&app);
+    }
+
     /// Marks a long operation. The autolock does not fire while the guard exists.
     pub fn busy(&self) -> BusyGuard<'_> {
         self.busy.fetch_add(1, Ordering::SeqCst);
         BusyGuard(self)
+    }
+
+    /// Starts an import or download job. Only one runs at a time (they write
+    /// to the same databases); the autolock waits while it runs.
+    pub fn start_job(&self) -> Result<JobGuard<'_>, CmdError> {
+        if self.job.swap(true, Ordering::SeqCst) {
+            return Err(CmdError::new("busy", "outra importação ou download já está em andamento"));
+        }
+        Ok(JobGuard { state: self, _busy: self.busy() })
     }
 
     /// Wait before checking the password: nothing on the first 3 attempts, then
@@ -168,6 +185,17 @@ impl Drop for BusyGuard<'_> {
     fn drop(&mut self) {
         self.0.touch();
         self.0.busy.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+pub struct JobGuard<'a> {
+    state: &'a AppState,
+    _busy: BusyGuard<'a>,
+}
+
+impl Drop for JobGuard<'_> {
+    fn drop(&mut self) {
+        self.state.job.store(false, Ordering::SeqCst);
     }
 }
 

@@ -170,6 +170,29 @@ impl Vault {
         Ok(MediaHandle::new(&self.dir.join(STORES_DIR), app.as_str(), derive("media")?, derive("media-index")?))
     }
 
+    /// Deletes an app's history: its database and its media (blobs and index).
+    /// The caller closes its own connections to them first.
+    pub fn delete_store(&self, app: SourceApp) -> Result<(), Error> {
+        self.store(app)?.delete()?;
+        self.media(app)?.delete()?;
+        Ok(())
+    }
+
+    /// Deletes the whole vault in `dir`. Needs no password: it is the way out
+    /// for a forgotten one (the data cannot be read without it anyway). The
+    /// header goes first, so nothing left in the folder can be opened even if
+    /// removing the rest stops midway.
+    pub fn destroy(dir: &Path) -> Result<(), Error> {
+        fsutil::remove_if_exists(fs::remove_file(dir.join(HEADER_FILE)))?;
+        fsutil::remove_if_exists(fs::remove_dir_all(dir))?;
+        Ok(())
+    }
+
+    /// Bytes the vault in `dir` takes on disk.
+    pub fn disk_usage(dir: &Path) -> u64 {
+        fsutil::disk_usage(dir)
+    }
+
     /// Databases already imported, with counts.
     pub fn stores(&self) -> Result<Vec<StoreInfo>, Error> {
         let mut out = Vec::new();

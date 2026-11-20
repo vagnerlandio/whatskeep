@@ -9,24 +9,27 @@
 //!    access tokens (1 h) for WhatsApp and Business. The master token is
 //!    zeroed right after.
 //! 4. The access tokens stay in memory only until the download finishes, the
-//!    user cancels, the vault locks or 50 minutes pass.
+//!    user cancels, the vault locks or 50 minutes pass. Signing in does not
+//!    need the vault: saving a copy to a folder works without it.
 //!
-//! The downloaded backup is still encrypted (crypt14/15) and goes straight
-//! from memory to decryption and import: nothing is written to disk.
+//! The backup goes straight into the vault (in memory, nothing written
+//! outside it), or is saved as it comes from Drive to a folder the user picks
+//! (see `backup_folder`) and, with the key, imported from there.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, Url, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindowBuilder};
 use wk_gdrive::{Api, Backup, BackupFile, DriveApp, Endpoints, OauthCookie, Session};
 use wk_import::SourceApp;
 use zeroize::Zeroizing;
 
+use crate::backup_folder::{self, DownloadSummary};
 use crate::commands::{ImportSummary, KeyInput, import_encrypted, progress, source_app};
 use crate::error::CmdError;
-use crate::media_import::{MediaSummary, Plan, already_stored, store_one};
+use crate::media_import::MediaSummary;
 use crate::state::AppState;
 
 const LOGIN_WINDOW: &str = "google-login";
@@ -34,7 +37,6 @@ const LOGIN_USER_AGENT: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15";
 const LOGIN_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const SESSION_TTL: Duration = Duration::from_secs(50 * 60);
-const EVENT_DOWNLOAD: &str = "gdrive-progress";
 
 /// Domains the Google login goes through. Any other navigation in the login
 /// window is blocked.
@@ -174,7 +176,6 @@ pub struct LoginResult {
 #[tauri::command]
 pub async fn gdrive_login(app: AppHandle, email: String) -> Result<LoginResult, CmdError> {
     check_email(&email)?;
-    require_unlocked(&app.state::<AppState>())?;
     if let Some(w) = app.get_webview_window(LOGIN_WINDOW) {
         let _ = w.set_focus();
         return Err(CmdError::new("busy", "a janela de login já está aberta"));
@@ -226,7 +227,6 @@ pub async fn gdrive_login_manual(app: AppHandle, email: String, oauth_token: Str
     let cookie = OauthCookie::new(oauth_token.trim().to_owned());
     drop(Zeroizing::new(oauth_token));
     check_email(&email)?;
-    require_unlocked(&app.state::<AppState>())?;
     app.state::<AppState>().drive.clear();
     if cookie.expose().is_empty() {
         return Err(CmdError::new("invalid_argument", "cole o valor do cookie oauth_token"));
@@ -347,8 +347,6 @@ async fn finish_login(app: AppHandle, email: String, cookie: OauthCookie) -> Res
             .collect();
 
         let state = app.state::<AppState>();
-        // The vault may have locked during the login: then the tokens are not kept at all.
-        require_unlocked(&state)?;
         *state.drive.session() = Some(Logged { session, backups: found, at: Instant::now() });
         Ok(LoginResult { backups: dto, refused })
     })
@@ -363,129 +361,261 @@ pub fn gdrive_cancel(app: AppHandle) {
 
 // ---------------------------------------------------------------- download
 
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct DownloadProgress {
-    downloaded: u64,
-    total: u64,
+/// What to do with the downloaded backup.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Mode {
+    /// Straight into the vault: nothing is written outside it.
+    Vault,
+    /// A copy in a folder the user picks, then into the vault from it.
+    FolderAndVault,
+    /// Only the copy in the folder (no key, no vault needed).
+    Folder,
+}
+
+impl Mode {
+    fn parse(s: &str) -> Result<Self, CmdError> {
+        match s {
+            "vault" => Ok(Mode::Vault),
+            "folderAndVault" => Ok(Mode::FolderAndVault),
+            "folder" => Ok(Mode::Folder),
+            _ => Err(CmdError::new("invalid_argument", "modo de download desconhecido")),
+        }
+    }
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DriveResult {
-    summary: ImportSummary,
+    /// Where the backup was saved (shown to the user), when it was saved.
+    folder: Option<String>,
+    download: Option<DownloadSummary>,
+    /// When the backup went into the vault.
+    summary: Option<ImportSummary>,
     media: Option<MediaSummary>,
 }
 
-/// Downloads the chosen backup's msgstore, decrypts and imports it; then, if
-/// requested, the media. When done (successfully or not), the Google tokens
-/// are discarded.
+fn session_expired() -> CmdError {
+    CmdError::new("google_expired", "a sessão do Google expirou; entre de novo")
+}
+
+/// Downloads the chosen backup (see [`Mode`]). The folder picker, when
+/// needed, runs here: `None` if the user cancels it. Into the vault, the
+/// messages come first (the history is usable right away) and the media
+/// after them.
+///
+/// The Google tokens are discarded when the downloads end.
 #[tauri::command]
 pub async fn gdrive_download(
     app: AppHandle,
     backup_id: usize,
-    key: KeyInput,
     source_app: String,
+    mode: String,
+    key: Option<KeyInput>,
     include_media: bool,
-) -> Result<DriveResult, CmdError> {
+) -> Result<Option<DriveResult>, CmdError> {
+    use tauri_plugin_dialog::DialogExt;
+
     crate::commands::blocking("gdrive_download", move || {
         let state = app.state::<AppState>();
-        let _busy = state.busy();
+        let _job = state.start_job()?;
         let target: SourceApp = self::source_app(&source_app)?;
-        // A wrong or malformed key fails before anything is downloaded.
-        let key = key.load()?;
-        require_unlocked(&state)?;
+        let mode = Mode::parse(&mode)?;
+        // A malformed key fails before anything is downloaded.
+        let key = match mode {
+            Mode::Folder => None,
+            _ => Some(key.ok_or_else(|| CmdError::new("invalid_argument", "a chave do backup é necessária para importar"))?.load()?),
+        };
+        if key.is_some() {
+            require_unlocked(&state)?;
+        }
+        let found = {
+            let session = state.drive.session();
+            let logged = session.as_ref().ok_or_else(session_expired)?;
+            logged.backups.get(backup_id).cloned().ok_or_else(|| CmdError::new("invalid_argument", "backup desconhecido"))?
+        };
 
-        // The session leaves the state: the tokens die at the end of this command.
-        let logged = state
-            .drive
-            .session()
-            .take()
-            .ok_or_else(|| CmdError::new("google_expired", "a sessão do Google expirou; entre de novo"))?;
+        let root = if mode == Mode::Vault {
+            None
+        } else {
+            let name = backup_folder::folder_name(target, found.backup.update_time.as_deref());
+            let Some(picked) = app
+                .dialog()
+                .file()
+                .set_title(crate::settings::tr(&app, "Escolha onde salvar o backup", "Choose where to save the backup"))
+                .blocking_pick_folder()
+            else {
+                return Ok(None);
+            };
+            let picked = picked.into_path().map_err(|_| CmdError::new("invalid_argument", "pasta inválida"))?;
+            let root = backup_folder::backup_root(&picked, &name);
+            std::fs::create_dir_all(&root)?;
+            Some(root)
+        };
+
+        // The session leaves the state: the tokens die when the downloads end.
+        let logged = state.drive.session().take().ok_or_else(session_expired)?;
         state.drive.cancel.store(false, Ordering::SeqCst);
         state.media_cancel.store(false, Ordering::SeqCst);
-        let found = logged
-            .backups
-            .get(backup_id)
-            .cloned()
-            .ok_or_else(|| CmdError::new("invalid_argument", "backup desconhecido"))?;
-        let token = logged
-            .session
-            .tokens
-            .iter()
-            .find(|(a, _)| found.apps.contains(a))
-            .map(|(_, t)| t)
-            .ok_or_else(|| CmdError::new("google_expired", "a sessão do Google expirou; entre de novo"))?;
-
-        progress(&app, "downloading");
-        let cancel = state.drive.cancel.clone();
-        let ep = Endpoints::default();
-        let downloaded = (|| -> Result<(Vec<u8>, Vec<BackupFile>), CmdError> {
-            let api = Api::new(&ep, token)?;
-            let files = api.files(&found.backup.name)?;
-            log_files(&files);
-            let db = wk_gdrive::find_msgstore(&files).ok_or_else(|| {
-                CmdError::new("not_msgstore", "este backup não tem o banco de mensagens (msgstore) no Google Drive")
-            })?;
-            tracing::info!(file = db.path, size = %crate::diag::mb(db.size_bytes), md5 = db.md5.is_some(), "downloading the message database");
-            let mut next_log = 0u64;
-            let bytes = api.download(db, &cancel, |downloaded, total| {
-                if total > 0 && downloaded * 10 / total >= next_log {
-                    tracing::debug!(downloaded = %crate::diag::mb(downloaded), total = %crate::diag::mb(total), "download {}%", downloaded * 100 / total);
-                    next_log = downloaded * 10 / total + 1;
+        let outcome = match &root {
+            Some(root) => download_to_folder(&app, &state, &logged, &found, root, key.as_ref(), target, include_media)
+                .map(|(download, summary)| DriveResult { folder: Some(root.display().to_string()), download: Some(download), summary, media: None }),
+            None => {
+                let key = key.as_ref().expect("the vault mode has a key");
+                download_to_vault(&app, &state, &logged, &found, key, target, include_media)
+                    .map(|(summary, media)| DriveResult { folder: None, download: None, summary: Some(summary), media })
+            }
+        };
+        let mut result = match outcome {
+            Ok(r) => r,
+            Err(e) => {
+                // The tokens are still good: the session is put back so the user
+                // can retry (another key, the network back) without signing in
+                // again. It still expires at SESSION_TTL.
+                if !matches!(e.code, "cancelled" | "locked" | "google_expired") {
+                    *state.drive.session() = Some(logged);
                 }
-                let _ = app.emit(EVENT_DOWNLOAD, DownloadProgress { downloaded, total });
-            })?;
-            Ok((bytes, files))
-        })();
-        let (bytes, files) = match downloaded {
-            Ok(v) => v,
-            // Network failure or corrupted file: the session is put back so the
-            // user can retry without logging in again (it still expires at SESSION_TTL).
-            Err(e) if matches!(e.code, "network" | "download_corrupt") && state.vault().is_some() => {
-                *state.drive.session() = Some(logged);
                 return Err(e);
             }
-            Err(e) => return Err(e),
-        };
-        if cancel.load(Ordering::SeqCst) {
-            return Err(CmdError::new("cancelled", "cancelado"));
-        }
-        let summary = import_encrypted(&app, &state, bytes, &key, target)?;
-
-        let media = if include_media {
-            Some(download_media(&app, &state, &ep, token, &files, &key, target)?)
-        } else {
-            None
         };
         drop(logged); // tokens zeroed here
-        Ok(DriveResult { summary, media })
+
+        // From the saved copy into the vault, once the files are all there.
+        if let (Some(root), Some(key), true) = (&root, &key, include_media) {
+            let cancelled = result.download.as_ref().and_then(|d| d.stopped.as_deref()) == Some(backup_folder::STOPPED_CANCELLED);
+            if !cancelled {
+                result.media = Some(crate::media_import::import_folder(&app, target, root, Some(key))?);
+            }
+        }
+        Ok(Some(result))
     })
     .await
 }
 
-/// Downloads the media the history uses that are not in the vault yet.
-///
-/// * Backup without E2E: plaintext `Media/...` files on Drive (MD5 checked).
-/// * E2E backup: `<hash>.mcrypt1`, with the real name in the encrypted metadata.
-///   If the GCM tag does not verify, the content only gets in if its SHA-256
-///   matches the `file_hash` the msgstore keeps for that media.
-fn download_media(
+fn token_for<'a>(logged: &'a Logged, found: &Found) -> Result<&'a wk_gdrive::AccessToken, CmdError> {
+    logged.session.tokens.iter().find(|(a, _)| found.apps.contains(a)).map(|(_, t)| t).ok_or_else(session_expired)
+}
+
+fn msgstore(files: &[BackupFile]) -> Result<&BackupFile, CmdError> {
+    wk_gdrive::find_msgstore(files)
+        .ok_or_else(|| CmdError::new("not_msgstore", "este backup não tem o banco de mensagens (msgstore) no Google Drive"))
+}
+
+/// Into a folder: database first (imported right away when there is a key),
+/// then the rest.
+#[allow(clippy::too_many_arguments)]
+fn download_to_folder(
     app: &AppHandle,
     state: &AppState,
-    ep: &Endpoints,
-    token: &wk_gdrive::AccessToken,
+    logged: &Logged,
+    found: &Found,
+    root: &std::path::Path,
+    key: Option<&wk_crypt::BackupKey>,
+    target: SourceApp,
+    include_media: bool,
+) -> Result<(DownloadSummary, Option<ImportSummary>), CmdError> {
+    let ep = Endpoints::default();
+    let api = Api::new(&ep, token_for(logged, found)?)?;
+    let cancel = state.drive.cancel.clone();
+
+    progress(app, "downloading");
+    let files = api.files(&found.backup.name)?;
+    log_files(&files);
+    let db = msgstore(&files)?;
+    backup_folder::Manifest::new(target, &found.backup, &files).save(root)?;
+
+    let is_media = |f: &BackupFile| f.path.starts_with("Media/") || f.path.ends_with(".mcrypt1");
+    let rest: Vec<&BackupFile> = files.iter().filter(|f| f.path != db.path && (include_media || !is_media(f))).collect();
+    let mut download = DownloadSummary {
+        files: 1 + rest.len() as u64,
+        total_bytes: db.size_bytes + rest.iter().map(|f| f.size_bytes).sum::<u64>(),
+        ..Default::default()
+    };
+    tracing::info!(
+        files = download.files,
+        size = %crate::diag::mb(download.total_bytes),
+        include_media,
+        import = key.is_some(),
+        "saving the backup to the chosen folder"
+    );
+
+    let db_path = backup_folder::download_database(app, &api, root, db, &cancel, &mut download)?;
+    if cancel.load(Ordering::SeqCst) {
+        return Err(CmdError::new("cancelled", "cancelado"));
+    }
+    // The messages first: the history is usable while the rest downloads.
+    let summary = match key {
+        Some(key) => Some(import_encrypted(app, state, std::fs::read(&db_path)?, key, target)?),
+        None => None,
+    };
+    backup_folder::download_files(app, &api, root, &rest, &cancel, &mut download);
+    Ok((download, summary))
+}
+
+/// Straight into the vault: the database in memory, then the media the
+/// history uses, downloaded in parallel and stored one by one.
+fn download_to_vault(
+    app: &AppHandle,
+    state: &AppState,
+    logged: &Logged,
+    found: &Found,
+    key: &wk_crypt::BackupKey,
+    target: SourceApp,
+    include_media: bool,
+) -> Result<(ImportSummary, Option<MediaSummary>), CmdError> {
+    let ep = Endpoints::default();
+    let api = Api::new(&ep, token_for(logged, found)?)?;
+    let cancel = state.drive.cancel.clone();
+
+    progress(app, "downloading");
+    let files = api.files(&found.backup.name)?;
+    log_files(&files);
+    let db = msgstore(&files)?;
+    tracing::info!(file = db.path, size = %crate::diag::mb(db.size_bytes), md5 = db.md5.is_some(), include_media, "downloading the message database into memory");
+    let mut next_log = 0u64;
+    let mut last = Instant::now() - Duration::from_secs(1);
+    let bytes = backup_folder::with_retries(&cancel, || {
+        api.download(db, &cancel, |done, total| {
+            if total > 0 && done * 10 / total >= next_log {
+                tracing::debug!(downloaded = %crate::diag::mb(done), total = %crate::diag::mb(total), "download {}%", done * 100 / total);
+                next_log = done * 10 / total + 1;
+            }
+            if last.elapsed() >= Duration::from_millis(150) || done == total {
+                last = Instant::now();
+                backup_folder::report_database(app, done, total);
+            }
+        })
+    })?;
+    if cancel.load(Ordering::SeqCst) {
+        return Err(CmdError::new("cancelled", "cancelado"));
+    }
+    let summary = import_encrypted(app, state, bytes, key, target)?;
+    let media = if include_media { Some(media_to_vault(app, state, &api, &files, key, target)?) } else { None };
+    Ok((summary, media))
+}
+
+/// Downloads the media the history uses that are not in the vault yet.
+///
+/// * Plain `Media/...` files on Drive (MD5 checked).
+/// * `<hash>.mcrypt1` (end-to-end encrypted backups), with the real name in
+///   the encrypted metadata.
+///
+/// Workers download in parallel; this thread stores in the vault (one writer).
+fn media_to_vault(
+    app: &AppHandle,
+    state: &AppState,
+    api: &Api,
     files: &[BackupFile],
     key: &wk_crypt::BackupKey,
     target: SourceApp,
 ) -> Result<MediaSummary, CmdError> {
+    use crate::media_import::{Plan, already_stored, mcrypt1_name, store_mcrypt1, store_one};
+
     let plan = Plan::load(state, target)?;
     let handle = state.vault().as_ref().ok_or_else(CmdError::locked)?.media(target)?;
     let writer = handle.writer()?;
     writer.cleanup();
     let mut summary = MediaSummary { expected: plan.len() as u64, ..Default::default() };
     let mut tally = crate::diag::Tally::new("Drive media");
-    tracing::info!(expected = plan.len(), files_in_backup = files.len(), "Drive media: planning");
 
     // Decides what to download (and the real name of each .mcrypt1).
     let mut todo = Vec::new();
@@ -494,10 +624,15 @@ fn download_media(
         let (name, hex) = match f.path.strip_suffix(".mcrypt1") {
             Some(stem) => {
                 let hex = stem.rsplit('/').next().unwrap_or(stem).to_owned();
-                match mcrypt1_name(key, f, &mut logged_meta) {
+                let name = f
+                    .metadata
+                    .as_deref()
+                    .ok_or(("mcrypt1 without metadata", String::from("empty metadata field")))
+                    .and_then(|m| mcrypt1_name(key, m, &mut logged_meta));
+                match name {
                     Ok(n) => (n, Some(hex)),
-                    Err(reason) => {
-                        tally.add(reason.0, reason.1);
+                    Err((reason, detail)) => {
+                        tally.add(reason, detail);
                         summary.unmatched += 1;
                         continue;
                     }
@@ -506,75 +641,80 @@ fn download_media(
             None => (f.path.clone(), None),
         };
         match plan.get(&name) {
+            Some(want) if already_stored(&writer, want) => summary.already += 1,
             Some(want) => todo.push((f, want, hex)),
             None if name.contains("Media/") => summary.unmatched += 1,
             None => {}
         }
     }
-    summary.matched = todo.len() as u64;
+    summary.matched = summary.already + todo.len() as u64;
+    let total_bytes = todo.iter().map(|(f, _, _)| f.size_bytes).sum();
     tracing::info!(
         matched = summary.matched,
+        already_in_vault = summary.already,
         unmatched = summary.unmatched,
-        size = %crate::diag::mb(todo.iter().map(|(f, _, _)| f.size_bytes).sum()),
+        size = %crate::diag::mb(total_bytes),
         mcrypt1 = todo.iter().filter(|(_, _, h)| h.is_some()).count(),
-        "Drive media: to download"
+        workers = backup_folder::WORKERS,
+        "Drive media: to download into the vault"
     );
-    let total_bytes = todo.iter().map(|(f, _, _)| f.size_bytes).sum();
-    let mut progress = crate::media_import::Progress::new(app, todo.len() as u64, total_bytes);
-    let api = Api::new(ep, token)?;
+    let mut progress = crate::media_import::Progress::new(app, summary.matched, total_bytes);
+    progress.report(&summary, true);
     let cancel = state.drive.cancel.clone();
+    let stopped = || cancel.load(Ordering::SeqCst) || state.media_cancel.load(Ordering::SeqCst);
     // (with a valid GCM tag, without a tag but checked against file_hash)
     let mut mcrypt_stats = (0u64, 0u64);
+    let started = Instant::now();
 
-    for (file, want, hex) in todo {
-        if cancel.load(Ordering::SeqCst) || state.media_cancel.load(Ordering::SeqCst) {
-            summary.stopped = Some("cancelado".into());
-            break;
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let stop = AtomicBool::new(false);
+    // A few files in flight between the workers and the writer (bounded memory).
+    let (tx, rx) = std::sync::mpsc::sync_channel::<(usize, Result<Vec<u8>, wk_gdrive::Error>)>(4);
+    std::thread::scope(|s| {
+        for _ in 0..backup_folder::WORKERS.min(todo.len()) {
+            let tx = tx.clone();
+            let (todo, next, stop, cancel) = (&todo, &next, &stop, &cancel);
+            s.spawn(move || {
+                loop {
+                    if stop.load(Ordering::SeqCst) || cancel.load(Ordering::SeqCst) {
+                        return;
+                    }
+                    let i = next.fetch_add(1, Ordering::SeqCst);
+                    let Some((file, _, _)) = todo.get(i) else { return };
+                    let r = backup_folder::with_retries(cancel, || api.download(file, cancel, |_, _| {}));
+                    if tx.send((i, r)).is_err() {
+                        return;
+                    }
+                }
+            });
         }
-        if already_stored(&writer, want) {
-            summary.already += 1;
-        } else {
-            match api.download(file, &cancel, |_, _| {}) {
+        drop(tx);
+        for (i, r) in rx {
+            let (file, want, hex) = &todo[i];
+            match r {
                 Ok(bytes) => match hex {
                     None => store_one(&writer, &mut summary, &mut tally, want, &bytes[..], None),
-                    Some(hex) => match wk_crypt::mcrypt1::decrypt_media(key, &hex, bytes) {
-                        Ok(m) if m.verified => {
-                            mcrypt_stats.0 += 1;
-                            store_one(&writer, &mut summary, &mut tally, want, &m.data[..], None)
-                        }
-                        // Not authenticated: only with WhatsApp's hash to check against.
-                        Ok(m) => match want.file_hash.as_deref() {
-                            Some(h) => {
-                                mcrypt_stats.1 += 1;
-                                store_one(&writer, &mut summary, &mut tally, want, &m.data[..], Some(h))
-                            }
-                            None => {
-                                tally.add("mcrypt1 without tag or file_hash", "no way to verify the content");
-                                summary.failed += 1
-                            }
-                        },
-                        Err(e) => {
-                            tally.add("mcrypt1 did not decrypt", e);
-                            summary.failed += 1
-                        }
-                    },
+                    Some(hex) => store_mcrypt1(&writer, &mut summary, &mut tally, &mut mcrypt_stats, want, key, hex, bytes),
                 },
                 Err(wk_gdrive::Error::TokenExpired) => {
-                    summary.stopped = Some("a sessão do Google expirou; entre de novo para continuar".into());
-                    break;
+                    summary.stopped.get_or_insert_with(|| backup_folder::STOPPED_EXPIRED.into());
+                    stop.store(true, Ordering::SeqCst);
                 }
-                Err(wk_gdrive::Error::Cancelled) => {
-                    summary.stopped = Some("cancelado".into());
-                    break;
-                }
+                Err(wk_gdrive::Error::Cancelled) => {}
                 Err(e) => {
                     tally.add("download failed", e);
                     summary.failed += 1
                 }
             }
+            summary.bytes += file.size_bytes;
+            progress.report(&summary, false);
+            if stopped() {
+                stop.store(true, Ordering::SeqCst);
+            }
         }
-        summary.bytes += file.size_bytes;
-        progress.report(&summary, false);
+    });
+    if summary.stopped.is_none() && stopped() {
+        summary.stopped = Some(backup_folder::STOPPED_CANCELLED.into());
     }
     progress.report(&summary, true);
     tally.report();
@@ -585,41 +725,10 @@ fn download_media(
         mcrypt1_with_tag = mcrypt_stats.0,
         mcrypt1_checked_by_hash = mcrypt_stats.1,
         stopped = ?summary.stopped,
+        s = started.elapsed().as_secs(),
         "Drive media: done"
     );
     Ok(summary)
-}
-
-/// Real name of a `.mcrypt1`, read from the encrypted metadata. On error,
-/// returns (category, detail) for diagnostics. The first time, it logs the
-/// keys (not the values) of the metadata JSON, to validate the format.
-fn mcrypt1_name(
-    key: &wk_crypt::BackupKey,
-    f: &BackupFile,
-    logged: &mut bool,
-) -> Result<String, (&'static str, String)> {
-    use base64::Engine;
-    use base64::engine::general_purpose::STANDARD as B64;
-
-    let meta = f.metadata.as_deref().ok_or(("mcrypt1 without metadata", String::from("empty metadata field")))?;
-    let raw = B64.decode(meta).map_err(|e| ("metadata is not base64", e.to_string()))?;
-    let json = wk_crypt::mcrypt1::decrypt_metadata(key, &raw).map_err(|e| ("metadata did not decrypt", format!("{e} ({} bytes)", raw.len())))?;
-    let v: serde_json::Value =
-        serde_json::from_slice(&json).map_err(|e| ("decrypted metadata is not JSON", format!("{e} ({} bytes)", json.len())))?;
-    if !*logged {
-        *logged = true;
-        let keys: Vec<&String> = v.as_object().map(|o| o.keys().collect()).unwrap_or_default();
-        let name = v.get("name").and_then(|n| n.as_str());
-        tracing::info!(
-            keys = ?keys,
-            name_starts_with_media = ?name.map(|n| n.starts_with("Media/")),
-            "metadata of the first .mcrypt1"
-        );
-    }
-    v.get("name")
-        .and_then(|n| n.as_str())
-        .map(str::to_owned)
-        .ok_or(("metadata without the name field", String::from("JSON without name")))
 }
 
 /// Summary of the backup's file listing: counts by folder and extension.

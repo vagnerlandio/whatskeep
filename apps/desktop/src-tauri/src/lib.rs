@@ -1,3 +1,4 @@
+mod backup_folder;
 mod commands;
 mod diag;
 mod error;
@@ -90,6 +91,9 @@ pub fn run() {
             commands::vault_lock,
             commands::vault_touch,
             commands::vault_change_password,
+            commands::vault_usage,
+            commands::vault_delete,
+            commands::store_delete,
             commands::list_stores,
             commands::inspect_backup,
             commands::import_backup,

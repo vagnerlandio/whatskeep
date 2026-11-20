@@ -135,6 +135,46 @@ pub async fn vault_change_password(app: AppHandle, current: String, next: String
     .await
 }
 
+/// Bytes the vault takes on disk (shown before deleting it).
+#[tauri::command]
+pub async fn vault_usage(app: AppHandle) -> Result<u64, CmdError> {
+    blocking("vault_usage", move || Ok(Vault::disk_usage(&app.state::<AppState>().vault_dir))).await
+}
+
+/// Deletes the whole vault, open or locked: it is also the way out for a
+/// forgotten password. Backup copies saved to folders are not touched. Not
+/// while an import or download runs.
+#[tauri::command]
+pub async fn vault_delete(app: AppHandle) -> Result<(), CmdError> {
+    blocking("vault_delete", move || {
+        let state = app.state::<AppState>();
+        let _job = state.start_job()?;
+        crate::state::lock_all(&app);
+        let bytes = Vault::disk_usage(&state.vault_dir);
+        Vault::destroy(&state.vault_dir)?;
+        state.unlock_result(true); // a new vault starts without the wrong-password delay
+        tracing::info!(size = %crate::diag::mb(bytes), "vault deleted by the user");
+        Ok(())
+    })
+    .await
+}
+
+/// Deletes one app's history (messages and media) and keeps the rest.
+#[tauri::command]
+pub async fn store_delete(app: AppHandle, store: String) -> Result<(), CmdError> {
+    blocking("store_delete", move || {
+        let target = source_app(&store)?;
+        let state = app.state::<AppState>();
+        let _job = state.start_job()?;
+        state.forget_store(target);
+        state.forget_media(target);
+        state.vault().as_ref().ok_or_else(CmdError::locked)?.delete_store(target)?;
+        tracing::info!(app = target.as_str(), "history deleted by the user");
+        Ok(())
+    })
+    .await
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StoreDto {
@@ -173,6 +213,21 @@ pub async fn list_stores(app: AppHandle) -> Result<Vec<StoreDto>, CmdError> {
 pub struct BackupInfo {
     version: &'static str,
     size_bytes: u64,
+    /// The file is in a backup folder (`.../Databases/msgstore.db.crypt15`)
+    /// with a `Media/` folder next to it: its media can come in too.
+    media_folder: bool,
+}
+
+/// The backup folder of a database file: `<root>/Databases/<file>` with
+/// `<root>/Media/` present (a folder copied from the phone, or a Drive backup
+/// the app saved).
+pub(crate) fn backup_media_root(db_path: &std::path::Path) -> Option<std::path::PathBuf> {
+    let databases = db_path.parent()?;
+    if databases.file_name()? != "Databases" {
+        return None;
+    }
+    let root = databases.parent()?;
+    root.join("Media").is_dir().then(|| root.to_path_buf())
 }
 
 /// Identifies the format (crypt14/crypt15) by reading only the header. Does
@@ -191,6 +246,7 @@ pub fn inspect_backup(path: String) -> Result<BackupInfo, CmdError> {
             wk_crypt::CryptVersion::Crypt15 => "crypt15",
         },
         size_bytes,
+        media_folder: backup_media_root(std::path::Path::new(&path)).is_some(),
     })
 }
 
@@ -241,24 +297,40 @@ struct Progress {
     phase: &'static str,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportResult {
+    summary: ImportSummary,
+    media: Option<crate::media_import::MediaSummary>,
+}
+
 /// Reads the backup, decrypts it in memory, imports it into the vault and
 /// discards the plaintext. The decrypted msgstore is never written to disk.
+/// With `with_media`, then imports the media of the backup folder the file is
+/// in (see [`backup_media_root`]), `.mcrypt1` included.
 #[tauri::command]
 pub async fn import_backup(
     app: AppHandle,
     backup_path: String,
     key: KeyInput,
     source_app: String,
-) -> Result<ImportSummary, CmdError> {
+    with_media: bool,
+) -> Result<ImportResult, CmdError> {
     blocking("import_backup", move || {
         let state = app.state::<AppState>();
-        let _busy = state.busy();
+        let _job = state.start_job()?;
         let source_app = self::source_app(&source_app)?;
         progress(&app, "reading");
         let key = key.load()?;
-        tracing::info!(key = ?key.kind(), app = source_app.as_str(), "import local backup");
+        let media_root = if with_media { backup_media_root(std::path::Path::new(&backup_path)) } else { None };
+        tracing::info!(key = ?key.kind(), app = source_app.as_str(), with_media = media_root.is_some(), "import local backup");
         let file = std::fs::read(&backup_path)?;
-        import_encrypted(&app, &state, file, &key, source_app)
+        let summary = import_encrypted(&app, &state, file, &key, source_app)?;
+        let media = match media_root {
+            Some(root) => Some(crate::media_import::import_folder(&app, source_app, &root, Some(&key))?),
+            None => None,
+        };
+        Ok(ImportResult { summary, media })
     })
     .await
 }
@@ -427,4 +499,22 @@ pub async fn search_messages(
             .with_store(store, |c| Ok(query::search(c, &query, chat_id, before, limit)?))
     })
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn media_root_of_a_backup_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("whatsapp-backup-2026-11-19");
+        std::fs::create_dir_all(root.join("Databases")).unwrap();
+        let db = root.join("Databases/msgstore.db.crypt15");
+        assert_eq!(backup_media_root(&db), None, "no Media/ folder yet");
+        std::fs::create_dir_all(root.join("Media")).unwrap();
+        assert_eq!(backup_media_root(&db), Some(root.clone()));
+        assert_eq!(backup_media_root(&dir.path().join("msgstore.db.crypt15")), None);
+        assert_eq!(backup_media_root(&root.join("Other/msgstore.db.crypt15")), None);
+    }
 }

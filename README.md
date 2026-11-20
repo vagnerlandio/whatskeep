@@ -60,15 +60,15 @@ WhatsApp backups are encrypted. WhatsKeep needs the key to open them, and the ea
 
 ## How to use
 
-1. **Create your vault.** Choose a password (at least 8 characters; a long phrase is best). **There is no way to recover it** — if you forget it, you will need to import your backups again.
+1. **Choose where your history comes from:** Google Drive or a backup on your computer. The first time you import, WhatsKeep asks you to create the vault password (at least 8 characters; a long phrase is best). **There is no way to recover it** — if you forget it, you will need to import your backups again. Only saving a Drive backup to a folder needs no password.
 2. **Import your history**, either:
-   - **From Google Drive:** type the e-mail of the Google account with the backup and click **Sign in to Google**. A Google window opens with your e-mail filled in; sign in and accept. Pick the backup, enter the 64-digit key and click **Download and import**. You can also download photos, videos and audio.
-   - **From a file:** copy `msgstore.db.crypt15` from your phone (it is in `Android/media/com.whatsapp/WhatsApp/Databases`), choose it in WhatsKeep and enter the key.
-3. **Add photos and videos from your phone (optional):** copy the phone's `WhatsApp` folder to your computer and choose **Import media from a folder**. Only files used by your chats are kept.
+   - **From Google Drive:** type the e-mail of the Google account with the backup and click **Sign in to Google**. A Google window opens with your e-mail filled in; sign in and accept. Pick the backup and what to do with it: **import into the vault** (nothing saved elsewhere), **save a copy to a folder and import** (e.g. on an external drive, to import again later without Google), or **only save a copy to a folder**. Importing needs the 64-digit key. The messages are available as soon as they are imported; photos, videos and audio keep going in the background. If it stops (Google access lasts about an hour), sign in again (and choose the same folder): it picks up where it left off.
+   - **From a file:** copy `msgstore.db.crypt15` from your phone (it is in `Android/media/com.whatsapp/WhatsApp/Databases`), or take it from a backup folder saved from Google Drive, choose it in WhatsKeep and enter the key. In a backup folder, the photos and videos next to it can come in at the same time.
+3. **Photos and videos from your phone:** copy the phone's whole `WhatsApp` folder to your computer and, in **Import from this computer**, choose the `msgstore.db.crypt15` inside it: the media next to it come in too. If the media are in a separate folder, use **Import media from another folder…** in the list of histories. Only files used by your chats are kept.
 4. **Read and search.** Browse chats, search all messages, jump to a date, open photos and videos.
 5. **Export (optional):** create a folder that opens offline in any browser, protected by a password — all chats, some chats, or a different password for each chat. Handy to share a single conversation with someone.
 
-WhatsKeep locks itself after 5 minutes without use. Switch the language (English / Português) in the top bar or in the side bar.
+WhatsKeep locks itself after 5 minutes without use. Forgot the password? On the lock screen, **I forgot the password** deletes the vault so you can start over (your backups are not touched); with the vault open, you can also remove one history or delete the whole vault from the import screen. Switch the language (English / Português) in the top bar or in the side bar.
 
 ## Questions and problems
 
@@ -186,15 +186,15 @@ Backups protegidos **só por senha** não podem ser abertos fora do WhatsApp, po
 
 ### Como usar
 
-1. **Crie o seu cofre** com uma senha (mínimo de 8 caracteres; uma frase longa é o ideal). **Não existe recuperação**: se esquecer, será preciso importar os backups de novo.
+1. **Escolha de onde vem o histórico:** Google Drive ou um backup no computador. Na primeira importação, o WhatsKeep pede para criar a senha do cofre (mínimo de 8 caracteres; uma frase longa é o ideal). **Não existe recuperação**: se esquecer, será preciso importar os backups de novo. Só salvar um backup do Drive numa pasta não pede senha.
 2. **Importe o histórico:**
-   - **Pelo Google Drive:** digite o e-mail da conta Google do backup e clique em **Entrar no Google**. Na janela do Google (com o e-mail já preenchido), entre e aceite. Escolha o backup, digite a chave de 64 dígitos e clique em **Baixar e importar**. Dá para baixar também fotos, vídeos e áudios.
-   - **Por arquivo:** copie o `msgstore.db.crypt15` do celular (fica em `Android/media/com.whatsapp/WhatsApp/Databases`), escolha o arquivo no WhatsKeep e digite a chave.
-3. **Fotos e vídeos do celular (opcional):** copie a pasta `WhatsApp` do celular para o computador e use **Importar mídias de uma pasta**. Só entram os arquivos usados nas conversas.
+   - **Pelo Google Drive:** digite o e-mail da conta Google do backup e clique em **Entrar no Google**. Na janela do Google (com o e-mail já preenchido), entre e aceite. Escolha o backup e o que fazer com ele: **importar para o cofre** (nada fica salvo fora dele), **salvar uma cópia numa pasta e importar** (por exemplo num HD externo, para importar de novo depois sem o Google) ou **só salvar uma cópia numa pasta**. Importar exige a chave de 64 dígitos. As mensagens ficam disponíveis assim que são importadas; fotos, vídeos e áudios continuam em segundo plano. Se parar (o acesso ao Google dura cerca de 1 hora), entre de novo (e escolha a mesma pasta): ele continua de onde parou.
+   - **Por arquivo:** copie o `msgstore.db.crypt15` do celular (fica em `Android/media/com.whatsapp/WhatsApp/Databases`), ou use o de uma pasta de backup salva do Google Drive, escolha o arquivo no WhatsKeep e digite a chave. Numa pasta de backup, as fotos e vídeos ao lado entram junto.
+3. **Fotos e vídeos do celular:** copie a pasta `WhatsApp` inteira do celular para o computador e, em **Importar do computador**, escolha o `msgstore.db.crypt15` de dentro dela: as mídias ao lado entram junto. Se as mídias estiverem numa pasta separada, use **Importar mídias de outra pasta…** na lista de históricos. Só entram os arquivos usados nas conversas.
 4. **Leia e pesquise:** navegue pelas conversas, pesquise em todas as mensagens, pule para uma data, abra fotos e vídeos.
 5. **Exporte (opcional):** gere uma pasta que abre offline em qualquer navegador, protegida por senha — todas as conversas, só algumas ou uma senha diferente por conversa.
 
-O WhatsKeep trava sozinho após 5 minutos sem uso. O idioma (Português / English) se troca na barra superior ou na barra lateral.
+O WhatsKeep trava sozinho após 5 minutos sem uso. Esqueceu a senha? Na tela do cofre travado, **Esqueci a senha** apaga o cofre para você começar de novo (os seus backups não são apagados); com o cofre aberto, dá para remover um histórico ou apagar o cofre inteiro na tela de importação. O idioma (Português / English) se troca na barra superior ou na barra lateral.
 
 ### Dúvidas e problemas
 

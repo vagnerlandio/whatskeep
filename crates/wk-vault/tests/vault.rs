@@ -280,3 +280,45 @@ fn outdated_format_has_a_clear_error() {
     fs::write(&path, header.replace("\"format\": 2", "\"format\": 1")).unwrap();
     assert!(matches!(Vault::unlock(dir.path(), PW), Err(Error::OutdatedFormat)));
 }
+
+#[test]
+fn deletes_one_history_and_keeps_the_other() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = Vault::create(dir.path(), PW, FAST).unwrap();
+    for app in SourceApp::ALL {
+        vault.store(app).unwrap().import(&msgstore()).unwrap();
+        let writer = vault.media(app).unwrap().writer().unwrap();
+        writer.put(&b"photo bytes"[..], None, Some("image/jpeg"), Some("Media/WhatsApp Images/IMG-1.jpg")).unwrap();
+    }
+    assert_eq!(vault.stores().unwrap().len(), 2);
+
+    vault.delete_store(SourceApp::Business).unwrap();
+    let left: Vec<SourceApp> = vault.stores().unwrap().into_iter().map(|s| s.source_app).collect();
+    assert_eq!(left, [SourceApp::WhatsApp]);
+    assert!(!vault.media(SourceApp::Business).unwrap().exists());
+    assert!(vault.media(SourceApp::WhatsApp).unwrap().exists());
+    let names: Vec<String> =
+        fs::read_dir(dir.path().join("stores")).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+    assert!(names.iter().all(|n| !n.starts_with("business")), "{names:?}");
+    // Deleting what is not there is fine.
+    vault.delete_store(SourceApp::Business).unwrap();
+}
+
+#[test]
+fn destroys_the_vault_without_the_password() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("vault");
+    let vault = Vault::create(&root, PW, FAST).unwrap();
+    vault.store(SourceApp::WhatsApp).unwrap().import(&msgstore()).unwrap();
+    drop(vault); // locked: the password is not needed to delete it
+    assert!(Vault::disk_usage(&root) > 0);
+
+    Vault::destroy(&root).unwrap();
+    assert!(!root.exists());
+    assert!(!Vault::exists(&root));
+    assert_eq!(Vault::disk_usage(&root), 0);
+    // A new vault can be created in the same place.
+    Vault::create(&root, "another password 456", FAST).unwrap();
+    // And destroying a folder that is already gone is fine.
+    Vault::destroy(&dir.path().join("missing")).unwrap();
+}

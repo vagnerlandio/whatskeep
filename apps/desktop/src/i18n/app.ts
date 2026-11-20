@@ -1,6 +1,7 @@
 // Texts for the app's screens (vault, home, viewer and HTML export).
 // The import texts live in `import.ts`.
 import { formatCount, formatSize } from "@wk/viewer";
+import type { ExportMedia } from "../api";
 import { makeT } from "./errors";
 
 const nPt = (n: number) => formatCount(n, "pt-BR");
@@ -26,6 +27,29 @@ const pt = {
 
   // Vault creation
   createTitle: "Criar cofre",
+  // Deleting
+  forgotPassword: "Esqueci a senha",
+  deleteVault: "Apagar o cofre…",
+  deleteVaultTitle: "Apagar o cofre?",
+  deleteVaultHeading: "Apagar o cofre",
+  deleteVaultForgot: "Não existe recuperação de senha. A única saída é apagar o cofre e importar os backups de novo.",
+  deleteVaultWhat: (size: string) => `Todos os históricos e mídias guardados neste computador serão apagados (${size}).`,
+  deleteVaultKept:
+    "As cópias de backup salvas em pastas (HDD, SSD…) e os backups no Google Drive e no celular não são apagados.",
+  deleteVaultCard:
+    "Apaga todos os históricos e mídias deste computador. Para usar o app de novo, crie outro cofre e importe os backups.",
+  deleteStore: "Remover este histórico…",
+  remove: "Remover",
+  deleteStoreTitle: (app: string) => `Remover o histórico do ${app}?`,
+  deleteStoreWhat: (chats: string, messages: string) =>
+    `${chats} e ${messages}, com as mídias, serão apagadas deste computador. Os outros históricos continuam no cofre.`,
+  typeToConfirm: (word: string) => `Para confirmar, digite ${word}`,
+  confirmWord: "APAGAR",
+  deleting: "Apagando…",
+  deleteConfirm: "Apagar",
+  createBeforeImport: "Para importar, crie primeiro a senha do cofre onde o histórico vai ficar guardado.",
+  downloadWithoutVault: "Só baixar um backup do Google Drive, sem abrir o cofre",
+  backToUnlock: "Voltar para abrir o cofre",
   createIntro: (minutes: number) =>
     `O histórico importado fica guardado neste computador, cifrado com esta senha. Ela é pedida ao abrir o app e depois de ${minutes} ${minutes === 1 ? "minuto" : "minutos"} sem uso.`,
   password: "Senha",
@@ -53,6 +77,21 @@ const pt = {
   emptyNote: "Os dados ficam cifrados neste computador e não saem dele.",
 
   // HTML export
+  exportShort: "Uma pasta que abre em qualquer navegador, sem este app e sem internet.",
+  back: "Voltar",
+  statChats: "conversas",
+  statMessages: "mensagens",
+  statMedia: (size: string) => `mídias (${size})`,
+  savedTo: "Salvo em",
+  howToOpen: "Como abrir",
+  perChatShort: "Uma senha por conversa",
+  perChatHint: "Útil para entregar uma conversa a alguém: cada senha abre só a sua conversa.",
+  mediaOptTitle: { encrypted: "Cifrados", plain: "Sem cifra", none: "Só miniaturas" } satisfies Record<ExportMedia, string>,
+  mediaOptHint: {
+    encrypted: "Recomendado. No navegador, você escolhe a pasta uma vez para vê-los.",
+    plain: "Abrem direto, mas qualquer pessoa com acesso à pasta vê os arquivos.",
+    none: "Pacote bem menor: as fotos aparecem só em miniatura.",
+  } satisfies Record<ExportMedia, string>,
   exportTitle: "Exportar HTML",
   exportIntro:
     "Gera uma pasta com o histórico que abre em qualquer navegador, sem este app e sem internet. As mensagens ficam cifradas com a senha que você definir.",
@@ -63,8 +102,6 @@ const pt = {
   preparing: "Preparando…",
   cancel: "Cancelar",
   exportDone: "Exportação concluída",
-  exportSummary: (chats: number, messages: number, mediaFiles: number, mediaBytes: number) =>
-    `${plPt(chats, "conversa", "conversas")} · ${plPt(messages, "mensagem", "mensagens")} · ${plPt(mediaFiles, "mídia", "mídias")} (${formatSize(mediaBytes, "pt-BR")})`,
   mediaMissing: (n: number) =>
     n === 1
       ? `${nPt(n)} mídia citada nas mensagens não está no cofre e entrou só como miniatura.`
@@ -83,13 +120,9 @@ const pt = {
   pickNote: "As conversas que não forem escolhidas não entram em nada no pacote.",
   passwordLegend: "Senha",
   onePassword: "Uma senha para todas",
-  perChatPassword: "Uma senha por conversa (para entregar uma conversa a alguém)",
   passwordPlaceholder: (min: number) => `Senha (mínimo ${min} caracteres)`,
   noRecovery: "Não existe recuperação de senha.",
   mediaLegend: "Fotos, vídeos e áudios",
-  mediaEncrypted: "Cifrados (recomendado). No navegador, você seleciona a pasta uma vez para vê-los.",
-  mediaPlain: "Sem cifra: abrem direto, mas qualquer pessoa com acesso à pasta vê os arquivos.",
-  mediaNone: "Só miniaturas (pacote bem menor)",
   destination: "Destino",
   noFolder: "Nenhuma pasta escolhida",
   chooseFolder: "Escolher pasta…",
@@ -113,6 +146,27 @@ const en: typeof pt = {
   open: "Open",
 
   createTitle: "Create vault",
+  forgotPassword: "I forgot the password",
+  deleteVault: "Delete the vault…",
+  deleteVaultTitle: "Delete the vault?",
+  deleteVaultHeading: "Delete the vault",
+  deleteVaultForgot: "There is no password recovery. The only way out is to delete the vault and import the backups again.",
+  deleteVaultWhat: (size) => `Every history and media file kept on this computer will be deleted (${size}).`,
+  deleteVaultKept: "Backup copies saved to folders (HDD, SSD…) and the backups on Google Drive and on the phone are not deleted.",
+  deleteVaultCard:
+    "Deletes every history and media file from this computer. To use the app again, create another vault and import the backups.",
+  deleteStore: "Remove this history…",
+  remove: "Remove",
+  deleteStoreTitle: (app) => `Remove the ${app} history?`,
+  deleteStoreWhat: (chats, messages) =>
+    `${chats} and ${messages}, with their media, will be deleted from this computer. The other histories stay in the vault.`,
+  typeToConfirm: (word) => `To confirm, type ${word}`,
+  confirmWord: "DELETE",
+  deleting: "Deleting…",
+  deleteConfirm: "Delete",
+  createBeforeImport: "To import, first create the password of the vault where the history will be kept.",
+  downloadWithoutVault: "Only download a backup from Google Drive, without opening the vault",
+  backToUnlock: "Back to opening the vault",
   createIntro: (minutes) =>
     `Imported history is stored on this computer, encrypted with this password. You'll be asked for it when opening the app and after ${minutes} ${minutes === 1 ? "minute" : "minutes"} of inactivity.`,
   password: "Password",
@@ -136,6 +190,21 @@ const en: typeof pt = {
   emptyTitle: (app) => `${app} history`,
   emptyNote: "Your data stays encrypted on this computer and never leaves it.",
 
+  exportShort: "A folder that opens in any browser, without this app and without internet.",
+  back: "Back",
+  statChats: "chats",
+  statMessages: "messages",
+  statMedia: (size) => `media files (${size})`,
+  savedTo: "Saved to",
+  howToOpen: "How to open it",
+  perChatShort: "One password per chat",
+  perChatHint: "Handy to hand a chat to someone: each password opens only its own chat.",
+  mediaOptTitle: { encrypted: "Encrypted", plain: "Not encrypted", none: "Thumbnails only" },
+  mediaOptHint: {
+    encrypted: "Recommended. In the browser, you pick the folder once to see them.",
+    plain: "They open directly, but anyone with access to the folder can see the files.",
+    none: "Much smaller package: photos show only as thumbnails.",
+  },
   exportTitle: "Export HTML",
   exportIntro:
     "Creates a folder with your history that opens in any browser, without this app and without internet. Messages are encrypted with the password you choose.",
@@ -146,8 +215,6 @@ const en: typeof pt = {
   preparing: "Preparing…",
   cancel: "Cancel",
   exportDone: "Export complete",
-  exportSummary: (chats, messages, mediaFiles, mediaBytes) =>
-    `${plEn(chats, "chat", "chats")} · ${plEn(messages, "message", "messages")} · ${plEn(mediaFiles, "media file", "media files")} (${formatSize(mediaBytes, "en")})`,
   mediaMissing: (n) =>
     n === 1
       ? `${nEn(n)} media file referenced in the messages isn't in the vault and was included only as a thumbnail.`
@@ -166,13 +233,9 @@ const en: typeof pt = {
   pickNote: "Chats that aren't selected are left out of the package entirely.",
   passwordLegend: "Password",
   onePassword: "One password for all",
-  perChatPassword: "One password per chat (to hand a chat to someone)",
   passwordPlaceholder: (min) => `Password (at least ${min} characters)`,
   noRecovery: "There is no password recovery.",
   mediaLegend: "Photos, videos and audio",
-  mediaEncrypted: "Encrypted (recommended). In the browser, you select the folder once to view them.",
-  mediaPlain: "Unencrypted: they open directly, but anyone with access to the folder can see the files.",
-  mediaNone: "Thumbnails only (much smaller package)",
   destination: "Destination",
   noFolder: "No folder chosen",
   chooseFolder: "Choose folder…",

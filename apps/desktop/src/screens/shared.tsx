@@ -1,9 +1,10 @@
 // Pieces shared by the local import and the Google Drive download.
 import { open } from "@tauri-apps/plugin-dialog";
-import { useLang } from "@wk/viewer";
-import { errorOf, formatCount, formatSize, ImportPhase, ImportSummary, KeyInput, MediaProgress, MediaSummary, SOURCE_LABEL, SourceApp } from "../api";
+import { Icon } from "@wk/viewer";
+import { errorOf, KeyInput, SOURCE_LABEL, SourceApp } from "../api";
 import { useErrorText } from "../i18n/errors";
 import { useImportT } from "../i18n/import";
+import { More, Note, Segmented } from "./ui";
 
 export type BackupVersion = "crypt14" | "crypt15";
 export type KeyState = { mode: "hex" | "file"; hex: string; file: string | null };
@@ -27,6 +28,7 @@ export const toKeyInput = (k: KeyState): KeyInput =>
 
 const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 
+/** The backup key: 64 digits or a key file (crypt15), or the phone's `key` file (crypt14). */
 export function KeyField({
   version,
   value,
@@ -38,6 +40,7 @@ export function KeyField({
 }) {
   const t = useImportT();
   const digits = hexDigits(value.hex);
+  const countClass = digits === null || (value.hex && digits !== 64) ? "bad" : digits === 64 ? "ok" : "";
 
   async function chooseKeyFile() {
     const path = await open({ multiple: false, directory: false });
@@ -45,30 +48,31 @@ export function KeyField({
   }
 
   return (
-    <fieldset>
-      <legend>{t.keyLegend}</legend>
+    <>
       {version === "crypt15" ? (
-        <div className="tabs">
-          <button className={value.mode === "hex" ? "active" : ""} onClick={() => onChange({ ...value, mode: "hex" })}>
-            {t.keyTabHex}
-          </button>
-          <button className={value.mode === "file" ? "active" : ""} onClick={() => onChange({ ...value, mode: "file" })}>
-            {t.keyTabFile}
-          </button>
-        </div>
+        <Segmented
+          value={value.mode}
+          options={[
+            { value: "hex", label: t.keyTabHex },
+            { value: "file", label: t.keyTabFile },
+          ]}
+          onChange={(mode) => onChange({ ...value, mode })}
+        />
       ) : (
-        <p className="muted small">
-          {t.crypt14KeyBefore}
-          <code>key</code>
-          {t.crypt14KeyAfter}
-        </p>
+        <Note icon="key">
+          <p>
+            {t.crypt14KeyBefore}
+            <code>key</code>
+            {t.crypt14KeyAfter}
+          </p>
+        </Note>
       )}
 
       {value.mode === "hex" ? (
-        <>
+        <div className="key-box">
           <textarea
             className="key-input"
-            rows={3}
+            rows={2}
             spellCheck={false}
             autoComplete="off"
             autoCorrect="off"
@@ -77,41 +81,34 @@ export function KeyField({
             value={value.hex}
             onChange={(e) => onChange({ ...value, hex: e.target.value })}
           />
-          <span className={`hint ${digits === null || (value.hex && digits !== 64) ? "bad" : ""}`}>
-            {digits === null ? t.keyBadChars : t.keyDigits(digits)}
-          </span>
-        </>
+          <span className={`key-count ${countClass}`}>{digits === null ? t.keyBadChars : t.keyDigits(digits)}</span>
+        </div>
       ) : (
-        <div className="file-row">
-          <span className="muted small">{value.file ? fileName(value.file) : t.noFileChosen}</span>
-          <button onClick={chooseKeyFile}>{t.chooseKeyFile}</button>
+        <div className="file-pick">
+          <Icon name="key" size={20} />
+          <span className="file-pick-name">{value.file ? fileName(value.file) : <span className="muted">{t.noFileChosen}</span>}</span>
+          <button className="small-btn" onClick={chooseKeyFile}>
+            {t.chooseKeyFile}
+          </button>
         </div>
       )}
       {version === "crypt15" && (
-        <p className="muted small">{t.passwordOnly}</p>
+        <More summary={t.passwordOnlySummary}>
+          <p>{t.passwordOnly}</p>
+        </More>
       )}
-    </fieldset>
+    </>
   );
 }
 
 export function SourcePicker({ value, onChange }: { value: SourceApp; onChange: (s: SourceApp) => void }) {
-  const t = useImportT();
   return (
-    <fieldset>
-      <legend>{t.importAs}</legend>
-      {(["whatsapp", "business"] as const).map((app) => (
-        <label key={app} className="radio">
-          <input type="radio" checked={value === app} onChange={() => onChange(app)} />
-          {SOURCE_LABEL[app]}
-        </label>
-      ))}
-    </fieldset>
+    <Segmented
+      value={value}
+      options={(["whatsapp", "business"] as const).map((app) => ({ value: app, label: SOURCE_LABEL[app] }))}
+      onChange={onChange}
+    />
   );
-}
-
-/** Labels of the import phases in the current language. */
-export function usePhaseLabel(): Record<ImportPhase, string> {
-  return useImportT().phase;
 }
 
 /** Friendly messages for the most common error codes; the rest come from `useErrorText`. */
@@ -124,88 +121,14 @@ export function useFriendlyError(): (e: unknown) => string {
   };
 }
 
-export function SummaryView({
-  source,
-  summary: s,
-  media,
-  footer,
-  onAgain,
-}: {
-  source: SourceApp;
-  summary: ImportSummary;
-  media?: MediaSummary | null;
-  footer?: string;
-  onAgain: () => void;
-}) {
-  const t = useImportT();
-  const { lang } = useLang();
-  const n = (v: number) => formatCount(v, lang);
-  return (
-    <section className="card">
-      <h2>{t.importDone}</h2>
-      <div className="result">
-        <strong>{SOURCE_LABEL[source]}</strong>
-        <span>{t.summaryMain(n(s.chats), n(s.messages), n(s.media))}</span>
-        <span className="muted small">{t.summaryExtra(n(s.reactions), n(s.vcards), n(s.skippedStatus))}</span>
-        {s.unknownTypes.length > 0 && (
-          <p>{t.unknownTypes(s.unknownTypes.map(([type, count]) => `${type} (${n(count)})`).join(", "))}</p>
-        )}
-      </div>
-      {media && <MediaSummaryLine s={media} />}
-      {footer && <p className="muted small">{footer}</p>}
-      <button onClick={onAgain}>{t.importAnother}</button>
-    </section>
-  );
-}
-
-// Stop reasons the backend sends in Portuguese (see gdrive.rs and media_import.rs).
+// Stop reasons the backend sends in Portuguese (see backup_folder.rs).
 // Matched exactly: keep in sync with the backend strings.
 const STOPPED_CANCELLED = "cancelado";
 const STOPPED_EXPIRED = "a sessão do Google expirou; entre de novo para continuar";
 
-export function MediaSummaryLine({ s }: { s: MediaSummary }) {
-  const t = useImportT();
-  const { lang } = useLang();
-  const n = (v: number) => formatCount(v, lang);
-  const stopped =
-    s.stopped === STOPPED_CANCELLED ? t.stoppedCancelled : s.stopped === STOPPED_EXPIRED ? t.stoppedExpired : s.stopped;
-  return (
-    <div className={`result ${s.failed > 0 || s.stopped ? "partial" : ""}`}>
-      <strong>{t.media}</strong>
-      <span>
-        {t.mediaAdded(n(s.added), n(s.already))}
-        {s.failed > 0 && t.mediaFailed(n(s.failed))} · {formatSize(s.bytes, lang)}
-      </span>
-      <span className="muted small">
-        {t.mediaMatched(n(s.matched), n(s.expected))}
-        {s.unmatched > 0 && t.mediaUnmatched(n(s.unmatched))}
-      </span>
-      {stopped && <p>{t.stoppedEarly(stopped)}</p>}
-    </div>
-  );
-}
-
-export function MediaProgressView({ p, onCancel }: { p: MediaProgress | null; onCancel: () => void }) {
-  const t = useImportT();
-  const { lang } = useLang();
-  const pct = p && p.totalBytes > 0 ? Math.min(100, (p.bytes / p.totalBytes) * 100) : 0;
-  return (
-    <>
-      <div className="bar">
-        <div style={{ width: `${pct}%` }} />
-      </div>
-      <span className="muted small">
-        {p
-          ? t.mediaProgress(
-              formatCount(p.done, lang),
-              formatCount(p.total, lang),
-              formatSize(p.bytes, lang),
-              formatSize(p.totalBytes, lang),
-              formatCount(p.added, lang),
-            )
-          : t.searchingFiles}
-      </span>
-      <button onClick={onCancel}>{t.stop}</button>
-    </>
-  );
+/** A backend stop reason in the UI language. */
+export function stoppedText(t: ReturnType<typeof useImportT>, stopped: string | null): string | null {
+  if (stopped === STOPPED_CANCELLED) return t.stoppedCancelled;
+  if (stopped === STOPPED_EXPIRED) return t.stoppedExpired;
+  return stopped;
 }

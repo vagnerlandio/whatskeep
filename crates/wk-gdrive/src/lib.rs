@@ -94,6 +94,8 @@ pub enum Error {
     Unexpected(&'static str),
     #[error("o arquivo tem {0} bytes, acima do limite para baixar")]
     TooLarge(u64),
+    #[error("não foi possível gravar o arquivo baixado: {0}")]
+    Write(String),
     #[error("o download veio incompleto")]
     Incomplete,
     #[error("o arquivo baixado não confere com o MD5 informado pelo Google")]

@@ -84,15 +84,16 @@ WhatsApp `message_type` → `MessageKind` mapping: `crates/wk-import/src/kind.rs
 | `lib.rs` | Builder: plugins (dialog, opener, nav-guard), `wkmedia` protocol, `invoke_handler`, `context()`, ACL and navigation tests |
 | `state.rs` | `AppState` (vault, read-only connections, media readers, password backoff, 5 min autolock, Drive session, export) |
 | `commands.rs` | Vault, local import, viewer (`list_chats`, `get_messages`, `get_messages_around`, `search_messages`) |
-| `gdrive.rs` | `google-login` window (ephemeral, no IPC), cookie capture, download + Drive media |
+| `gdrive.rs` | `google-login` window (ephemeral, no IPC), cookie capture, backup download job (database → import → other files → media import) |
+| `backup_folder.rs` | The backup copy in the user's folder: safe relative paths, `.whatskeep-drive.json` manifest (sizes + encrypted `.mcrypt1` metadata), resumable parallel download (`.partial` + rename after MD5) |
 | `media.rs` | `wkmedia://localhost/{thumb,media}/<app>/<message_id>` handler with Range, `no-store`, closed MIME list; serves only the `main` window |
-| `media_import.rs` | Import the phone's media folder, cancel, save media (native picker in the backend) |
+| `media_import.rs` | Import a media folder (the phone's, or a saved Drive backup, `.mcrypt1` with the key), cancel, save media (native picker in the backend) |
 | `export.rs` | Pick destination (native picker), run export, cancel |
 | `links.rs` | `validate` + `open_link` (http/https, no userinfo) |
 | `error.rs` | `CmdError` and conversions from the crates' errors |
 | `build.rs` | Embeds `export-shell/dist/index.html`; command manifest (ACL) |
 
-Frontend: `apps/desktop/src/api.ts` (`invoke` wrappers + `tauriSource(store)`), `App.tsx` (vault state / routing), `screens/*`.
+Frontend: `apps/desktop/src/api.ts` (`invoke` wrappers + `tauriSource(store)`), `App.tsx` (vault state / routing), `jobs.tsx` (the app-wide import/download job and its progress banner), `screens/*`.
 
 ## Shared viewer (`packages/viewer/src`)
 

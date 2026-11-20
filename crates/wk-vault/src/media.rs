@@ -119,6 +119,13 @@ impl MediaHandle {
         self.index.is_file()
     }
 
+    /// Deletes the index and every blob.
+    pub(crate) fn delete(&self) -> Result<(), Error> {
+        fsutil::remove_database(&self.index)?;
+        fsutil::remove_if_exists(fs::remove_dir_all(&self.dir))?;
+        Ok(())
+    }
+
     /// Index for writing (created if it does not exist).
     pub fn writer(&self) -> Result<MediaWriter, Error> {
         fsutil::create_private_dir(&self.dir)?;

@@ -162,6 +162,14 @@ fn hex(bytes: &[u8]) -> Zeroizing<String> {
     s
 }
 
+impl StoreHandle {
+    /// Deletes the database (and its side files).
+    pub(crate) fn delete(&self) -> Result<(), Error> {
+        crate::fsutil::remove_database(&self.path)?;
+        Ok(())
+    }
+}
+
 pub(crate) fn remove_with_journal(path: &Path) {
     let _ = fs::remove_file(path);
     let mut journal = path.as_os_str().to_owned();
