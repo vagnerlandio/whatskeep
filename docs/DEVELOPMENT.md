@@ -41,6 +41,8 @@ The package names and passwords in the generator must match the ones the e2e scr
 
 The desktop UI can be exercised without the Rust backend by loading the Vite dev server (`http://localhost:1420`) in Playwright with an init script that mocks `window.__TAURI_INTERNALS__.invoke` and returns synthetic data. `page.evaluate` bypasses CSP, so CSP checks must run scripts from inside the page.
 
+`pnpm screenshots` (`scripts/screenshots.cjs`) is that harness: it reuses a dev server already running on port 1420 or starts one, and writes the README screenshots to `docs/screenshots/` (light and dark, 2× scale, English UI). The chats, numbers and photos are made up in the script (fictional ranges such as +1 202-555-01xx); never use real data there. Re-run it after visible UI changes and check the images before committing.
+
 ## Test fixtures
 
 Only synthetic data is committed (`crates/*/tests/fixtures/`); never commit real backups, keys or databases (`.gitignore` blocks them).

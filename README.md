@@ -6,11 +6,27 @@
 
 WhatsKeep opens your WhatsApp and WhatsApp Business backups on your computer, so you can read and search all your chats — with photos, videos and voice messages — in a familiar WhatsApp-like window. Everything happens on your computer: your history is kept in an encrypted vault, protected by a password only you know, and nothing is sent to any server.
 
-- **For everyone:** [Download](#download) · [Before you start](#before-you-start-get-your-backup-key) · [How to use](#how-to-use) · [Questions and problems](#questions-and-problems)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/chat-dark.png">
+  <img src="docs/screenshots/chat-light.png" alt="WhatsKeep showing a group chat with photos, a voice message with its transcription and a shared location" width="100%">
+</picture>
+
+- **For everyone:** [Screenshots](#screenshots) · [Download](#download) · [Before you start](#before-you-start-get-your-backup-key) · [How to use](#how-to-use) · [Questions and problems](#questions-and-problems)
 - **For advanced users:** [Supported backups](#supported-backups) · [Where your data is](#where-your-data-is) · [Diagnostics log](#diagnostics-log)
 - **For developers:** [Build from source](#build-from-source) · [Project layout](#project-layout) · [Documentation](#documentation)
 
 ---
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Searching all messages for "trail", with the matches highlighted](docs/screenshots/search.png) | ![The same chat in dark mode](docs/screenshots/chat-dark.png) |
+| **Search** every message, accents and case ignored, and jump to the result. | **Light and dark mode**, following your system. |
+| ![The vault password screen](docs/screenshots/unlock.png) | ![Import screen with the histories in the vault and the Google Drive download](docs/screenshots/import.png) |
+| **Encrypted vault:** your password opens it; it locks itself when you step away. | **Import** from Google Drive or from a file, plus photos and videos from your phone. |
+
+All screenshots use made-up chats and fictional phone numbers.
 
 ## Download
 
@@ -113,6 +129,7 @@ cargo test --workspace   # Rust tests (crypto, vault, import, Google flow agains
 cargo clippy --workspace --all-targets
 pnpm lint:security       # forbidden frontend patterns
 pnpm test:e2e            # opens real exports in Chromium and WebKit via file://
+pnpm screenshots         # regenerates docs/screenshots/ from the real UI with made-up data
 ```
 
 ## Project layout
@@ -144,6 +161,8 @@ packages/export-shell/  The export's single-file index.html
 **Suas conversas do WhatsApp, seguras e acessíveis.**
 
 O WhatsKeep abre os backups do WhatsApp e do WhatsApp Business no seu computador, para você ler e pesquisar todas as conversas — com fotos, vídeos e áudios — numa janela parecida com a do WhatsApp. Tudo acontece no seu computador: o histórico fica num cofre cifrado, protegido por uma senha que só você sabe, e nada é enviado para servidores.
+
+Veja as telas do app em [Screenshots](#screenshots) (a interface também está em português).
 
 ### Baixar
 

@@ -8,6 +8,7 @@
     "test:rust": "cargo test --workspace",
     "lint:security": "sh scripts/check-security.sh",
     "test:e2e": "pnpm --filter export-shell test:e2e",
+    "screenshots": "node scripts/screenshots.cjs",
     "dev:log": "mkdir -p logs && RUST_BACKTRACE=1 pnpm dev 2>&1 | tee logs/dev-$(date +%Y%m%d-%H%M%S).log"
   },
   "packageManager": "pnpm@10.33.0"
