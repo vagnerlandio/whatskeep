@@ -1,5 +1,6 @@
 mod backup_folder;
 mod commands;
+mod contacts;
 mod diag;
 mod error;
 mod export;
@@ -94,6 +95,9 @@ pub fn run() {
             commands::vault_usage,
             commands::vault_delete,
             commands::store_delete,
+            contacts::contacts_info,
+            contacts::contacts_import,
+            contacts::contacts_remove,
             commands::list_stores,
             commands::inspect_backup,
             commands::import_backup,

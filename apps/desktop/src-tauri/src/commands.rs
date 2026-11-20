@@ -401,6 +401,9 @@ pub(crate) fn import_encrypted(
     }
     drop(t);
 
+    // The address book's names, into the new history.
+    crate::contacts::apply_after_import(state, source_app);
+
     progress(app, "done");
     Ok(ImportSummary {
         source_schema: report.source_schema.map(|s| match s {

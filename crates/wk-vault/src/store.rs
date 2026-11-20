@@ -152,7 +152,7 @@ pub(crate) fn open_keyed(path: &Path, key: &Key, flags: OpenFlags) -> Result<Con
     Ok(conn)
 }
 
-fn hex(bytes: &[u8]) -> Zeroizing<String> {
+pub(crate) fn hex(bytes: &[u8]) -> Zeroizing<String> {
     const DIGITS: &[u8; 16] = b"0123456789abcdef";
     let mut s = Zeroizing::new(String::with_capacity(bytes.len() * 2));
     for b in bytes {

@@ -111,6 +111,17 @@ export const mediaApi = {
   save: (store: SourceApp, messageId: number) => invoke<boolean>("save_media", { store, messageId }),
 };
 
+// ---------------------------------------------------------------- contact names
+
+export type ContactsInfo = { people: number; numbers: number; importedAtMs: number; namedChats: number };
+
+export const contactsApi = {
+  info: () => invoke<ContactsInfo | null>("contacts_info"),
+  /** Reads a Google Contacts export (CSV or vCard) chosen in the file picker. */
+  import: (path: string) => invoke<ContactsInfo>("contacts_import", { path }),
+  remove: () => invoke<void>("contacts_remove"),
+};
+
 // ---------------------------------------------------------------- Google Drive
 
 export type DriveBackup = {

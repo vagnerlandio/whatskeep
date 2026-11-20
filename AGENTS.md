@@ -91,4 +91,6 @@ Every phase of the plan is implemented and tested **with synthetic data only**. 
 - WhatsApp Business `client_sig` and whether its backups show up in the same listing;
 - the `.mcrypt1` format (whether the GCM tag is present; name format in the metadata).
 
-Out of scope / not done: incremental merge of backups (re-import replaces), contact names (`wa.db` is not in the Drive backup), password-only E2E backups (impossible: the key lives in WhatsApp's HSM).
+Contact names: `wa.db` is not in the Drive backup, so names come from a Google Contacts export (CSV or vCard, `wk_import::contacts`) kept in the vault's address book and applied to every history (also after each re-import). Chats WhatsApp only keeps for automatic notices (only system messages) are not listed (`query::chats`).
+
+Out of scope / not done: incremental merge of backups (re-import replaces), password-only E2E backups (impossible: the key lives in WhatsApp's HSM).

@@ -6,6 +6,7 @@ import { useImportT } from "../i18n/import";
 import { JobCard, useJob } from "../jobs";
 import { useVaultGate } from "../vault";
 import ConfirmDelete from "./ConfirmDelete";
+import ContactsPanel from "./ContactsPanel";
 import DriveImport from "./DriveImport";
 import ExportPanel from "./ExportPanel";
 import MediaFolderImport from "./MediaFolderImport";
@@ -104,6 +105,7 @@ export default function Home({ stores, onClose, onStoresChanged, onVaultDeleted 
                 ))}
               </Panel>
             )}
+            {vault === "unlocked" && stores.length > 0 && <ContactsPanel busy={busy} onChanged={onStoresChanged} />}
             {stores.length > 0 && (
               <Panel>
                 <Section label={t.exportTitle}>

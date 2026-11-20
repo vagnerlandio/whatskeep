@@ -26,6 +26,7 @@ const en: Record<string, string> = {
   network: "Network error. Check your connection and try again.",
   google: "Google returned an unexpected error.",
   busy: "Another operation is already in progress.",
+  contacts_unrecognized: "No contact with a name and a phone number was found. Export from Google Contacts as Google CSV or vCard.",
   no_store: "No history has been imported for this app yet.",
   invalid_argument: "Invalid input.",
   cancelled: "Cancelled.",

@@ -12,6 +12,7 @@
 //!
 //! Schema reference: the WhatsApp-Chat-Exporter project (KnugiHK).
 
+pub mod contacts;
 mod jid;
 mod kind;
 mod legacy;

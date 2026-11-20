@@ -13,6 +13,7 @@
 //! * A [`Vault`] only exists unlocked: locking means dropping it, and the DEK is zeroed on drop.
 //! * Folders get 0700 permissions and files 0600 (Unix).
 
+mod addressbook;
 mod fsutil;
 mod header;
 pub mod media;
@@ -29,6 +30,7 @@ use zeroize::Zeroizing;
 
 pub use header::KdfParams;
 pub use media::{BlobRef, MediaHandle, MediaReader, MediaWriter, Put};
+pub use addressbook::{AddressBook, AddressBookInfo, NamesApplied};
 pub use store::{StoreHandle, StoreInfo};
 
 use header::Header;
@@ -191,6 +193,15 @@ impl Vault {
     /// Bytes the vault in `dir` takes on disk.
     pub fn disk_usage(dir: &Path) -> u64 {
         fsutil::disk_usage(dir)
+    }
+
+    /// The address book (names for phone numbers), shared by every history.
+    pub fn address_book(&self) -> Result<AddressBook, Error> {
+        let mut key = Key::default();
+        Hkdf::<Sha256>::new(Some(&self.header.vault_id()?), self.dek.as_ref())
+            .expand(b"wk-vault address-book v2", key.as_mut())
+            .expect("32 bytes fit in HKDF-SHA256");
+        Ok(AddressBook::new(&self.dir.join(STORES_DIR), key))
     }
 
     /// Databases already imported, with counts.

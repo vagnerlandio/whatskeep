@@ -1060,3 +1060,11 @@ button.ghost-danger {
   border-radius: 8px;
   border: 1px solid transparent;
 }
+
+.disclosure-body ol.steps {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
