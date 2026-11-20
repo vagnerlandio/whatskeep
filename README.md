@@ -93,7 +93,7 @@ Both the modern and the legacy WhatsApp database layouts are supported. Message 
 
 ## Where your data is
 
-- **Vault (macOS):** `~/Library/Application Support/com.whatskeep.desktop/vault/` — one encrypted database per app (WhatsApp, WhatsApp Business) and one encrypted file per photo/video. The password unwraps the vault key (Argon2id + AES-256-GCM); there is no recovery. Data from earlier versions (`com.local.wahistorico`) is moved there automatically on first launch.
+- **Vault (macOS):** `~/Library/Application Support/com.whatskeep.desktop/vault/` — one encrypted database per app (WhatsApp, WhatsApp Business) and one encrypted file per photo/video. The password unwraps the vault key (Argon2id + AES-256-GCM); there is no recovery.
 - **Settings:** `settings.json` next to the vault (only the interface language).
 - **Never on disk in plain form:** messages, media, keys, Google tokens. The vault is excluded from Time Machine and Spotlight.
 - **Google Drive access** is unofficial (it uses the same path as WhatsApp on Android), lives only in memory for up to 50 minutes, and may stop working if Google changes it; importing from a file always works.

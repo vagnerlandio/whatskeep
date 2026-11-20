@@ -78,7 +78,7 @@ Breaking any of these requires discussing it with the user first.
 - `export-shell` must be built before `cargo build` of the app (`beforeDev/BuildCommand` already does it). Without it, export reports itself as unavailable.
 - No `fetch` on `file://`: the export loads data via `<script src>` (`window.__wkChunk`, `window.__wkManifest`) and encrypted media via `<input webkitdirectory>` + `File.slice`.
 - Playwright `page.evaluate` bypasses CSP — to test CSP, inject scripts through the page itself.
-- The bundle identifier is `com.whatskeep.desktop`; it names the data folder. `src-tauri/src/migrate.rs` moves data from previous identifiers (`LEGACY_IDENTIFIERS`) on startup — if the identifier ever changes again, add the old one there.
+- The bundle identifier is `com.whatskeep.desktop`; it names the data folder (`~/Library/Application Support/com.whatskeep.desktop/` on macOS). Changing it makes existing vaults seem to disappear: discuss it with the user first and plan a migration of the data folder.
 - Re-importing replaces an app's whole database (atomic: encrypted temp file + rename). The media index is separate and survives.
 
 ## Project status

@@ -14,7 +14,6 @@ wa.db*
 **/key
 encrypted_backup.key
 *.hex
-historico/
 vault/
 
 # Exception: synthetic test vectors (random keys, fictitious content)
