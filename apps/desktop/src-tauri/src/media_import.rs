@@ -12,10 +12,10 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
-use wa_import::SourceApp;
-use wa_vault::media::normalize_path;
-use wa_vault::query::{self, MediaRef};
-use wa_vault::{MediaWriter, Put};
+use wk_import::SourceApp;
+use wk_vault::media::normalize_path;
+use wk_vault::query::{self, MediaRef};
+use wk_vault::{MediaWriter, Put};
 
 use crate::commands::{blocking, source_app};
 use crate::error::CmdError;

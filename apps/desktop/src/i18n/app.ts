@@ -1,6 +1,6 @@
 // Texts for the app's screens (vault, home, viewer and HTML export).
 // The import texts live in `import.ts`.
-import { formatCount, formatSize } from "@wa/viewer";
+import { formatCount, formatSize } from "@wk/viewer";
 import { makeT } from "./errors";
 
 const nPt = (n: number) => formatCount(n, "pt-BR");

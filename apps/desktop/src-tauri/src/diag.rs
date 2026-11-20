@@ -1,7 +1,7 @@
 //! Diagnostics log, for following tests with real backups.
 //!
 //! * Always on in development builds and, in release, only with the
-//!   `WA_LOG` variable (e.g. `WA_LOG=debug`). Goes to stderr: the app writes
+//!   `WK_LOG` variable (e.g. `WK_LOG=debug`). Goes to stderr: the app writes
 //!   nothing to disk.
 //! * **Never** log message text, phone numbers, JIDs, contact names,
 //!   passwords, keys, tokens, cookies, URLs with a backup path or media file
@@ -14,10 +14,10 @@ use std::time::Instant;
 use tracing::{info, warn};
 
 /// Default filter: the app and its crates at `debug`, everything else at `info`.
-const DEFAULT_FILTER: &str = "info,wa_historico_lib=debug,wa_import=debug,wa_gdrive=debug";
+const DEFAULT_FILTER: &str = "info,whatskeep_lib=debug,wk_import=debug,wk_gdrive=debug";
 
 pub fn init() {
-    let configured = std::env::var("WA_LOG").ok();
+    let configured = std::env::var("WK_LOG").ok();
     if configured.is_none() && !cfg!(debug_assertions) {
         return;
     }
@@ -33,7 +33,7 @@ pub fn init() {
     std::panic::set_hook(Box::new(move |p| {
         // Panic location and message: panic messages in the app's code do not
         // carry user data.
-        tracing::error!(target: "wa_historico_lib::panic", "PANIC {p}");
+        tracing::error!(target: "whatskeep_lib::panic", "PANIC {p}");
         default_hook(p);
     }));
     info!(version = env!("CARGO_PKG_VERSION"), debug = cfg!(debug_assertions), "diagnostics enabled");
@@ -99,9 +99,9 @@ impl Tally {
 pub fn ui_log(level: String, message: String) {
     let msg: String = message.chars().take(1000).collect();
     match level.as_str() {
-        "error" => tracing::error!(target: "wa_historico_lib::ui", "{msg}"),
-        "warn" => tracing::warn!(target: "wa_historico_lib::ui", "{msg}"),
-        _ => tracing::info!(target: "wa_historico_lib::ui", "{msg}"),
+        "error" => tracing::error!(target: "whatskeep_lib::ui", "{msg}"),
+        "warn" => tracing::warn!(target: "whatskeep_lib::ui", "{msg}"),
+        _ => tracing::info!(target: "whatskeep_lib::ui", "{msg}"),
     }
 }
 

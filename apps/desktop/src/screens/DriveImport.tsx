@@ -1,4 +1,4 @@
-import { formatDateTime, Icon, useLang } from "@wa/viewer";
+import { formatDateTime, Icon, useLang } from "@wk/viewer";
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -17,7 +17,7 @@ import {
   SourceApp,
   StoreInfo,
 } from "../api";
-import { formatPhone } from "@wa/viewer";
+import { formatPhone } from "@wk/viewer";
 import { useErrorText } from "../i18n/errors";
 import { useImportT } from "../i18n/import";
 import { ReplaceWarning } from "./ImportPanel";

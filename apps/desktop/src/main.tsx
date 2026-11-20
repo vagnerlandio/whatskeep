@@ -4,7 +4,7 @@ import React, { Component, ErrorInfo, ReactNode } from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { describe, installDiagnostics, uiLog } from "./diag";
-import { detectLang } from "@wa/viewer";
+import { detectLang } from "@wk/viewer";
 
 installDiagnostics();
 

@@ -15,7 +15,7 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-virtuoso": "^4.18.23",
-    "@wa/viewer": "workspace:*"
+    "@wk/viewer": "workspace:*"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",

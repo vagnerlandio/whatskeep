@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/wa-crypt", "crates/wa-import", "crates/wa-vault", "crates/wa-gdrive", "crates/wa-export", "apps/desktop/src-tauri"]
+members = ["crates/wk-crypt", "crates/wk-import", "crates/wk-vault", "crates/wk-gdrive", "crates/wk-export", "apps/desktop/src-tauri"]
 
 [workspace.dependencies]
 # SQLCipher across the whole workspace: rusqlite does not accept "plain" SQLite

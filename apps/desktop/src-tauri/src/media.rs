@@ -1,11 +1,11 @@
-//! `wamedia://` protocol so the UI can load thumbnails (and media) straight
+//! `wkmedia://` protocol so the UI can load thumbnails (and media) straight
 //! from the vault in `<img src>`, without base64 over the IPC.
 //!
-//! * `wamedia://localhost/thumb/<app>/<message_id>`: thumbnail.
-//! * `wamedia://localhost/media/<app>/<message_id>`: full file, with `Range`
+//! * `wkmedia://localhost/thumb/<app>/<message_id>`: thumbnail.
+//! * `wkmedia://localhost/media/<app>/<message_id>`: full file, with `Range`
 //!   support (video/audio seeking without decrypting the whole file).
 //!
-//! On Windows the address is `http://wamedia.localhost/...`.
+//! On Windows the address is `http://wkmedia.localhost/...`.
 //!
 //! * Only answers the main window, and only with the vault unlocked.
 //! * `Cache-Control: no-store`: the webview does not keep the decrypted
@@ -13,15 +13,15 @@
 
 use tauri::http::{Request, Response, StatusCode, header};
 use tauri::{AppHandle, Manager};
-use wa_vault::query;
+use wk_vault::query;
 
-use wa_import::SourceApp;
+use wk_import::SourceApp;
 
 use crate::commands::source_app;
 use crate::error::CmdError;
 use crate::state::AppState;
 
-pub const SCHEME: &str = "wamedia";
+pub const SCHEME: &str = "wkmedia";
 
 /// Largest range returned per request: videos are requested in chunks.
 const MAX_CHUNK: u64 = 4 << 20;
@@ -47,16 +47,16 @@ pub fn handle(app: &AppHandle, from_main_window: bool, request: &Request<Vec<u8>
     };
     match result {
         Ok(r) => {
-            tracing::trace!(kind = kind, status = r.status().as_u16(), bytes = r.body().len(), "wamedia");
+            tracing::trace!(kind = kind, status = r.status().as_u16(), bytes = r.body().len(), "wkmedia");
             r
         }
         Err(e) if e.code == "locked" => status(StatusCode::FORBIDDEN),
         Err(e) if e.code == "not_found" => {
-            tracing::debug!(kind = kind, message = id, "wamedia: not found");
+            tracing::debug!(kind = kind, message = id, "wkmedia: not found");
             status(StatusCode::NOT_FOUND)
         }
         Err(e) => {
-            tracing::warn!(kind = kind, message = id, code = e.code, "wamedia: error: {}", e.message);
+            tracing::warn!(kind = kind, message = id, code = e.code, "wkmedia: error: {}", e.message);
             status(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { chatTitle, formatCount, useLang } from "@wa/viewer";
-import type { Chat } from "@wa/viewer";
+import { chatTitle, formatCount, useLang } from "@wk/viewer";
+import type { Chat } from "@wk/viewer";
 import {
   errorOf,
   exportApi,

@@ -89,7 +89,7 @@ Formats and key hierarchy: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Threat 
 Useful when something fails with a real backup. It never contains message text, phone numbers, names, passwords, keys, tokens or e-mail — only steps, timings, sizes, counts and error codes. Requests to Google are logged with secrets redacted.
 
 ```sh
-WA_LOG=debug "$(ls -d /Applications/WhatsKeep.app/Contents/MacOS/* | head -1)"   # installed app, log in the terminal
+WK_LOG=debug "$(ls -d /Applications/WhatsKeep.app/Contents/MacOS/* | head -1)"   # installed app, log in the terminal
 pnpm dev:log                                                                   # from source; saves to logs/
 ```
 
@@ -119,11 +119,11 @@ pnpm test:e2e            # opens real exports in Chromium and WebKit via file://
 
 ```
 apps/desktop/           Tauri v2 app (React in src/, Rust in src-tauri/)
-crates/wa-crypt/        crypt14/crypt15 and .mcrypt1 decryption (no I/O)
-crates/wa-import/       WhatsApp database → WhatsKeep's schema, with full-text search
-crates/wa-vault/        Encrypted vault (SQLCipher, Argon2id) and viewer queries
-crates/wa-gdrive/       Google sign-in and Google Drive backup download
-crates/wa-export/       Encrypted offline HTML export
+crates/wk-crypt/        crypt14/crypt15 and .mcrypt1 decryption (no I/O)
+crates/wk-import/       WhatsApp database → WhatsKeep's schema, with full-text search
+crates/wk-vault/        Encrypted vault (SQLCipher, Argon2id) and viewer queries
+crates/wk-gdrive/       Google sign-in and Google Drive backup download
+crates/wk-export/       Encrypted offline HTML export
 packages/viewer/        Shared WhatsApp-style viewer (React)
 packages/export-shell/  The export's single-file index.html
 ```

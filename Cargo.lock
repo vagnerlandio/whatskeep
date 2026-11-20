@@ -4954,118 +4954,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "wa-crypt"
-version = "0.1.0"
-dependencies = [
- "aes",
- "aes-gcm",
- "cbc",
- "ctr",
- "flate2",
- "ghash",
- "hmac",
- "md-5",
- "sha2 0.10.9",
- "thiserror 2.0.21",
- "zeroize",
-]
-
-[[package]]
-name = "wa-export"
-version = "0.1.0"
-dependencies = [
- "aes-gcm",
- "argon2",
- "base64 0.22.1",
- "flate2",
- "getrandom 0.3.4",
- "hkdf",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
- "thiserror 2.0.21",
- "wa-import",
- "wa-vault",
- "zeroize",
-]
-
-[[package]]
-name = "wa-gdrive"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "md-5",
- "reqwest",
- "rustls",
- "rustls-platform-verifier 0.6.2",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "tracing",
- "tracing-subscriber",
- "url",
- "wa-crypt",
- "zeroize",
-]
-
-[[package]]
-name = "wa-historico"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "libc",
- "rusqlite",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "tempfile",
- "tracing",
- "tracing-subscriber",
- "url",
- "wa-crypt",
- "wa-export",
- "wa-gdrive",
- "wa-import",
- "wa-vault",
- "zeroize",
-]
-
-[[package]]
-name = "wa-import"
-version = "0.1.0"
-dependencies = [
- "rusqlite",
- "thiserror 2.0.21",
- "tracing",
- "wa-crypt",
-]
-
-[[package]]
-name = "wa-vault"
-version = "0.1.0"
-dependencies = [
- "aes-gcm",
- "argon2",
- "base64 0.22.1",
- "getrandom 0.3.4",
- "hkdf",
- "libc",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
- "thiserror 2.0.21",
- "wa-import",
- "zeroize",
-]
-
-[[package]]
 name = "walkdir"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5296,6 +5184,31 @@ dependencies = [
  "thiserror 2.0.21",
  "windows",
  "windows-core",
+]
+
+[[package]]
+name = "whatskeep"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "libc",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "tempfile",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "wk-crypt",
+ "wk-export",
+ "wk-gdrive",
+ "wk-import",
+ "wk-vault",
+ "zeroize",
 ]
 
 [[package]]
@@ -5645,6 +5558,93 @@ name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
+
+[[package]]
+name = "wk-crypt"
+version = "0.1.0"
+dependencies = [
+ "aes",
+ "aes-gcm",
+ "cbc",
+ "ctr",
+ "flate2",
+ "ghash",
+ "hmac",
+ "md-5",
+ "sha2 0.10.9",
+ "thiserror 2.0.21",
+ "zeroize",
+]
+
+[[package]]
+name = "wk-export"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm",
+ "argon2",
+ "base64 0.22.1",
+ "flate2",
+ "getrandom 0.3.4",
+ "hkdf",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 2.0.21",
+ "wk-import",
+ "wk-vault",
+ "zeroize",
+]
+
+[[package]]
+name = "wk-gdrive"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "md-5",
+ "reqwest",
+ "rustls",
+ "rustls-platform-verifier 0.6.2",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "wk-crypt",
+ "zeroize",
+]
+
+[[package]]
+name = "wk-import"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "thiserror 2.0.21",
+ "tracing",
+ "wk-crypt",
+]
+
+[[package]]
+name = "wk-vault"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm",
+ "argon2",
+ "base64 0.22.1",
+ "getrandom 0.3.4",
+ "hkdf",
+ "libc",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 2.0.21",
+ "wk-import",
+ "zeroize",
+]
 
 [[package]]
 name = "writeable"

@@ -1,5 +1,5 @@
 // Types of the displayed data. They are the same ones Rust serializes
-// (wa_vault::query) and the HTML export writes.
+// (wk_vault::query) and the HTML export writes.
 
 export type Person = { jid: string; phone: string | null; name: string | null };
 

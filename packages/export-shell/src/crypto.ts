@@ -1,4 +1,4 @@
-// Reading of the export format (mirror of crates/wa-export/src/format.rs).
+// Reading of the export format (mirror of crates/wk-export/src/format.rs).
 import { argon2id } from "hash-wasm";
 import { ShellError } from "./messages";
 

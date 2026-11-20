@@ -4,13 +4,13 @@ import { ShellError } from "./messages";
 
 declare global {
   interface Window {
-    __waManifest?: unknown;
-    __waChunk?: (id: string, b64: string) => void;
+    __wkManifest?: unknown;
+    __wkChunk?: (id: string, b64: string) => void;
   }
 }
 
 const pending = new Map<string, (b64: string) => void>();
-window.__waChunk = (id, b64) => {
+window.__wkChunk = (id, b64) => {
   pending.get(id)?.(b64);
   pending.delete(id);
 };
@@ -33,8 +33,8 @@ function loadScript(src: string): Promise<void> {
 
 export async function loadManifest(): Promise<unknown> {
   await loadScript("data/manifest.js");
-  const m = window.__waManifest;
-  delete window.__waManifest;
+  const m = window.__wkManifest;
+  delete window.__wkManifest;
   if (!m) throw new ShellError("manifest_missing");
   return m;
 }

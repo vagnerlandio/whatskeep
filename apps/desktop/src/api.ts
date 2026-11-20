@@ -1,9 +1,9 @@
 // Typed wrappers for the Rust commands. The webview never sees keys or the database:
 // it only sends the password/key once and receives summaries.
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import type { Anchor, Around, Chat, Cursor, DataSource, Lang, Message, SearchHit } from "@wa/viewer";
-export { errorOf, formatCount, formatSize } from "@wa/viewer";
-export type { CmdError } from "@wa/viewer";
+import type { Anchor, Around, Chat, Cursor, DataSource, Lang, Message, SearchHit } from "@wk/viewer";
+export { errorOf, formatCount, formatSize } from "@wk/viewer";
+export type { CmdError } from "@wk/viewer";
 
 export type VaultState = "none" | "locked" | "unlocked";
 export type VaultStatus = { state: VaultState; autolockSecs: number };
@@ -66,13 +66,13 @@ export const viewerApi = {
     invoke<SearchHit[]>("search_messages", { store, query, chatId, before, limit }),
 };
 
-/** Thumbnail served by the `wamedia://` protocol (straight from the vault, no disk cache). */
+/** Thumbnail served by the `wkmedia://` protocol (straight from the vault, no disk cache). */
 export const thumbUrl = (store: SourceApp, messageId: number) =>
-  convertFileSrc(`thumb/${store}/${messageId}`, "wamedia");
+  convertFileSrc(`thumb/${store}/${messageId}`, "wkmedia");
 
 /** Full file (with Range support for video/audio). */
 export const mediaUrl = (store: SourceApp, messageId: number) =>
-  convertFileSrc(`media/${store}/${messageId}`, "wamedia");
+  convertFileSrc(`media/${store}/${messageId}`, "wkmedia");
 
 export type MediaSummary = {
   matched: number;

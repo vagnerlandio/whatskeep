@@ -8,8 +8,8 @@ use std::time::{Duration, Instant};
 
 use rusqlite::Connection;
 use tauri::{AppHandle, Emitter, Manager};
-use wa_import::SourceApp;
-use wa_vault::{MediaReader, Vault};
+use wk_import::SourceApp;
+use wk_vault::{MediaReader, Vault};
 
 use crate::error::CmdError;
 

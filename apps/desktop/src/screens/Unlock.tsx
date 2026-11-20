@@ -1,4 +1,4 @@
-import { Icon } from "@wa/viewer";
+import { Icon } from "@wk/viewer";
 import { FormEvent, useState } from "react";
 import { api, errorOf } from "../api";
 import { useAppT } from "../i18n/app";

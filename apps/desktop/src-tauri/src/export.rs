@@ -1,4 +1,4 @@
-//! Encrypted HTML export (crate `wa-export`), triggered by the UI.
+//! Encrypted HTML export (crate `wk-export`), triggered by the UI.
 //!
 //! The destination folder is chosen in the native picker by the backend and
 //! kept here: the webview never supplies a path to write to.
@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
-use wa_export::{Group, MediaMode, Options, Summary};
+use wk_export::{Group, MediaMode, Options, Summary};
 use zeroize::Zeroizing;
 
 use crate::commands::{blocking, source_app};
@@ -31,9 +31,9 @@ impl ExportState {
     }
 }
 
-impl From<wa_export::Error> for CmdError {
-    fn from(e: wa_export::Error) -> Self {
-        use wa_export::Error as E;
+impl From<wk_export::Error> for CmdError {
+    fn from(e: wk_export::Error) -> Self {
+        use wk_export::Error as E;
         let code = match &e {
             E::Invalid(_) => "invalid_argument",
             E::DestinationNotEmpty => "destination_not_empty",
@@ -150,7 +150,7 @@ pub async fn export_html(
             .take()
             .ok_or_else(|| CmdError::new("invalid_argument", "escolha onde salvar"))?;
         state.export.cancel.store(false, Ordering::SeqCst);
-        let opts = Options { groups, media, kdf: wa_export::format::Kdf::DEFAULT };
+        let opts = Options { groups, media, kdf: wk_export::format::Kdf::DEFAULT };
 
         // Its own connections (not the viewer's): the export may take minutes.
         let (store_handle, media_handle) = {
@@ -171,7 +171,7 @@ pub async fn export_html(
             "export: starting"
         );
         let t = crate::diag::timer("export");
-        let result = wa_export::export(&conn, reader.as_ref(), SHELL, &dest, &opts, &state.export.cancel, |p| {
+        let result = wk_export::export(&conn, reader.as_ref(), SHELL, &dest, &opts, &state.export.cancel, |p| {
             let _ = app.emit(EVENT_EXPORT, p.clone());
         });
         match result {

@@ -18,7 +18,7 @@ historico/
 vault/
 
 # Exception: synthetic test vectors (random keys, fictitious content)
-!crates/wa-crypt/tests/fixtures/
-!crates/wa-crypt/tests/fixtures/**
-!crates/wa-import/tests/fixtures/
-!crates/wa-import/tests/fixtures/**
+!crates/wk-crypt/tests/fixtures/
+!crates/wk-crypt/tests/fixtures/**
+!crates/wk-import/tests/fixtures/
+!crates/wk-import/tests/fixtures/**

@@ -13,13 +13,13 @@ WhatsKeep handles someone's entire chat history. This document says what it prot
 | Malicious message (HTML, script, deceptive link) | Message text is always rendered as text. Links open only after a confirmation, only http/https, never `user@host`. CSP without network. |
 | A remote page gaining access to the app | The main window only navigates inside the app; app commands are allowed one by one, only for that window (ACL tested at runtime). The Google sign-in window has no permissions at all. |
 | Leaks through auxiliary files | `temp_store = MEMORY` on every connection (including the decrypted msgstore), no core dumps, vault excluded from Time Machine and Spotlight, media saved out of the vault only by explicit action. |
-| Leaks through the diagnostics log | The log is off in release builds unless `WA_LOG` is set, goes only to stderr, and never contains message text, phone numbers, names, passwords, keys, tokens, cookies, e-mail or backup ids. External requests are logged redacted; a test runs the full Google flow against a mock server and fails if any secret reaches the log. |
+| Leaks through the diagnostics log | The log is off in release builds unless `WK_LOG` is set, goes only to stderr, and never contains message text, phone numbers, names, passwords, keys, tokens, cookies, e-mail or backup ids. External requests are logged redacted; a test runs the full Google flow against a mock server and fails if any secret reaches the log. |
 | Google account takeover | Google's master token exists for an instant and is zeroed; only 1-hour access tokens stay in memory, until the download ends. The app asks only for `drive.appdata`, but Google issues the token with the scopes already granted to WhatsApp (`drive.appdata`, `drive.file`, `userinfo.email`, `userinfo.profile`, `openid`; seen in a real test in 2026-11): still no access to the whole Drive, only to files created by WhatsApp. Nothing is written to disk. Sign-in happens in an incognito window. |
 | An HTML export falling into the wrong hands | Messages are always encrypted (Argon2id + AES-GCM, per-chat key). One password neither opens nor lists another password's chats. Random file names, no phone number or plaintext. The page cannot access the network. |
 
 ## Details
 
-### Vault (`crates/wa-vault`)
+### Vault (`crates/wk-vault`)
 - `vault.json`: Argon2id (256 MiB, t=3, p=4) → key that unwraps the DEK (AES-256-GCM). The KDF parameters are part of the AAD: lowering them by editing the file makes opening fail.
 - One SQLCipher database per source app, key = HKDF(DEK, vault id, label). Raw key (no SQLCipher PBKDF2), `cipher_memory_security = ON`.
 - Media: one file per item, 1 MiB AES-GCM segments (STREAM: nonce with counter and last flag; AAD = file id). Detects tampering, swapping and truncation.
@@ -27,16 +27,16 @@ WhatsKeep handles someone's entire chat history. This document says what it prot
 - `settings.json` (UI language only) lives outside the vault, because it is needed before unlocking; it holds nothing sensitive.
 
 ### App (`apps/desktop`)
-- All cryptography in Rust; the webview only receives message pages and `wamedia://` URLs (media served from the vault with `Cache-Control: no-store` and a closed list of MIME types).
-- Production CSP: `default-src 'self'`, `connect-src ipc:`, images/media only from the app and `wamedia:`, no `data:`/`blob:`.
+- All cryptography in Rust; the webview only receives message pages and `wkmedia://` URLs (media served from the vault with `Cache-Control: no-store` and a closed list of MIME types).
+- Production CSP: `default-src 'self'`, `connect-src ipc:`, images/media only from the app and `wkmedia:`, no `data:`/`blob:`.
 - Capabilities: only `event:listen/unlisten`, `dialog:open` and the app's own commands (manifest in `build.rs`). No `core:webview:default` (which includes opening devtools) and no `core:window:default`.
 - Devtools are not part of release builds (`devtools` feature off).
 - Prototypes are frozen (`Object.freeze(Object.prototype)`) in the main window, as the first import of `main.tsx`. Tauri's `freezePrototype` is off because it applies to every window and breaks the JavaScript of Google's sign-in page; `pnpm lint:security` checks the import.
 - File paths to write to (export, save media) are chosen in the native picker by the backend; the webview never says where to write.
 - `panic = "abort"`, stripped binary.
 
-### HTML export (`crates/wa-export`, `packages/export-shell`)
-- Format in `crates/wa-export/src/format.rs`.
+### HTML export (`crates/wk-export`, `packages/export-shell`)
+- Format in `crates/wk-export/src/format.rs`.
 - CSP injected with the hashes of the inline scripts and `connect-src 'none'`. **No `'self'`**: in WebKit, `'self'` on a `file://` page allows any remote URL (verified: it fetched an image and a script from an external server). With `file:`, neither engine reaches the network.
 - Locks (reloads and forgets the keys) after 15 minutes without use.
 
@@ -61,10 +61,10 @@ cargo audit && pnpm audit --prod
 ```
 
 Tests worth highlighting:
-- `crates/wa-vault/tests/vault.rs`: no text, phone number, schema or password in plaintext in the vault files; Time Machine exclusion.
-- `crates/wa-vault/tests/tempfiles.rs` and `crates/wa-import/tests/import.rs`: `temp_store = MEMORY` on every connection with decrypted data.
-- `crates/wa-export/tests/export.rs`: isolation between passwords, no plaintext in the package, tampering detected, CSP without `'self'`.
-- `crates/wa-gdrive/tests/mock_drive.rs`: full Google flow against a mock server; the diagnostics log contains no secret.
+- `crates/wk-vault/tests/vault.rs`: no text, phone number, schema or password in plaintext in the vault files; Time Machine exclusion.
+- `crates/wk-vault/tests/tempfiles.rs` and `crates/wk-import/tests/import.rs`: `temp_store = MEMORY` on every connection with decrypted data.
+- `crates/wk-export/tests/export.rs`: isolation between passwords, no plaintext in the package, tampering detected, CSP without `'self'`.
+- `crates/wk-gdrive/tests/mock_drive.rs`: full Google flow against a mock server; the diagnostics log contains no secret.
 - `apps/desktop/src-tauri/src/lib.rs`: the real ACL at runtime (only the main window, with the app origin, can call commands).
 
 ---

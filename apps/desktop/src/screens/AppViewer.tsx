@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Icon, RailButton, Viewer } from "@wa/viewer";
+import { Icon, RailButton, Viewer } from "@wk/viewer";
 import { SOURCE_LABEL, SourceApp, StoreInfo, tauriSource } from "../api";
 import { useAppT } from "../i18n/app";
 

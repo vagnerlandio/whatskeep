@@ -12,10 +12,10 @@ use std::io::Read;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
-use wa_crypt::{BackupKey, Payload};
-use wa_import::SourceApp;
-use wa_vault::query::{self, Anchor, Around, Chat, Cursor, Direction, Message, SearchHit};
-use wa_vault::{KdfParams, Vault};
+use wk_crypt::{BackupKey, Payload};
+use wk_import::SourceApp;
+use wk_vault::query::{self, Anchor, Around, Chat, Cursor, Direction, Message, SearchHit};
+use wk_vault::{KdfParams, Vault};
 use zeroize::Zeroizing;
 
 use crate::error::CmdError;
@@ -100,7 +100,7 @@ pub async fn vault_unlock(app: AppHandle, password: String) -> Result<(), CmdErr
         let t = crate::diag::timer("unlock (Argon2id)");
         let result = Vault::unlock(&state.vault_dir, &password);
         tracing::info!(ms = t.ms() as u64, ok = result.is_ok(), "unlock attempt");
-        state.unlock_result(!matches!(result, Err(wa_vault::Error::WrongPassword)));
+        state.unlock_result(!matches!(result, Err(wk_vault::Error::WrongPassword)));
         *state.vault() = Some(result?);
         state.touch();
         Ok(())
@@ -183,12 +183,12 @@ pub fn inspect_backup(path: String) -> Result<BackupInfo, CmdError> {
     let size_bytes = file.metadata()?.len();
     let mut head = Vec::with_capacity(4096);
     file.take(4096).read_to_end(&mut head)?;
-    let prefix = wa_crypt::parse_prefix(&head).inspect_err(|e| tracing::warn!("inspect_backup: header not recognized: {e}"))?;
+    let prefix = wk_crypt::parse_prefix(&head).inspect_err(|e| tracing::warn!("inspect_backup: header not recognized: {e}"))?;
     tracing::info!(version = ?prefix.version, header_bytes = prefix.header_len, size = %crate::diag::mb(size_bytes), "inspect_backup");
     Ok(BackupInfo {
         version: match prefix.version {
-            wa_crypt::CryptVersion::Crypt14 => "crypt14",
-            wa_crypt::CryptVersion::Crypt15 => "crypt15",
+            wk_crypt::CryptVersion::Crypt14 => "crypt14",
+            wk_crypt::CryptVersion::Crypt15 => "crypt15",
         },
         size_bytes,
     })
@@ -212,7 +212,7 @@ impl KeyInput {
                 // Key files are tens of bytes. Refuses large files before
                 // reading them (probably the wrong file).
                 if meta.len() > 4096 {
-                    return Err(wa_crypt::Error::UnknownKeyFile.into());
+                    return Err(wk_crypt::Error::UnknownKeyFile.into());
                 }
                 BackupKey::from_key_file(&Zeroizing::new(std::fs::read(&path)?))?
             }
@@ -282,7 +282,7 @@ pub(crate) fn import_encrypted(
     progress(app, "decrypting");
     let size = file.len() as u64;
     let t = crate::diag::timer("decrypt");
-    let decrypted = wa_crypt::decrypt(&file, key).inspect_err(|e| tracing::warn!(size = %crate::diag::mb(size), "decryption failed: {e}"))?;
+    let decrypted = wk_crypt::decrypt(&file, key).inspect_err(|e| tracing::warn!(size = %crate::diag::mb(size), "decryption failed: {e}"))?;
     drop(file);
     tracing::info!(
         version = ?decrypted.version,
@@ -295,13 +295,13 @@ pub(crate) fn import_encrypted(
     );
     drop(t);
     if decrypted.payload != Payload::Sqlite {
-        return Err(wa_import::Error::NotMsgstore.into());
+        return Err(wk_import::Error::NotMsgstore.into());
     }
 
     progress(app, "importing");
     // `open_msgstore` copies the bytes into SQLite's memory (zeroed when
-    // freed). The wa-crypt copy is zeroed right after.
-    let src = wa_import::open_msgstore(&decrypted.data)?;
+    // freed). The wk-crypt copy is zeroed right after.
+    let src = wk_import::open_msgstore(&decrypted.data)?;
     drop(decrypted);
     // The viewer's connection points to the old file (and on Windows it would
     // prevent the file from being replaced).
@@ -332,8 +332,8 @@ pub(crate) fn import_encrypted(
     progress(app, "done");
     Ok(ImportSummary {
         source_schema: report.source_schema.map(|s| match s {
-            wa_import::SourceSchema::Modern => "modern",
-            wa_import::SourceSchema::Legacy => "legacy",
+            wk_import::SourceSchema::Modern => "modern",
+            wk_import::SourceSchema::Legacy => "legacy",
         }),
         chats: report.chats,
         messages: report.messages,

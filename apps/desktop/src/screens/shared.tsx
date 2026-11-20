@@ -1,6 +1,6 @@
 // Pieces shared by the local import and the Google Drive download.
 import { open } from "@tauri-apps/plugin-dialog";
-import { useLang } from "@wa/viewer";
+import { useLang } from "@wk/viewer";
 import { errorOf, formatCount, formatSize, ImportPhase, ImportSummary, KeyInput, MediaProgress, MediaSummary, SOURCE_LABEL, SourceApp } from "../api";
 import { useErrorText } from "../i18n/errors";
 import { useImportT } from "../i18n/import";

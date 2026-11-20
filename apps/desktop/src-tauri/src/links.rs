@@ -45,7 +45,7 @@ mod tests {
             "https://bank.com@evil.com/",
             "https://user:password@x.com/",
             "tauri://localhost",
-            "wamedia://localhost/media/whatsapp/1",
+            "wkmedia://localhost/media/whatsapp/1",
             "example.com",
             "",
         ] {

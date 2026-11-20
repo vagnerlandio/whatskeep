@@ -27,7 +27,7 @@ for f in apps/desktop/src-tauri/tauri.conf.json apps/desktop/package.json packag
 done
 # The app crate (the other crates are internal and keep their own versions).
 perl -0pi -e "s/^version = \"[^\"]*\"/version = \"$version\"/m" apps/desktop/src-tauri/Cargo.toml
-cargo update -p wa-historico --offline >/dev/null 2>&1 || cargo update -p wa-historico >/dev/null
+cargo update -p whatskeep --offline >/dev/null 2>&1 || cargo update -p whatskeep >/dev/null
 
 git add apps/desktop/src-tauri/tauri.conf.json apps/desktop/src-tauri/Cargo.toml Cargo.lock \
   apps/desktop/package.json packages/viewer/package.json packages/export-shell/package.json

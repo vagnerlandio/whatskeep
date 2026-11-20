@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open } from "@tauri-apps/plugin-dialog";
-import { formatDateTime, useLang } from "@wa/viewer";
+import { formatDateTime, useLang } from "@wk/viewer";
 import { api, BackupInfo, formatSize, ImportPhase, ImportSummary, SOURCE_LABEL, SourceApp, StoreInfo } from "../api";
 import { useErrorText } from "../i18n/errors";
 import { useImportT } from "../i18n/import";

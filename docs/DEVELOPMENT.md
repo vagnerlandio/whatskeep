@@ -19,8 +19,8 @@ The first Rust build compiles SQLCipher and OpenSSL from source and takes a few 
 
 ```sh
 cargo test --workspace                 # all Rust tests
-cargo test -p wa-vault                 # one crate
-cargo test -p wa-vault --release -- --ignored --nocapture   # ignored performance tests
+cargo test -p wk-vault                 # one crate
+cargo test -p wk-vault --release -- --ignored --nocapture   # ignored performance tests
 cargo clippy --workspace --all-targets # must stay at 0 warnings
 pnpm lint:security                     # forbidden frontend patterns (scripts/check-security.sh)
 pnpm --filter desktop exec tsc --noEmit
@@ -32,7 +32,7 @@ pnpm test:e2e                          # export end-to-end in Chromium and WebKi
 `pnpm test:e2e` (`packages/export-shell/e2e/run.sh`):
 
 1. builds `packages/export-shell`;
-2. runs the ignored Rust test `generate_browser_packages` (`crates/wa-export/tests/export.rs`) with `WA_EXPORT_OUT`, `WA_EXPORT_SHELL` and `WA_EXPORT_IMAGE`, which writes three export packages (encrypted media, plain media, one password per chat);
+2. runs the ignored Rust test `generate_browser_packages` (`crates/wk-export/tests/export.rs`) with `WK_EXPORT_OUT`, `WK_EXPORT_SHELL` and `WK_EXPORT_IMAGE`, which writes three export packages (encrypted media, plain media, one password per chat);
 3. opens each one via `file://` in Chromium and WebKit with `playwright-core` (`e2e/export.e2e.cjs`): unlocking, search, media, password isolation, language switch, and a network probe that must never reach the network.
 
 The package names and passwords in the generator must match the ones the e2e script uses.
@@ -54,16 +54,16 @@ wacreatekey -c14 --hex <random hex>           # → key
 waencrypt --type 14 key plain.db msgstore.db.crypt14
 ```
 
-`crates/wa-import/tests/fixtures/{modern,legacy}.sql` build msgstore databases for both WhatsApp schemas; the Portuguese message text in them is test data that several tests search for.
+`crates/wk-import/tests/fixtures/{modern,legacy}.sql` build msgstore databases for both WhatsApp schemas; the Portuguese message text in them is test data that several tests search for.
 
 ## Diagnostics log
 
 `apps/desktop/src-tauri/src/diag.rs`, via `tracing`:
 
-- on in debug builds; in release only with `WA_LOG=<filter>` (e.g. `WA_LOG=debug`); stderr only;
-- default filter `info,wa_historico_lib=debug,wa_import=debug,wa_gdrive=debug`;
+- on in debug builds; in release only with `WK_LOG=<filter>` (e.g. `WK_LOG=debug`); stderr only;
+- default filter `info,whatskeep_lib=debug,wk_import=debug,wk_gdrive=debug`;
 - every command logs its name, duration and result or error code; `diag::Tally` counts per-item failures by reason;
-- external HTTP requests and responses are logged by `wa_gdrive::trace`, redacted (`<redacted:N>`, `<text:N>`, `<backup>`, `<n>`); `crates/wa-gdrive/tests/mock_drive.rs` fails if a secret reaches the log;
+- external HTTP requests and responses are logged by `wk_gdrive::trace`, redacted (`<redacted:N>`, `<text:N>`, `<backup>`, `<n>`); `crates/wk-gdrive/tests/mock_drive.rs` fails if a secret reaches the log;
 - frontend errors arrive through the `ui_log` command.
 
 Never log message text, phone numbers, JIDs, names, passwords, keys, tokens, cookies, e-mail, backup ids or media file names.

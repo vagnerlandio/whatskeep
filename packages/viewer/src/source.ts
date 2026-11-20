@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { Anchor, Around, Chat, Cursor, Message, SearchHit } from "./types";
 
-/** A ready URL (`wamedia://…`, `blob:…`, relative path) or a promise of one. */
+/** A ready URL (`wkmedia://…`, `blob:…`, relative path) or a promise of one. */
 export type UrlResult = string | null | Promise<string | null>;
 
 /**

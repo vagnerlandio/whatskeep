@@ -1,6 +1,6 @@
 import { ReactNode, useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { detectLang, Icon, Lang, LangProvider, LanguageSelect } from "@wa/viewer";
+import { detectLang, Icon, Lang, LangProvider, LanguageSelect } from "@wk/viewer";
 import { api, settingsApi, StoreInfo, VaultStatus } from "./api";
 import { useAppT } from "./i18n/app";
 import { useErrorText } from "./i18n/errors";
@@ -8,8 +8,8 @@ import CreateVault from "./screens/CreateVault";
 import Home from "./screens/Home";
 import Unlock from "./screens/Unlock";
 import AppViewer from "./screens/AppViewer";
-import "@wa/viewer/base.css";
-import "@wa/viewer/viewer.css";
+import "@wk/viewer/base.css";
+import "@wk/viewer/viewer.css";
 import "./App.css";
 
 /** Minimum interval between activity pings to the backend (autolock). */

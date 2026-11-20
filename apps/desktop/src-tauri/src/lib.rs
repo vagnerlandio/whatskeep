@@ -80,7 +80,7 @@ pub fn run() {
             let data_dir = migrate::run(&app.path().app_data_dir()?);
             app.manage(settings::Settings::load(&data_dir));
             let vault_dir = data_dir.join("vault");
-            tracing::info!(vault_exists = wa_vault::Vault::exists(&vault_dir), "app started");
+            tracing::info!(vault_exists = wk_vault::Vault::exists(&vault_dir), "app started");
             app.manage(AppState::new(vault_dir));
             state::spawn_autolock(app.handle().clone());
             Ok(())
@@ -171,6 +171,6 @@ mod tests {
         assert!(!ok("https://evil.example/"));
         assert!(!ok("file:///Users/x/page.html"));
         assert!(!ok("http://localhost:8080/"));
-        assert!(!ok("wamedia://localhost/media/whatsapp/1"));
+        assert!(!ok("wkmedia://localhost/media/whatsapp/1"));
     }
 }

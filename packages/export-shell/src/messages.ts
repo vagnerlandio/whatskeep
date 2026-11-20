@@ -1,6 +1,6 @@
 // HTML export texts (Portuguese and English). The English one has the
 // Portuguese one's type, so TypeScript flags any missing text.
-import { Lang, makeT } from "@wa/viewer";
+import { Lang, makeT } from "@wk/viewer";
 
 const pt = {
   // Password screen

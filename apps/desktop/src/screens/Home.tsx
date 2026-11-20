@@ -1,4 +1,4 @@
-import { formatDateTime, Icon, useLang } from "@wa/viewer";
+import { formatDateTime, Icon, useLang } from "@wk/viewer";
 import { SOURCE_LABEL, StoreInfo } from "../api";
 import { useAppT } from "../i18n/app";
 import DriveImport from "./DriveImport";

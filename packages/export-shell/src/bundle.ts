@@ -1,5 +1,5 @@
 // The export's DataSource: everything is decrypted here in the browser, on demand.
-import type { Anchor, Around, Chat, Cursor, DataSource, Lang, Message, SearchHit } from "@wa/viewer";
+import type { Anchor, Around, Chat, Cursor, DataSource, Lang, Message, SearchHit } from "@wk/viewer";
 import { aesKey, b64, hkdf, Kdf, open, openStream, passwordKey, streamLen, unpackChunk } from "./crypto";
 import { loadChunk } from "./loader";
 import { ShellError, shellMessages } from "./messages";
@@ -43,7 +43,7 @@ export class BundleSource implements DataSource {
   lang: Lang = "pt-BR";
 
   constructor(private manifest: Manifest) {
-    if (manifest.format !== 1) throw new ShellError("unsupported_format");
+    if (manifest.format !== 2) throw new ShellError("unsupported_format");
     this.salt = b64(manifest.kdf.salt);
     this.mediaMode = manifest.media;
   }
@@ -55,7 +55,7 @@ export class BundleSource implements DataSource {
     for (const slot of this.manifest.slots) {
       let plain: Uint8Array<ArrayBuffer>;
       try {
-        plain = await open(key, b64(slot.n), b64(slot.c), "wa-export slot v1");
+        plain = await open(key, b64(slot.n), b64(slot.c), "wk-export slot v2");
       } catch {
         continue; // password for another slot
       }
@@ -94,7 +94,7 @@ export class BundleSource implements DataSource {
 
   private async chatKey(s: ChatState): Promise<CryptoKey> {
     if (!s.key) {
-      s.keyBytes = await hkdf(s.master, this.salt, `wa-export chat v1:${s.keyId}`);
+      s.keyBytes = await hkdf(s.master, this.salt, `wk-export chat v2:${s.keyId}`);
       s.key = await aesKey(s.keyBytes);
     }
     return s.key;
@@ -199,7 +199,7 @@ export class BundleSource implements DataSource {
     return (async () => {
       const s = this.chatsById.get(m.chatId)!;
       await this.chatKey(s);
-      const raw = await hkdf(s.keyBytes!, this.salt, `wa-export media v1:${ref.id}`);
+      const raw = await hkdf(s.keyBytes!, this.salt, `wk-export media v2:${ref.id}`);
       const key = await aesKey(raw);
       raw.fill(0);
       const read = async (off: number, len: number) =>

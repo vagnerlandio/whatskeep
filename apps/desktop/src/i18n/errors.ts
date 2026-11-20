@@ -4,7 +4,7 @@
 // Portuguese text, sometimes with details (name of the network error etc.).
 // In Portuguese, shows the backend's message (more specific). In English,
 // one text per code; the technical detail goes to the diagnostics log.
-import { errorOf, makeT, useLang } from "@wa/viewer";
+import { errorOf, makeT, useLang } from "@wk/viewer";
 
 const en: Record<string, string> = {
   locked: "The vault is locked.",
@@ -12,6 +12,7 @@ const en: Record<string, string> = {
   wrong_password: "Wrong password.",
   already_exists: "A vault already exists on this computer.",
   not_found: "Not found.",
+  vault_outdated: "This vault was created by an earlier development version of WhatsKeep and cannot be opened. Delete the vault folder and create a new one.",
   vault_corrupt: "The vault could not be read (damaged or unsupported files).",
   not_msgstore: "This file is not a WhatsApp message database (msgstore).",
   invalid_key: "Invalid key. Check the 64 digits or the key file.",

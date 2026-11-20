@@ -16,7 +16,7 @@ importers:
       '@tauri-apps/plugin-dialog':
         specifier: ^2.8.4
         version: 2.8.4
-      '@wa/viewer':
+      '@wk/viewer':
         specifier: workspace:*
         version: link:../../packages/viewer
       react:
@@ -50,7 +50,7 @@ importers:
 
   packages/export-shell:
     dependencies:
-      '@wa/viewer':
+      '@wk/viewer':
         specifier: workspace:*
         version: link:../viewer
       hash-wasm:

@@ -1,0 +1,24 @@
+[package]
+name = "wk-gdrive"
+version = "0.1.0"
+description = "Lists and downloads WhatsApp backups from Google Drive (unofficial Google Play Services flow)"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tracing = { workspace = true }
+base64 = "0.22"
+md-5 = "0.10"
+# No default TLS: the client uses a hand-configured rustls (see http.rs).
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "blocking"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-platform-verifier = "0.6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+url = "2"
+zeroize = { version = "1", features = ["std"] }
+
+[dev-dependencies]
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
+wk-crypt = { path = "../wk-crypt" }

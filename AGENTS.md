@@ -15,15 +15,15 @@ Read this file before changing anything. For details:
 
 | Path | What it is | Depends on |
 |---|---|---|
-| `crates/wa-crypt` | Decrypts crypt14/crypt15 and `.mcrypt1` media. Pure: no I/O, no Tauri. | — |
-| `crates/wa-import` | `msgstore.db` (modern and legacy schemas) → the app's normalized schema (`store.rs`), with FTS5. | — |
-| `crates/wa-vault` | Vault: `vault.json` (Argon2id → DEK), one SQLCipher DB per app, media blobs, **viewer queries** (`query.rs`). | wa-import |
-| `crates/wa-gdrive` | Google login (Google Play Services flow, unofficial) and download from `backup.googleapis.com`. | wa-crypt |
-| `crates/wa-export` | Builds the encrypted HTML package (format v1 in `format.rs`). | wa-vault |
-| `apps/desktop/src-tauri` | Tauri commands, state, `wamedia://` protocol, ACL. Cargo package `wa-historico`. | all crates |
-| `apps/desktop/src` | App screens (vault, import, Drive, media, export). | @wa/viewer |
+| `crates/wk-crypt` | Decrypts crypt14/crypt15 and `.mcrypt1` media. Pure: no I/O, no Tauri. | — |
+| `crates/wk-import` | `msgstore.db` (modern and legacy schemas) → the app's normalized schema (`store.rs`), with FTS5. | — |
+| `crates/wk-vault` | Vault: `vault.json` (Argon2id → DEK), one SQLCipher DB per app, media blobs, **viewer queries** (`query.rs`). | wk-import |
+| `crates/wk-gdrive` | Google login (Google Play Services flow, unofficial) and download from `backup.googleapis.com`. | wk-crypt |
+| `crates/wk-export` | Builds the encrypted HTML package (format v1 in `format.rs`). | wk-vault |
+| `apps/desktop/src-tauri` | Tauri commands, state, `wkmedia://` protocol, ACL. Cargo package `whatskeep`. | all crates |
+| `apps/desktop/src` | App screens (vault, import, Drive, media, export). | @wk/viewer |
 | `packages/viewer` | Shared WhatsApp-style UI. Takes a `DataSource`; does not know where data comes from. | — |
-| `packages/export-shell` | The export's single `index.html`: decrypts in the browser (WebCrypto + Argon2id WASM). Embedded into the binary by `build.rs`. | @wa/viewer |
+| `packages/export-shell` | The export's single `index.html`: decrypts in the browser (WebCrypto + Argon2id WASM). Embedded into the binary by `build.rs`. | @wk/viewer |
 
 ## Commands
 
@@ -41,13 +41,13 @@ scripts/release.sh 1.2.3 && git push origin main v1.2.3   # release (see docs/RE
 
 CI (`.github/workflows/ci.yml`) runs clippy with `-D warnings`, all tests, type checks, the security lint and the e2e on macOS; keep it green. Actions are pinned to commit SHAs.
 
-Single crate: `cargo test -p wa-vault`. Ignored perf test: `cargo test -p wa-vault --release -- --ignored --nocapture`.
+Single crate: `cargo test -p wk-vault`. Ignored perf test: `cargo test -p wk-vault --release -- --ignored --nocapture`.
 
 ## Non-negotiable rules (security)
 
 Breaking any of these requires discussing it with the user first.
 
-1. **All crypto in Rust.** Keys, the DEK, Google tokens and decrypted content never reach the webview. The webview only gets query results (message pages) and `wamedia://` URLs. (By-design exception: the HTML export decrypts in the browser.)
+1. **All crypto in Rust.** Keys, the DEK, Google tokens and decrypted content never reach the webview. The webview only gets query results (message pages) and `wkmedia://` URLs. (By-design exception: the HTML export decrypts in the browser.)
 2. **No plaintext on disk.** Decrypted data goes straight into SQLCipher; media into AES-GCM blobs. Every connection holding decrypted data uses `PRAGMA temp_store = MEMORY` and `cipher_memory_security = ON` (tested). Sensitive buffers are `Zeroizing`.
 3. **Google tokens live in memory only**, dropped when the download ends or the vault locks. Never persist them.
 4. **Message content is hostile.** Forbidden: `dangerouslySetInnerHTML`, `innerHTML`, `eval`, dynamic `href={...}`, iframes, `localStorage`. Links go through `LinkConfirm` + the `open_link` command (http/https only, no `user@`). No link previews, no remote map tiles. `pnpm lint:security` enforces this.
@@ -63,10 +63,10 @@ Breaking any of these requires discussing it with the user first.
 - Rust edition 2024, workspace in `Cargo.toml` (rusqlite with SQLCipher across the whole workspace — plain SQLite cannot be mixed in).
 - Heavy Tauri commands run inside `commands::blocking(...)` (spawn_blocking); long operations hold `state.busy()` so autolock does not fire mid-way.
 - Viewer DB/media access only through `AppState::with_store` / `with_media` (opened on demand, closed on lock). Lock order: `conns` → `media` → `vault`.
-- **Diagnostics log** (`tracing`, `src-tauri/src/diag.rs`): on in dev builds, in release only with `WA_LOG=<filter>`; stderr only, never a file written by the app. `pnpm dev:log` tees it to `logs/` (gitignored). External HTTP requests/responses are logged redacted by `wa_gdrive::trace` (test `request_log_leaks_no_secrets`). **Never log** message text, phone numbers/JIDs, contact names, passwords, keys, tokens, cookies, e-mail, backup ids or media file names — only phases, timings, sizes, counts, error codes and WhatsApp table/column names. Swallowed per-item failures go through `diag::Tally` (counts per reason + first examples). Frontend errors reach the log via the `ui_log` command.
+- **Diagnostics log** (`tracing`, `src-tauri/src/diag.rs`): on in dev builds, in release only with `WK_LOG=<filter>`; stderr only, never a file written by the app. `pnpm dev:log` tees it to `logs/` (gitignored). External HTTP requests/responses are logged redacted by `wk_gdrive::trace` (test `request_log_leaks_no_secrets`). **Never log** message text, phone numbers/JIDs, contact names, passwords, keys, tokens, cookies, e-mail, backup ids or media file names — only phases, timings, sizes, counts, error codes and WhatsApp table/column names. Swallowed per-item failures go through `diag::Tally` (counts per reason + first examples). Frontend errors reach the log via the `ui_log` command.
 - Progress to the UI via events: `import-progress`, `gdrive-progress`, `media-progress`, `export-progress`, `vault-locked`.
-- **UI look:** follow WhatsApp Desktop (nav rail, green title, filter chips, pastel avatars, bubble tails, light/dark palettes in `packages/viewer/src/viewer.css`). **Icons: Lucide only**, through `Icon` / `RailButton` exported by `@wa/viewer` (`packages/viewer/src/icons.tsx`; add new names to the `icons` map). Never emojis or Unicode symbols as UI icons (emoji inside message content is fine).
-- Shared types: structs in `wa_vault::query` serialize as camelCase and mirror `packages/viewer/src/types.ts`. Change one, change the other.
+- **UI look:** follow WhatsApp Desktop (nav rail, green title, filter chips, pastel avatars, bubble tails, light/dark palettes in `packages/viewer/src/viewer.css`). **Icons: Lucide only**, through `Icon` / `RailButton` exported by `@wk/viewer` (`packages/viewer/src/icons.tsx`; add new names to the `icons` map). Never emojis or Unicode symbols as UI icons (emoji inside message content is fine).
+- Shared types: structs in `wk_vault::query` serialize as camelCase and mirror `packages/viewer/src/types.ts`. Change one, change the other.
 - Tests use synthetic fixtures. UI harnesses use `playwright-core` (Chromium and WebKit are already in the local cache).
 - Generated and committed: `apps/desktop/src-tauri/permissions/autogenerated/*.toml` (created by `tauri-build` from the manifest). `gen/` is not committed.
 
@@ -76,7 +76,7 @@ Breaking any of these requires discussing it with the user first.
 - Cursor pagination on `(sent_at, id)`. Search relies on messages being inserted in chronological order (`id` grows with `sent_at`); importers use `ORDER BY timestamp, _id`.
 - `open_read_only` creates the temp `fts5vocab` table **before** setting `query_only`. Prefix search: last word ≥ 3 chars expands through the vocabulary (max 64 terms).
 - `export-shell` must be built before `cargo build` of the app (`beforeDev/BuildCommand` already does it). Without it, export reports itself as unavailable.
-- No `fetch` on `file://`: the export loads data via `<script src>` (`window.__waChunk`, `window.__waManifest`) and encrypted media via `<input webkitdirectory>` + `File.slice`.
+- No `fetch` on `file://`: the export loads data via `<script src>` (`window.__wkChunk`, `window.__wkManifest`) and encrypted media via `<input webkitdirectory>` + `File.slice`.
 - Playwright `page.evaluate` bypasses CSP — to test CSP, inject scripts through the page itself.
 - The bundle identifier is `com.whatskeep.desktop`; it names the data folder. `src-tauri/src/migrate.rs` moves data from previous identifiers (`LEGACY_IDENTIFIERS`) on startup — if the identifier ever changes again, add the old one there.
 - Re-importing replaces an app's whole database (atomic: encrypted temp file + rename). The media index is separate and survives.

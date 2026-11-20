@@ -10,7 +10,7 @@
     "test:e2e": "sh e2e/run.sh"
   },
   "dependencies": {
-    "@wa/viewer": "workspace:*",
+    "@wk/viewer": "workspace:*",
     "hash-wasm": "^4.13.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

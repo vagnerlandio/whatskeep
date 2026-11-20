@@ -20,8 +20,8 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, Url, WebviewUrl, WebviewWindowBuilder};
-use wa_gdrive::{Api, Backup, BackupFile, DriveApp, Endpoints, OauthCookie, Session};
-use wa_import::SourceApp;
+use wk_gdrive::{Api, Backup, BackupFile, DriveApp, Endpoints, OauthCookie, Session};
+use wk_import::SourceApp;
 use zeroize::Zeroizing;
 
 use crate::commands::{ImportSummary, KeyInput, import_encrypted, progress, source_app};
@@ -120,9 +120,9 @@ fn require_unlocked(state: &AppState) -> Result<(), CmdError> {
     state.vault().as_ref().map(|_| ()).ok_or_else(CmdError::locked)
 }
 
-impl From<wa_gdrive::Error> for CmdError {
-    fn from(e: wa_gdrive::Error) -> Self {
-        use wa_gdrive::Error as E;
+impl From<wk_gdrive::Error> for CmdError {
+    fn from(e: wk_gdrive::Error) -> Self {
+        use wk_gdrive::Error as E;
         let code = match &e {
             E::BadAuthentication | E::NeedsBrowser | E::Google(_) => "google_auth",
             E::TokenExpired => "google_expired",
@@ -183,7 +183,7 @@ pub async fn gdrive_login(app: AppHandle, email: String) -> Result<LoginResult, 
     state.drive.clear();
     state.drive.cancel.store(false, Ordering::SeqCst);
 
-    let mut login_url: Url = wa_gdrive::LOGIN_URL.parse().expect("valid fixed URL");
+    let mut login_url: Url = wk_gdrive::LOGIN_URL.parse().expect("valid fixed URL");
     // Google's page prefills the e-mail with this: the user does not type it twice.
     login_url.query_pairs_mut().append_pair("Email", email.trim());
     WebviewWindowBuilder::new(&app, LOGIN_WINDOW, WebviewUrl::External(login_url))
@@ -196,7 +196,7 @@ pub async fn gdrive_login(app: AppHandle, email: String) -> Result<LoginResult, 
         .on_navigation(|url| {
             let ok = allowed_navigation(url);
             // Host and path only (no query): no e-mail or codes.
-            let shown = format!("{}{}", url.host_str().unwrap_or(""), wa_gdrive::trace::scrub_digits(url.path()));
+            let shown = format!("{}{}", url.host_str().unwrap_or(""), wk_gdrive::trace::scrub_digits(url.path()));
             if ok {
                 tracing::debug!("Google login: navigated to {shown}");
             } else {
@@ -264,7 +264,7 @@ fn wait_for_cookie(app: &AppHandle) -> Result<OauthCookie, CmdError> {
             tracing::debug!(cookies = ?names, "Google login: accounts.google.com cookies");
             last_names = names;
         }
-        if let Some(c) = cookies.iter().find(|c| c.name() == wa_gdrive::LOGIN_COOKIE && !c.value().is_empty()) {
+        if let Some(c) = cookies.iter().find(|c| c.name() == wk_gdrive::LOGIN_COOKIE && !c.value().is_empty()) {
             let cookie = OauthCookie::new(c.value().to_owned());
             drop(cookies);
             tracing::info!(s = started.elapsed().as_secs(), "Google login: oauth_token cookie captured");
@@ -278,7 +278,7 @@ fn wait_for_cookie(app: &AppHandle) -> Result<OauthCookie, CmdError> {
 async fn finish_login(app: AppHandle, email: String, cookie: OauthCookie) -> Result<LoginResult, CmdError> {
     crate::commands::blocking("finish_login", move || {
         let ep = Endpoints::default();
-        let session = wa_gdrive::login(&ep, &email, cookie)?;
+        let session = wk_gdrive::login(&ep, &email, cookie)?;
 
         let mut found: Vec<Found> = Vec::new();
         let mut errors = Vec::new();
@@ -424,7 +424,7 @@ pub async fn gdrive_download(
             let api = Api::new(&ep, token)?;
             let files = api.files(&found.backup.name)?;
             log_files(&files);
-            let db = wa_gdrive::find_msgstore(&files).ok_or_else(|| {
+            let db = wk_gdrive::find_msgstore(&files).ok_or_else(|| {
                 CmdError::new("not_msgstore", "este backup não tem o banco de mensagens (msgstore) no Google Drive")
             })?;
             tracing::info!(file = db.path, size = %crate::diag::mb(db.size_bytes), md5 = db.md5.is_some(), "downloading the message database");
@@ -474,9 +474,9 @@ fn download_media(
     app: &AppHandle,
     state: &AppState,
     ep: &Endpoints,
-    token: &wa_gdrive::AccessToken,
+    token: &wk_gdrive::AccessToken,
     files: &[BackupFile],
-    key: &wa_crypt::BackupKey,
+    key: &wk_crypt::BackupKey,
     target: SourceApp,
 ) -> Result<MediaSummary, CmdError> {
     let plan = Plan::load(state, target)?;
@@ -537,7 +537,7 @@ fn download_media(
             match api.download(file, &cancel, |_, _| {}) {
                 Ok(bytes) => match hex {
                     None => store_one(&writer, &mut summary, &mut tally, want, &bytes[..], None),
-                    Some(hex) => match wa_crypt::mcrypt1::decrypt_media(key, &hex, bytes) {
+                    Some(hex) => match wk_crypt::mcrypt1::decrypt_media(key, &hex, bytes) {
                         Ok(m) if m.verified => {
                             mcrypt_stats.0 += 1;
                             store_one(&writer, &mut summary, &mut tally, want, &m.data[..], None)
@@ -559,11 +559,11 @@ fn download_media(
                         }
                     },
                 },
-                Err(wa_gdrive::Error::TokenExpired) => {
+                Err(wk_gdrive::Error::TokenExpired) => {
                     summary.stopped = Some("a sessão do Google expirou; entre de novo para continuar".into());
                     break;
                 }
-                Err(wa_gdrive::Error::Cancelled) => {
+                Err(wk_gdrive::Error::Cancelled) => {
                     summary.stopped = Some("cancelado".into());
                     break;
                 }
@@ -594,7 +594,7 @@ fn download_media(
 /// returns (category, detail) for diagnostics. The first time, it logs the
 /// keys (not the values) of the metadata JSON, to validate the format.
 fn mcrypt1_name(
-    key: &wa_crypt::BackupKey,
+    key: &wk_crypt::BackupKey,
     f: &BackupFile,
     logged: &mut bool,
 ) -> Result<String, (&'static str, String)> {
@@ -603,7 +603,7 @@ fn mcrypt1_name(
 
     let meta = f.metadata.as_deref().ok_or(("mcrypt1 without metadata", String::from("empty metadata field")))?;
     let raw = B64.decode(meta).map_err(|e| ("metadata is not base64", e.to_string()))?;
-    let json = wa_crypt::mcrypt1::decrypt_metadata(key, &raw).map_err(|e| ("metadata did not decrypt", format!("{e} ({} bytes)", raw.len())))?;
+    let json = wk_crypt::mcrypt1::decrypt_metadata(key, &raw).map_err(|e| ("metadata did not decrypt", format!("{e} ({} bytes)", raw.len())))?;
     let v: serde_json::Value =
         serde_json::from_slice(&json).map_err(|e| ("decrypted metadata is not JSON", format!("{e} ({} bytes)", json.len())))?;
     if !*logged {

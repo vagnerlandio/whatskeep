@@ -56,7 +56,7 @@ jobs:
       - name: Type check
         run: |
           pnpm --filter desktop exec tsc --noEmit
-          pnpm --filter @wa/viewer exec tsc --noEmit
+          pnpm --filter @wk/viewer exec tsc --noEmit
           pnpm --filter export-shell exec tsc --noEmit
 
       - name: Security lint

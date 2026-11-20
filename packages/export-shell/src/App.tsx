@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
-import { detectLang, Icon, Lang, LangProvider, LanguageSelect, RailButton, useLang, Viewer } from "@wa/viewer";
+import { detectLang, Icon, Lang, LangProvider, LanguageSelect, RailButton, useLang, Viewer } from "@wk/viewer";
 import { BundleSource } from "./bundle";
 import { loadManifest } from "./loader";
 import { errorText, useShellT } from "./messages";
