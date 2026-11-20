@@ -8,6 +8,7 @@ Read this file before changing anything. For details:
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — data flow, key hierarchy, on-disk formats, dependencies between modules.
 - [docs/RECIPES.md](docs/RECIPES.md) — step-by-step checklists for common changes (new command, new message field, new WhatsApp message type...).
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — setup, tests, e2e, fixtures and the diagnostics log.
+- [docs/RELEASING.md](docs/RELEASING.md) — CI, automatic GitHub releases, optional code signing.
 - [SECURITY.md](SECURITY.md) — threat model and limitations. [README.md](README.md) — user-facing overview (English first, Portuguese section at the end).
 
 ## Map
@@ -35,7 +36,10 @@ pnpm lint:security             # forbidden frontend patterns (scripts/check-secu
 pnpm test:e2e                  # export opened via file:// in Chromium and WebKit (Playwright)
 pnpm --filter desktop exec tsc --noEmit  # types (same for packages/viewer and packages/export-shell)
 cargo audit && pnpm audit --prod
+scripts/release.sh 1.2.3 && git push origin main v1.2.3   # release (see docs/RELEASING.md)
 ```
+
+CI (`.github/workflows/ci.yml`) runs clippy with `-D warnings`, all tests, type checks, the security lint and the e2e on macOS; keep it green. Actions are pinned to commit SHAs.
 
 Single crate: `cargo test -p wa-vault`. Ignored perf test: `cargo test -p wa-vault --release -- --ignored --nocapture`.
 

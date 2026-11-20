@@ -19,12 +19,17 @@ WhatsKeep opens your WhatsApp and WhatsApp Business backups on your computer, so
 | macOS (Apple Silicon and Intel) | Supported and tested |
 | Windows, Linux | Should build, not tested yet |
 
-**No pre-built installer has been published yet.** Until then, build it yourself — see [Build from source](#build-from-source); it takes about 10 minutes and gives you the same installer.
+Get the latest version from the **[Releases page](../../releases/latest)**, under *Assets*:
+
+- **Apple Silicon (M1 and later):** `WhatsKeep_<version>_aarch64.dmg`
+- **Intel Macs:** `WhatsKeep_<version>_x64.dmg`
+
+Not sure which Mac you have? Apple menu → **About This Mac**: "Chip Apple M…" is Apple Silicon, "Processor Intel…" is Intel. If no release is listed yet, [build it from source](#build-from-source) (about 10 minutes, same installer).
 
 Installing on macOS:
 
-1. Open `WhatsKeep_<version>_<arch>.dmg` and drag **WhatsKeep** to **Applications**.
-2. The first time, macOS may say the app is from an unidentified developer (it is not signed yet). Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to WhatsKeep. You only need to do this once.
+1. Open the `.dmg` and drag **WhatsKeep** to **Applications**.
+2. The first time, macOS may say it cannot verify the app (it is not signed with an Apple Developer certificate yet). Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to WhatsKeep. You only need to do this once.
 
 ## Before you start: get your backup key
 
@@ -55,6 +60,7 @@ WhatsKeep locks itself after 5 minutes without use. Switch the language (English
 - **"The key does not open this backup".** Check that the key belongs to this account and app (WhatsApp and WhatsApp Business have different keys) and that the backup was made after you turned on the 64-digit key.
 - **My backup is not end-to-end encrypted.** Its key is stored inside the phone and can only be copied from a rooted phone. Turn on the 64-digit key (see above) and make a new backup.
 - **I forgot the vault password.** It cannot be recovered. Delete the vault folder (see [Where your data is](#where-your-data-is)) and import again.
+- **macOS says the app "is damaged and can't be opened".** That is how macOS sometimes reports an app downloaded from the internet that is not signed by Apple. Run `xattr -dr com.apple.quarantine /Applications/WhatsKeep.app` in Terminal and open it again.
 - **Is my data sent anywhere?** No. The only connections are to Google, when you choose to download a backup from Google Drive. See [SECURITY.md](SECURITY.md).
 
 ---
@@ -128,6 +134,7 @@ packages/export-shell/  The export's single-file index.html
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — data flow, key hierarchy, on-disk and export formats.
 - [docs/RECIPES.md](docs/RECIPES.md) — step-by-step guides for common changes.
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — test fixtures, end-to-end tests and the diagnostics log.
+- [docs/RELEASING.md](docs/RELEASING.md) — CI, automatic releases on GitHub and optional code signing.
 - [SECURITY.md](SECURITY.md) — threat model, protections and limitations.
 
 ---
@@ -140,9 +147,14 @@ O WhatsKeep abre os backups do WhatsApp e do WhatsApp Business no seu computador
 
 ### Baixar
 
-Funciona no macOS (Apple Silicon e Intel); Windows e Linux ainda não foram testados. **Ainda não há instalador publicado**: por enquanto, gere o seu seguindo [Build from source](#build-from-source) (cerca de 10 minutos).
+Funciona no macOS (Apple Silicon e Intel); Windows e Linux ainda não foram testados. Baixe a versão mais recente na **[página de Releases](../../releases/latest)**, em *Assets*:
 
-Para instalar no macOS, abra o `WhatsKeep_<versão>_<arq>.dmg` e arraste o **WhatsKeep** para **Aplicativos**. Na primeira vez, o macOS pode dizer que o app é de um desenvolvedor não identificado (ele ainda não é assinado): abra **Ajustes do Sistema → Privacidade e Segurança**, role a tela e clique em **Abrir Mesmo Assim** ao lado do WhatsKeep.
+- **Apple Silicon (M1 ou mais novo):** `WhatsKeep_<versão>_aarch64.dmg`
+- **Macs Intel:** `WhatsKeep_<versão>_x64.dmg`
+
+Não sabe qual é o seu Mac? Menu Apple → **Sobre Este Mac**: "Chip Apple M…" é Apple Silicon, "Processador Intel…" é Intel. Se ainda não houver nenhuma versão publicada, gere a sua seguindo [Build from source](#build-from-source) (cerca de 10 minutos).
+
+Para instalar, abra o `.dmg` e arraste o **WhatsKeep** para **Aplicativos**. Na primeira vez, o macOS pode dizer que não consegue verificar o app (ele ainda não é assinado com certificado da Apple): abra **Ajustes do Sistema → Privacidade e Segurança**, role a tela e clique em **Abrir Mesmo Assim** ao lado do WhatsKeep. Se o macOS disser que o app "está danificado", rode `xattr -dr com.apple.quarantine /Applications/WhatsKeep.app` no Terminal e abra de novo.
 
 ### Antes de começar: a chave do backup
 

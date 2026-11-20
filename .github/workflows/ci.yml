@@ -1,0 +1,69 @@
+# Tests, lints and the export end-to-end test. Runs on every push to main,
+# on pull requests, and before every release (release.yml calls it).
+#
+# Actions are pinned to commit SHAs (tags can be moved); the comment next to
+# each one says which version it is.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Tests and lints (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6 (version from packageManager)
+        with:
+          cache: true
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+          components: clippy
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Rust tests
+        run: cargo test --workspace --locked
+
+      - name: Type check
+        run: |
+          pnpm --filter desktop exec tsc --noEmit
+          pnpm --filter @wa/viewer exec tsc --noEmit
+          pnpm --filter export-shell exec tsc --noEmit
+
+      - name: Security lint
+        run: pnpm lint:security
+
+      - name: Install browsers for the end-to-end test
+        run: pnpm --filter export-shell exec playwright-core install chromium webkit
+
+      - name: Export end-to-end test (Chromium and WebKit)
+        run: pnpm test:e2e

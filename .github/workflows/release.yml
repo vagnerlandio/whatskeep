@@ -1,0 +1,153 @@
+# Builds the macOS installers and creates a DRAFT GitHub release when a tag
+# like v1.2.3 is pushed. Review the draft and click "Publish" on GitHub.
+#
+#   scripts/release.sh 1.2.3     # bumps the version, commits and tags
+#   git push origin main v1.2.3  # triggers this workflow
+#
+# Code signing and notarization are optional: without the APPLE_* secrets the
+# app is ad-hoc signed and users confirm it once in System Settings (see the
+# README). With them, the build is signed with your Developer ID and notarized.
+# See docs/RELEASING.md.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  version:
+    name: Tag matches app version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Compare tag and tauri.conf.json
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          app_version="$(jq -r .version apps/desktop/src-tauri/tauri.conf.json)"
+          cargo_version="$(sed -n 's/^version = "\(.*\)"/\1/p' apps/desktop/src-tauri/Cargo.toml | head -1)"
+          echo "tag=$TAG tauri.conf.json=$app_version Cargo.toml=$cargo_version"
+          if [ "$TAG" != "v$app_version" ] || [ "$cargo_version" != "$app_version" ]; then
+            echo "::error::The tag must be v<version> and match tauri.conf.json and Cargo.toml. Use scripts/release.sh."
+            exit 1
+          fi
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: [checks, version]
+    permissions:
+      contents: write # create the draft release and upload the installers
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS Apple Silicon
+            target: aarch64-apple-darwin
+          - name: macOS Intel
+            target: x86_64-apple-darwin
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
+      HAS_APPLE_NOTARY: ${{ secrets.APPLE_ID != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6 (version from packageManager)
+        with:
+          cache: true
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Only exported when the secrets exist: an empty APPLE_CERTIFICATE would
+      # make the Tauri bundler try (and fail) to import a certificate.
+      - name: Apple code signing (optional)
+        if: env.HAS_APPLE_CERT == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          {
+            echo "APPLE_CERTIFICATE=$APPLE_CERTIFICATE"
+            echo "APPLE_CERTIFICATE_PASSWORD=$APPLE_CERTIFICATE_PASSWORD"
+            echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY"
+          } >> "$GITHUB_ENV"
+
+      # Without a certificate, sign ad-hoc: an unsigned bundle downloaded from
+      # the internet is reported as "damaged" on Apple Silicon, with no way to
+      # open it; an ad-hoc one gets the normal "Open Anyway" prompt.
+      - name: Ad-hoc signing (no certificate)
+        if: env.HAS_APPLE_CERT != 'true'
+        run: echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
+
+      - name: Apple notarization (optional)
+        if: env.HAS_APPLE_CERT == 'true' && env.HAS_APPLE_NOTARY == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          {
+            echo "APPLE_ID=$APPLE_ID"
+            echo "APPLE_PASSWORD=$APPLE_PASSWORD"
+            echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"
+          } >> "$GITHUB_ENV"
+
+      - name: Build and upload to the draft release
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          tauriScript: pnpm tauri
+          args: --target ${{ matrix.target }}
+          tagName: ${{ github.ref_name }}
+          releaseName: WhatsKeep ${{ github.ref_name }}
+          releaseDraft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generateReleaseNotes: true
+          uploadUpdaterJson: false
+          releaseBody: |
+            **Your WhatsApp conversations, safe and accessible.**
+
+            ### Download
+            - **Apple Silicon (M1 and later):** `WhatsKeep_*_aarch64.dmg`
+            - **Intel Macs:** `WhatsKeep_*_x64.dmg`
+
+            Open the `.dmg` and drag **WhatsKeep** to **Applications**. If macOS says the app cannot be verified, open **System Settings → Privacy & Security** and click **Open Anyway** (once). Step-by-step guide: see the README.
+
+            ### Baixar (português)
+            - **Apple Silicon (M1 ou mais novo):** `WhatsKeep_*_aarch64.dmg`
+            - **Macs Intel:** `WhatsKeep_*_x64.dmg`
+
+            Abra o `.dmg` e arraste o **WhatsKeep** para **Aplicativos**. Se o macOS disser que não consegue verificar o app, abra **Ajustes do Sistema → Privacidade e Segurança** e clique em **Abrir Mesmo Assim** (uma vez só).
